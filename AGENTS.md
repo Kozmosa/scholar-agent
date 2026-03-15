@@ -1,5 +1,13 @@
 # Repository Guidelines
 
+## Instruction Priority
+
+Agents working in this repository must treat [`PROJECT_BASIS.md`](PROJECT_BASIS.md) as a required long-lived constraints document.
+
+- Follow `PROJECT_BASIS.md` for project goals, directory boundaries, documentation placement, coding standards, command entrypoints, and maintenance rules.
+- If this file and `PROJECT_BASIS.md` overlap, apply the stricter rule.
+- If a task-specific user instruction conflicts with `PROJECT_BASIS.md`, follow the user instruction for that task and keep other `PROJECT_BASIS.md` rules intact.
+
 ## Project Structure & Module Organization
 
 This repository has two active concerns:
@@ -11,6 +19,15 @@ This repository has two active concerns:
 - `site/` and `.cache/html-notes/`: generated output; do not edit them directly.
 
 Reference repositories live under `ref-repos/` and are treated as read-only research inputs.
+
+## LLM Working Log
+
+- `docs/LLM-Working/` is versioned working memory for plans, checklists, smoke notes, and agent-side implementation records.
+- Daily work logs must live under `docs/LLM-Working/worklog/` using one file per day named `YYYY-MM-DD.md`.
+- Before or during a work session, if today's file does not exist yet, create it first and keep appending to that same file for the rest of the day.
+- Every key action must append one new log entry on the same day: file-edit batch, development/implementation batch, validation command run, and commit action all count.
+- Each log entry must record at least the time, action type, and a concise summary. Commit entries must also record the commit hash and subject once available.
+- Treat the worklog as append-only session history. Do not silently rewrite earlier entries unless you are correcting an objective factual mistake.
 
 ## Build, Test, and Development Commands
 

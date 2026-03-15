@@ -12,7 +12,7 @@ last_local_commit: workspace aggregate
 # 学术研究 Agent 汇总研究报告
 
 > [!abstract]
-> 本汇总报告基于 8 个本地仓库的静态调研，目标不是给出唯一冠军，而是建立一张“能力地图”：哪些仓库更像技能库，哪些更像流水线，哪些更像控制层，哪些更像工作台，哪些只是终稿质检协议。如果目标已经从“选仓库”转向“做自己的研究系统”，应继续阅读 [[framework/index]]。
+> 本汇总报告基于 10 个本地仓库的静态调研，目标不是给出唯一冠军，而是建立一张“能力地图”：哪些仓库更像技能库，哪些更像流水线，哪些更像控制层，哪些更像工作台，哪些更像统一运行面，哪些只是终稿质检协议。如果目标已经从“选仓库”转向“做自己的研究系统”，应继续阅读 [[framework/index]]。
 
 ## 从调研到框架
 
@@ -29,7 +29,9 @@ last_local_commit: workspace aggregate
 - 如果要找“Codex 监督式自治控制层”，优先看 [[projects/argusbot]]。
 - 如果要找“论文投稿前终稿质检”，优先看 [[projects/awesome-claudecode-paper-proofreading]]。
 - 如果要找“长期个人研究工作台”，优先看 [[projects/claude-scholar]]。
-- 如果要找“通用 harness 基线”，优先看 [[projects/everything-claude-code]]。
+- 如果要找“统一控制面的研究工作台”，优先看 [[projects/evoscientist]]。
+- 如果要找”通用 harness 基线”，优先看 [[projects/everything-claude-code]]。
+- 如果要找”最轻量的自治 ML 实验循环”，优先看 [[projects/autoresearch]]。
 
 ## 项目关系图
 
@@ -42,19 +44,24 @@ graph TD
     E[ArgusBot<br/>监督式控制层]
     F[Paper Proofreading<br/>终稿质检]
     G[Claude Scholar<br/>个人工作台]
-    H[Everything Claude Code<br/>通用 Harness]
+    H[EvoScientist<br/>统一控制面工作台]
+    I[Everything Claude Code<br/>通用 Harness]
+    J[autoresearch<br/>自治实验迭代]
 
     A --> B
     A --> G
-    H --> G
+    A --> H
     C --> D
     B --> D
     D --> F
     G --> D
-    H --> A
+    H --> D
+    H --> G
+    I --> A
     E --> B
     E --> G
-    H --> E
+    I --> E
+    J --> B
 ```
 
 ## 能力矩阵
@@ -68,7 +75,9 @@ graph TD
 | [[projects/argusbot]] | 监督式控制层 | 弱 | 强 | 很强 | 弱 | 中 | Codex + Telegram/Feishu | 想让 Codex 长任务持续跑并可远程干预的人 |
 | [[projects/awesome-claudecode-paper-proofreading]] | Prompt 协议 | 弱 | 弱 | 弱 | 中 | 很强 | Claude Code | 论文终稿质检需求 |
 | [[projects/claude-scholar]] | 个人工作台 | 强 | 强 | 中 | 强 | 中 | Claude/Codex/OpenCode | 长期个人研究与开发用户 |
+| [[projects/evoscientist]] | 研究工作台 / 统一控制面 | 强 | 强 | 强 | 中 | 中 | CLI/TUI + 多渠道 + 多供应商 | 想统一研究运行面与会话入口的人 |
 | [[projects/everything-claude-code]] | 通用 harness | 中 | 强 | 强 | 弱 | 强 | 多宿主 | 要先搭平台再接研究能力的团队 |
+| [[projects/autoresearch]] | 自治实验循环 | 弱 | 很强 | 中 | 弱 | 弱 | agent 无关 | 想让 agent 过夜跑 ML 训练实验的人 |
 
 ## 选型决策图
 
@@ -88,7 +97,11 @@ flowchart TD
     K -->|是| L[[projects/claude-code-deep-research]]
     K -->|否| M{只想精修论文终稿?}
     M -->|是| N[[projects/awesome-claudecode-paper-proofreading]]
-    M -->|否| O[[projects/claude-scholar]]
+    M -->|否| P{要统一多渠道研究工作台?}
+    P -->|是| R[[projects/evoscientist]]
+    P -->|否| Q{要不要纯 ML 实验自治循环?}
+    Q -->|是| S[[projects/autoresearch]]
+    Q -->|否| O[[projects/claude-scholar]]
 ```
 
 ## 定性对比与建议
@@ -99,19 +112,23 @@ flowchart TD
 - [[projects/argusbot]] 更像控制层资产，解决的是 reviewer gate、planner snapshot、daemon 和 operator control，而不是研究内容本身。
 - [[projects/auto-claude-code-research-in-sleep]]、[[projects/claude-code-deep-research]]、[[projects/academic-research-skills]] 更像可执行的研究流程。
 - [[projects/claude-scholar]] 介于两者之间，它不是平台 SDK，也不是固定流水线，而是长期工作台。
+- [[projects/evoscientist]] 也属于工作台一类，但更偏统一运行面：它把 channels、sessions、memory、skills 和 MCP 组合成同一控制面。
 
 ### 2. 研究严谨度
 
 - [[projects/academic-research-skills]] 在 integrity、review、revision 和 final verification 上最重。
 - [[projects/claude-code-deep-research]] 在 citation-backed synthesis 上最专注。
 - [[projects/awesome-claudecode-paper-proofreading]] 在终稿层的人工可控质检上最干净。
+- [[projects/evoscientist]] 覆盖 `write -> verify`，但从静态证据看，并没有把正式投稿级质量门做成它的核心差异点。
 
 ### 3. 自治与执行
 
 - [[projects/auto-claude-code-research-in-sleep]] 最强调自治回路、跨模型 reviewer 和实验执行。
 - [[projects/argusbot]] 最强调“持续执行但可被 reviewer/planner/operator 约束”的监督式自治。
 - [[projects/claude-scholar]] 更适合研究者长期手动-半自动混合使用。
+- [[projects/evoscientist]] 更像“可移动的研究工作台”：会话可持久化，CLI/TUI 与多种消息渠道共享同一 agent runtime。
 - [[projects/everything-claude-code]] 提供的是自治运行底座，而不是学术流程本身。
+- [[projects/autoresearch]] 范围最窄但最纯粹——只做单文件修改 + 固定预算实验循环，是观察 agent 自治实验能力的最小可行原型。
 
 ### 4. 推荐场景
 
@@ -121,8 +138,10 @@ flowchart TD
 - 想快速产出高质量研究报告：选 [[projects/claude-code-deep-research]]。
 - 想要最接近正式投稿工艺的管线：选 [[projects/academic-research-skills]]。
 - 想做长期的个人研究/开发环境：选 [[projects/claude-scholar]]。
+- 想统一多渠道、多模型、多技能和持久记忆到同一研究入口：选 [[projects/evoscientist]]。
 - 想在团队里统一 agent 基础设施：先看 [[projects/everything-claude-code]]，再补 [[projects/ai-research-skills]]。
 - 想对现有论文做严格终稿检查：选 [[projects/awesome-claudecode-paper-proofreading]]。
+- 想用最少配置让 agent 过夜跑 ML 实验：选 [[projects/autoresearch]]。
 
 ## 关键空白带
 
@@ -142,4 +161,6 @@ flowchart TD
 - [[projects/argusbot]]
 - [[projects/awesome-claudecode-paper-proofreading]]
 - [[projects/claude-scholar]]
+- [[projects/evoscientist]]
 - [[projects/everything-claude-code]]
+- [[projects/autoresearch]]

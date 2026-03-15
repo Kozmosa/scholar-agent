@@ -2,6 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Required Project Basis
+
+Claude Code must treat [PROJECT_BASIS.md](PROJECT_BASIS.md) as a required repository policy document.
+
+- Follow `PROJECT_BASIS.md` for long-lived engineering constraints, especially documentation placement, directory boundaries, coding style, command entrypoints, testing expectations, and maintenance rules.
+- When `CLAUDE.md` and `PROJECT_BASIS.md` overlap, follow the stricter requirement.
+- When a task-specific user instruction conflicts with `PROJECT_BASIS.md`, follow the user instruction for that task and keep the rest of `PROJECT_BASIS.md` in effect.
+
 ## Project Overview
 
 scholar-agent is an Obsidian-style knowledge base containing research notes on 8 academic research agent projects, plus a self-designed AI-Native Research Framework. Notes are written in Chinese with English file slugs. The repo also generates a static HTML site from these notes using MkDocs.
@@ -21,6 +29,29 @@ uv run python scripts/build_html_notes.py serve
 ```
 
 Dependencies are managed by `uv` (see `pyproject.toml`). No separate install step needed — `uv run` handles the venv automatically.
+
+## Development Commands
+
+```bash
+# Run tests
+uv run pytest
+
+# Run linting and formatting checks
+uv run ruff check .
+uv run ruff format --check .
+
+# Auto-fix linting issues and format code
+uv run ruff check --fix .
+uv run ruff format .
+
+# Install pre-commit hooks (runs ruff on commit)
+uv run pre-commit install
+
+# Run the ainrf CLI (currently a scaffold with stub commands)
+uv run ainrf --version
+uv run ainrf serve  # P4 planned: API server
+uv run ainrf run    # P7/P8 planned: task execution
+```
 
 ## Architecture
 
@@ -46,6 +77,8 @@ Important: never edit files under `.cache/html-notes/` or `site/` — they are g
   - `docs/projects/` — Per-project research reports (one per reference repo)
   - `docs/framework/` — AI-Native Research Framework design notes
   - `docs/summary/` — Cross-project comparison and capability matrix
+- `src/ainrf/` — AINRF CLI scaffold (Typer-based, stub commands for future P4/P7/P8 work)
+- `tests/` — Test suite (run with `uv run pytest`)
 - `ref-repos/` — Cloned reference repositories (read-only research subjects, gitignored)
 - `.codex-skill-staging/` — Codex skill definitions (build-obsidian-mkdocs-site, write-obsidian-project-docs)
 - `scripts/` — Build tooling
@@ -58,3 +91,19 @@ Important: never edit files under `.cache/html-notes/` or `site/` — they are g
 - Callouts: use Obsidian `> [!type]` syntax, not MkDocs admonitions directly
 - Diagrams: use Mermaid fenced code blocks (vendored JS at `docs/assets/javascripts/vendor/`)
 - File naming: English slugs, content in Chinese
+
+## LLM Working Log Requirement
+
+- `docs/LLM-Working/` is the repository's versioned area for working notes and agent-side execution records.
+- Daily work logs must be stored in `docs/LLM-Working/worklog/` with one append-only file per day named `YYYY-MM-DD.md`.
+- At the start of work, create today's file if it does not exist yet, then keep appending to that same file throughout the day.
+- Every key action requires its own appended log entry: file modification batch, development batch, validation/build/test command, and commit action all count.
+- Each entry must include at least the timestamp, action type, and concise summary. Commit entries must also include the commit hash and commit subject after the commit is created.
+
+## Code Quality
+
+- Python 3.13+ required (see `pyproject.toml`)
+- Linting and formatting: Ruff (configured in `pyproject.toml` with line-length=100)
+- Pre-commit hooks: automatically run `ruff check` and `ruff format` on commit
+- Type hints: use modern Python type syntax (`type` aliases, `|` unions, etc.)
+- The build script (`build_html_notes.py`) validates all wikilinks and fails on unresolved references

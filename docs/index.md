@@ -12,7 +12,7 @@ last_local_commit: workspace aggregate
 # 学术研究 Agent 调研索引
 
 > [!abstract]
-> 这是一组面向 Obsidian 知识库的本地笔记，现已分成两条主线：一条是对 8 个参考项目的静态调研，另一条是基于这些项目抽象出的 [[framework/index|AI-Native Research Framework]]。正文以中文为主，文件名使用英文 slug，结论基于本地仓库静态信息与设计推演，不包含联网补充调研或完整运行验证。
+> 这是一组面向 Obsidian 知识库的本地笔记，现已分成两条主线：一条是对 10 个参考项目的静态调研，另一条是基于这些项目抽象出的 [[framework/index|AI-Native Research Framework]]。正文以中文为主，文件名使用英文 slug，结论基于本地仓库静态信息与设计推演，不包含联网补充调研或完整运行验证。
 
 ## 阅读方式
 
@@ -30,6 +30,8 @@ last_local_commit: workspace aggregate
 | [[framework/ai-native-research-framework]] | 愿景与系统边界 | 明确为什么它不是另一条固定 pipeline |
 | [[framework/artifact-graph-architecture]] | 工件图谱与分层架构 | 把平台层、能力层、编排层、产物层拆开 |
 | [[framework/v1-dual-mode-research-engine]] | 双模式 V1 规格 | 明确两种操作模式、人工关卡和终止合同 |
+| [[framework/v1-rfc]] | V1 实现规格 RFC | API 设计、组件规格、状态机、可部署架构 |
+| [[framework/v1-roadmap]] | V1 实现路线图 | 分阶段实现计划、交付物和可测试标准 |
 | [[framework/reference-mapping]] | 参考项目到框架映射 | 追溯设计依据，避免蓝图脱离证据层 |
 
 ## 项目清单
@@ -43,7 +45,9 @@ last_local_commit: workspace aggregate
 | [[projects/argusbot]] | Codex 监督式 autoloop 控制层 | 解决长任务续跑、reviewer gating 和远程控制 |
 | [[projects/awesome-claudecode-paper-proofreading]] | LaTeX 论文校对 prompt 工作流 | 极窄但实用，适合投稿前精修 |
 | [[projects/claude-scholar]] | 学术研究与开发一体化个人配置 | 研究、开发、Zotero MCP 和多 CLI 支持兼顾 |
+| [[projects/evoscientist]] | 多渠道统一控制面的研究工作台 | 持久记忆、skills/MCP、多供应商和多渠道共享会话是其辨识点 |
 | [[projects/everything-claude-code]] | 通用 agent harness 基线 | 用作研究仓库的基础设施对照组 |
+| [[projects/autoresearch]] | 自治 ML 实验迭代框架 | 极简单文件修改 + 固定预算实验循环，适合观察 agent 自治实验能力 |
 
 ## 能力入口
 
@@ -55,7 +59,9 @@ last_local_commit: workspace aggregate
 - Codex 监督式 autoloop 与远程控制：[[projects/argusbot]]
 - 论文终稿校对：[[projects/awesome-claudecode-paper-proofreading]]
 - 个人研究工作台：[[projects/claude-scholar]]
+- 统一控制面的研究工作台：[[projects/evoscientist]]
 - 通用 harness 与运维能力：[[projects/everything-claude-code]]
+- 自治 ML 实验迭代：[[projects/autoresearch]]
 
 ## 调研边界
 
@@ -70,4 +76,6 @@ last_local_commit: workspace aggregate
 - [[projects/ai-research-skills]]
 - [[projects/argusbot]]
 - [[projects/claude-scholar]]
+- [[projects/evoscientist]]
 - [[projects/academic-research-skills]]
+- [[projects/autoresearch]]

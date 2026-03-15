@@ -147,6 +147,8 @@ gantt
 
 > [!info]
 > 工件模型是整个框架的核心数据结构（详见 [[framework/artifact-graph-architecture]]）。本阶段把设计文档中的一等工件转化为可运行的 Pydantic models 和状态机。
+>
+> 结合当前仓库已落地的 `execution` / `parsing` 模块边界与本地状态约束，P3 的具体实施规划见 [[LLM-Working/p3-artifact-state-store-implementation-plan]]。
 
 **交付物：**
 

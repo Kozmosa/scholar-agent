@@ -23,6 +23,8 @@ last_local_commit: workspace aggregate
 - `academic-research-skills` 最适合贡献 integrity 和 review gate 思维，而不是整套投稿工厂。
 - `ArgusBot` 最适合贡献监督回路、planner/reviewer 双关卡和可恢复控制面，而不是研究内容能力。
 - `claude-scholar` 最适合贡献多宿主工作台和长期研究环境视角。
+- `EvoScientist` 最适合贡献统一运行面思路：多渠道共享 session、持久记忆、技能/MCP 扩展面和 human-on-the-loop 式审批/追问机制。
+- `autoresearch` 最适合贡献"固定预算实验原语 + 单标量评估 + git-native 追踪"思路，作为 Mode 1 递归探索中最轻量的实验执行参考。
 
 ## 框架映射矩阵
 
@@ -35,13 +37,15 @@ last_local_commit: workspace aggregate
 | [[projects/academic-research-skills]] | 质量门参考 | integrity、review、revision、formal verification | V1 不做完整投稿与返修工厂 |
 | [[projects/argusbot]] | 控制层参考 | reviewer/planner gating、有界执行阶段的 reviewer 约束、daemon bus、resume continuity | 不复制 `--yolo` 默认和 Codex 专属假设 |
 | [[projects/claude-scholar]] | 工作台参考 | 多 CLI、Zotero/MCP、长期个人研究环境 | 个人配置系统不等于平台核心模型 |
+| [[projects/evoscientist]] | 统一运行面参考 | 多渠道共享会话、持久记忆、skills/MCP 一等扩展、审批与追问机制 | deepagents 绑定、偏聊天工作台的运行时假设、README 中未独立核验的 benchmark/奖项叙事 |
+| [[projects/autoresearch]] | 实验原语参考 | 固定预算实验、单标量评估、git-native 追踪、简洁性准则 | 窄域单指标、无研究前后端、无协作 |
 
 ## 结构化借鉴
 
-- 平台层优先借鉴 [[projects/everything-claude-code]] 和 [[projects/claude-scholar]] 的宿主兼容与长期治理观。
+- 平台层优先借鉴 [[projects/everything-claude-code]] 和 [[projects/claude-scholar]] 的宿主兼容与长期治理观；运行时交互面则补借鉴 [[projects/evoscientist]] 的统一 session、memory 与扩展面设计。
 - 控制层优先借鉴 [[projects/argusbot]] 的监督回路、计划快照与可恢复运行面。
 - 能力层优先借鉴 [[projects/ai-research-skills]] 的技能颗粒度，再用 [[projects/claude-code-deep-research]] 补阅读与证据纪律。
-- 编排层优先借鉴 [[projects/auto-claude-code-research-in-sleep]] 的执行链条和探索循环，用终止合同（深度/预算/递减收益）替代其无约束自治默认。
+- 编排层优先借鉴 [[projects/auto-claude-code-research-in-sleep]] 的执行链条和探索循环，用终止合同（深度/预算/递减收益）替代其无约束自治默认。还可借鉴 [[projects/autoresearch]] 的固定预算 + 单标量评估 + git-native 追踪模式，作为实验执行原语的最轻量参考。
 - 质量层优先借鉴 [[projects/academic-research-skills]] 的 integrity 观，而不是直接移植其重写作管线。
 
 ## 关键取舍
@@ -60,3 +64,5 @@ last_local_commit: workspace aggregate
 - [[summary/academic-research-agents-overview]]
 - [[projects/argusbot]]
 - [[projects/academic-research-skills]]
+- [[projects/evoscientist]]
+- [[projects/autoresearch]]
