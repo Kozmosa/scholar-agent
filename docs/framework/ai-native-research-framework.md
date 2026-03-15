@@ -9,62 +9,72 @@ source_repo: scholar-agent
 source_path: /home/xuyang/code/scholar-agent
 last_local_commit: workspace aggregate
 ---
-# AI-Native Research Framework：面向 Agent 平台团队的研究系统蓝图
+# AI-Native Research Framework：有界自治研究系统蓝图
 
 > [!abstract]
-> 这不是另一条固定 research pipeline，而是一个宿主无关、repo 优先、工件图谱驱动的研究系统蓝图。它要解决的问题是：如何让 Claude、Codex、OpenCode 一类 agent 不只是“会读论文”或“会写报告”，而是能围绕论文、代码、实验和结论形成一个可审计、可复用、可渐进自动化的研究操作系统。
+> 这不是另一条固定 research pipeline，而是一个宿主无关、repo 优先、工件图谱驱动的研究系统。它要解决的问题是：如何让 Claude Code + Opus 等 agent 不只是"会读论文"或"会写报告"，而是能围绕论文、代码、实验和结论形成一个可审计、可复用、有界自治的研究操作系统。系统支持两种核心操作模式——文献探索与复现、深度复现——并在隔离容器中自主执行研究任务。
 
 ## 框架定位
 
-- 它的目标读者不是单个 prompt user，而是要为研究工作流搭平台的团队。
-- 设计重心不是单次回答质量，而是研究资产如何沉淀、状态如何转换、人工关卡如何介入。
+- 目标用户既包括要为研究工作流搭平台的团队，也包括直接使用 Claude Code + Opus 进行日常研究的实践者。
+- 设计重心不是单次回答质量，而是研究资产如何沉淀、状态如何转换、人在关键节点如何定义合同边界。
+- V1 的主要宿主是 Claude Code + Opus；核心工件模型保持宿主无关，宿主差异通过 adapter 吸收。
 - 从现有参考项目抽象看，`everything-claude-code` 解决的是底盘，`ArgusBot` 解决的是监督式控制层，`AI-Research-SKILLs` 解决的是能力颗粒度，`ARIS` 和 `academic-research-skills` 解决的是长链路编排，`claude-scholar` 解决的是长期工作台；本框架试图把这些层统一成一个可组合系统。
+
+## 双模式概览
+
+- **Mode 1 — 文献探索与复现**：给定一篇或数篇种子论文（综述或顶会），系统在隔离容器中自主探索、复现、跟踪相关文献，按深度上限/预算/递减收益自动终止，产出文献复现报告、idea 验证报告、核心发现和下一步建议。
+- **Mode 2 — 深度复现**：给定一篇没有开源代码的论文，系统从零实现论文方法，按实验设置高精度复现文中表格，产出可运行代码、实验结果、偏差分析和对论文含金量、可复现性、方法科学性的结构化评估。
 
 ## 设计原则
 
 - 宿主无关：核心工件模型与状态机独立于 Claude/Codex/OpenCode，宿主差异通过 adapter 吸收。
-- Repo 优先：代码、配置、实验日志、复现记录和研究产物都优先落在可版本化目录中，而不是只存在会话记忆里。
+- Repo 优先：代码、配置、实验日志、复现记录和研究产物都优先落在可版本化目录中，而不是只存在会话记忆里。每个研究项目在容器上是独立的 git repo。
 - 工件优先于流程：流程只是工件之间的状态转换，不把线性 stage 当成唯一真相。
-- 半自动优先于全自动：先让系统成为研究副驾，确保每个关键节点可审计，再向 FARS 风格的更强自治推进。
+- 有界自治：系统在人类预设的合同边界内自主运行——包括递归深度上限、预算上限、时间上限和 agent 自评递减收益检测。不是开放式自治，也不是逐步审批；是在明确合同内自由行动，合同外必须停下。
 - 失败可记账：复现失败、实验失败、证据冲突都不是异常分支，而是正式研究资产。
 
 ## 系统边界
 
-- In scope：论文阅读、结构化证据抽取、方法级复现、实验追踪、偏差归因、结果归档、下游写作接口。
-- Out of scope for V1：自动把论文写到可投稿质量、自动打平主表结果、自动完成 rebuttal 与投稿合规。
-- 一个关键推论是：V1 不应该被定义为“paper writing agent”，而应该被定义为“research evidence engine with human gates”。
+- In scope：论文阅读、结构化证据抽取、方法级复现、从零实现论文方法（无开源代码场景）、实验追踪与高精度表格复现、偏差归因、结果归档、文献递归探索与自动终止、论文含金量与可复现性的结构化评估、下游写作接口。
+- Out of scope for V1：自动把论文写到可投稿质量、自动完成 rebuttal 与投稿合规、容器生命周期管理（外部负责）、数据集自动获取（用户提供或手动下载）。
+- 一个关键推论是：V1 不应该被定义为"paper writing agent"，而应该被定义为"bounded-autonomous research evidence engine"。
 
 ## 分层视图
 
 ```mermaid
 flowchart TD
-    A[Host Harness<br/>Claude / Codex / OpenCode] --> B[Adapter Layer]
+    A[Host Harness<br/>Claude Code / Codex / OpenCode] --> B[Adapter Layer]
     B --> C[Core Research Runtime]
     C --> D[Artifact Graph]
     C --> E[Workflow Controllers]
-    E --> F[Reading]
-    E --> G[Reproduction]
+    E --> F[Literature Exploration]
+    E --> G[Reproduction & Implementation]
     E --> H[Experiment Tracking]
-    D --> I[Repo Workspace]
+    D --> I[Container Workspace<br/>SSH · GPU · Isolated]
+    I --> J[Per-Project Git Repo]
 ```
 
 ## 核心主张
 
 - 平台层负责接入宿主能力、权限模型、长任务执行和可观测性。
-- 核心运行时负责统一任务语义，例如“读一篇论文”“启动一次复现”“归档一次实验”。
+- 核心运行时负责统一任务语义，例如"读一篇论文""启动一次复现""从零实现一个方法""归档一次实验"。
 - 工件图谱层负责维持研究状态，不让系统退化为一堆互不相干的 Markdown 与脚本。
 - 工作流控制器负责把一等工件串起来，但它本身不能成为新的单点耦合源。
+- 执行平面运行在隔离容器上（SSH 接入、GPU 资源、完全 root 权限），框架定义工作区约定但不管理容器生命周期。
 
-## 关键人工关卡
+## 人工关卡
 
-- 论文纳入：决定某篇论文是否进入结构化阅读与复现队列。
-- 复现计划批准：确认目标、成功标准、可接受资源消耗与终止条件。
-- 实验预算批准：防止 agent 自主扩张实验规模。
-- 结果归档确认：决定哪些 run、哪些偏差、哪些结论进入正式资产层。
+系统保留两个显式关卡，其余环节在预设合同内自治：
+
+- **纳入关卡**：人决定哪些论文作为种子进入系统（Mode 1）或作为目标论文进入深度复现（Mode 2）。
+- **计划关卡**：人审批复现计划——包括复现范围（仅核心方法 vs 完整实验套件）、资源预算（GPU 时间、API 费用、总时长）、递归深度上限和终止条件。
+
+预算和归档不再是阻塞式关卡，而是"合同与验证"模式：人在计划阶段预授权资源边界，agent 在边界内自主执行；结果（包括失败）全量归档，人事后审阅而非执行中逐一审批。
 
 ## 不是要复制什么
 
-- 不复制 `ARIS` 的“尽量一夜跑完所有事”叙事，因为 V1 目标不是最大自治。
+- 不复制 `ARIS` 的无约束自治默认——系统可以过夜运行，但在合同之内，不是空白支票。吸收其 nightly loop、实验执行链和跨模型 review 思路，但附加终止合同。
 - 不复制 `academic-research-skills` 的完整投稿工厂，因为这会过早把系统重心拉向写作。
 - 不复制 `AI-Research-SKILLs` 的纯技能市场形态，因为那会让工件状态和流程责任继续外溢到宿主。
 
@@ -72,6 +82,7 @@ flowchart TD
 
 - [[framework/index]]
 - [[framework/artifact-graph-architecture]]
-- [[framework/v1-semi-automatic-research-copilot]]
+- [[framework/v1-dual-mode-research-engine]]
+- [[framework/container-workspace-protocol]]
 - [[framework/reference-mapping]]
 - [[summary/academic-research-agents-overview]]

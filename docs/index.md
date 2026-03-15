@@ -29,7 +29,7 @@ last_local_commit: workspace aggregate
 | [[framework/index]] | 框架导航页 | 先建立自有框架的阅读顺序 |
 | [[framework/ai-native-research-framework]] | 愿景与系统边界 | 明确为什么它不是另一条固定 pipeline |
 | [[framework/artifact-graph-architecture]] | 工件图谱与分层架构 | 把平台层、能力层、编排层、产物层拆开 |
-| [[framework/v1-semi-automatic-research-copilot]] | 半自动 V1 规格 | 明确近期做什么、不做什么 |
+| [[framework/v1-dual-mode-research-engine]] | 双模式 V1 规格 | 明确两种操作模式、人工关卡和终止合同 |
 | [[framework/reference-mapping]] | 参考项目到框架映射 | 追溯设计依据，避免蓝图脱离证据层 |
 
 ## 项目清单
