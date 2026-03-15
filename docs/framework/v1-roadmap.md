@@ -114,6 +114,9 @@ gantt
 > [!info]
 > MinerU Cloud API 是论文 PDF → Markdown 的唯一入口。本阶段交付独立的 API 客户端，不依赖其他模块。
 
+> [!note]
+> 结合当前仓库已落地的 CLI 与 `execution` 模块骨架，P2 的具体实施规划见 [[LLM-Working/p2-mineru-implementation-plan]]。
+
 **交付物：**
 
 - `MinerUClient` 类：封装 MinerU Cloud API 的完整调用流程
