@@ -10,7 +10,10 @@ ref-repos/
 
 /.venv/
 /.cache/
-
+/.pytest_cache/
+/.ruff_cache/
+/.ainrf/
+/.codex-skill-staging/
 
 
 /site/

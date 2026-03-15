@@ -1,15 +1,52 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
 [project]
 name = "scholar-agent-notes"
 version = "0.1.0"
 description = "Local HTML export tooling for Obsidian-style research notes."
 requires-python = ">=3.13"
 dependencies = [
+  "asyncssh>=2.21.1",
+  "fastapi>=0.116.1",
+  "httpx>=0.28.1",
   "mkdocs>=1.6.0",
   "mkdocs-material>=9.5.0",
   "mkdocs-mermaid2-plugin>=1.1.1",
+  "pydantic>=2.11.7",
   "pymdown-extensions>=10.14",
+  "structlog>=25.4.0",
+  "typer>=0.17.4",
+  "uvicorn>=0.35.0",
   "pyyaml>=6.0.2",
 ]
 
+[project.scripts]
+ainrf = "ainrf.cli:main"
+
+[dependency-groups]
+dev = [
+  "pre-commit>=4.3.0",
+  "pytest>=8.4.2",
+  "ruff>=0.12.11",
+  "ty>=0.0.1a19",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ainrf"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
 [tool.uv]
-package = false
+package = true
