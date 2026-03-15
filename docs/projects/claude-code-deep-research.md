@@ -6,7 +6,7 @@ tags:
   - repo-study
   - deep-research
 source_repo: Claude-Code-Deep-Research-main
-source_path: /home/xuyang/code/scholar-agent/Claude-Code-Deep-Research-main
+source_path: /home/xuyang/code/scholar-agent/ref-repos/Claude-Code-Deep-Research-main
 last_local_commit: 2120f68 2025-12-30 fix
 ---
 # Claude Code Deep Research：多阶段深度研究框架
@@ -54,10 +54,10 @@ flowchart TD
 
 ## 证据与样例
 
-- 项目定位、GoT、commands reference 和输出目录结构见 [Claude-Code-Deep-Research-main/README.md](../../Claude-Code-Deep-Research-main/README.md)。
-- 编排入口见 [Claude-Code-Deep-Research-main/.claude/commands](../../Claude-Code-Deep-Research-main/.claude/commands)。
-- 核心 skill 目录见 [Claude-Code-Deep-Research-main/.claude/skills](../../Claude-Code-Deep-Research-main/.claude/skills)。
-- 示例结果可见 [Claude-Code-Deep-Research-main/RESEARCH](../../Claude-Code-Deep-Research-main/RESEARCH)。
+- 项目定位、GoT、commands reference 和输出目录结构见 [Claude-Code-Deep-Research-main/README.md](../../ref-repos/Claude-Code-Deep-Research-main/README.md)。
+- 编排入口见 [Claude-Code-Deep-Research-main/.claude/commands](../../ref-repos/Claude-Code-Deep-Research-main/.claude/commands)。
+- 核心 skill 目录见 [Claude-Code-Deep-Research-main/.claude/skills](../../ref-repos/Claude-Code-Deep-Research-main/.claude/skills)。
+- 示例结果可见 [Claude-Code-Deep-Research-main/RESEARCH](../../ref-repos/Claude-Code-Deep-Research-main/RESEARCH)。
 - 本地最近提交为 `2120f68`，日期 `2025-12-30`。
 
 ## 优势

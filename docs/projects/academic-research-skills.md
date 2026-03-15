@@ -6,7 +6,7 @@ tags:
   - repo-study
   - academic-pipeline
 source_repo: academic-research-skills
-source_path: /home/xuyang/code/scholar-agent/academic-research-skills
+source_path: /home/xuyang/code/scholar-agent/ref-repos/academic-research-skills
 last_local_commit: 79dedce 2026-03-10 fix: version badge v2.7 → v4.0.3 (zh-TW)
 ---
 # Academic Research Skills：从研究到发表的学术全流程管线
@@ -57,10 +57,10 @@ flowchart LR
 
 ## 证据与样例
 
-- 管线、功能、安装方式和 changelog 见 [academic-research-skills/README.md](../../academic-research-skills/README.md)。
-- 各模块代理可从 [academic-research-skills/deep-research/agents](../../academic-research-skills/deep-research/agents) 与 [academic-research-skills/academic-paper/agents](../../academic-research-skills/academic-paper/agents) 观察。
-- Showcase 产物见 [academic-research-skills/examples/showcase](../../academic-research-skills/examples/showcase)。
-- 许可证见 [academic-research-skills/LICENSE](../../academic-research-skills/LICENSE)。
+- 管线、功能、安装方式和 changelog 见 [academic-research-skills/README.md](../../ref-repos/academic-research-skills/README.md)。
+- 各模块代理可从 [academic-research-skills/deep-research/agents](../../ref-repos/academic-research-skills/deep-research/agents) 与 [academic-research-skills/academic-paper/agents](../../ref-repos/academic-research-skills/academic-paper/agents) 观察。
+- Showcase 产物见 [academic-research-skills/examples/showcase](../../ref-repos/academic-research-skills/examples/showcase)。
+- 许可证见 [academic-research-skills/LICENSE](../../ref-repos/academic-research-skills/LICENSE)。
 - 本地最近提交为 `79dedce`，日期 `2026-03-10`。
 
 ## 优势

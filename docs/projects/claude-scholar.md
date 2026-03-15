@@ -6,7 +6,7 @@ tags:
   - repo-study
   - academic-workbench
 source_repo: claude-scholar
-source_path: /home/xuyang/code/scholar-agent/claude-scholar
+source_path: /home/xuyang/code/scholar-agent/ref-repos/claude-scholar
 last_local_commit: d79c34a 2026-03-14 docs(mcp): update zotero credential setup links
 ---
 # Claude Scholar：学术研究与开发一体化个人配置系统
@@ -54,10 +54,10 @@ flowchart LR
 
 ## 证据与样例
 
-- 研究工作流、技能数、命令数与跨平台定位见 [claude-scholar/README.zh-CN.md](../../claude-scholar/README.zh-CN.md)。
-- MCP 集成入口见 [claude-scholar/MCP_SETUP.md](../../claude-scholar/MCP_SETUP.md)。
-- 技能目录见 [claude-scholar/skills](../../claude-scholar/skills)，代理目录见 [claude-scholar/agents](../../claude-scholar/agents)。
-- 研究命令可见 [claude-scholar/commands](../../claude-scholar/commands)。
+- 研究工作流、技能数、命令数与跨平台定位见 [claude-scholar/README.zh-CN.md](../../ref-repos/claude-scholar/README.zh-CN.md)。
+- MCP 集成入口见 [claude-scholar/MCP_SETUP.md](../../ref-repos/claude-scholar/MCP_SETUP.md)。
+- 技能目录见 [claude-scholar/skills](../../ref-repos/claude-scholar/skills)，代理目录见 [claude-scholar/agents](../../ref-repos/claude-scholar/agents)。
+- 研究命令可见 [claude-scholar/commands](../../ref-repos/claude-scholar/commands)。
 - 本地最近提交为 `d79c34a`，日期 `2026-03-14`。
 
 ## 优势
@@ -83,5 +83,6 @@ flowchart LR
 - [[index]]
 - [[summary/academic-research-agents-overview]]
 - [[projects/ai-research-skills]]
+- [[projects/argusbot]]
 - [[projects/academic-research-skills]]
 - [[projects/everything-claude-code]]

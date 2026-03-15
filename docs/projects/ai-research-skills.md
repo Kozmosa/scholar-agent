@@ -6,7 +6,7 @@ tags:
   - repo-study
   - skills-library
 source_repo: AI-Research-SKILLs
-source_path: /home/xuyang/code/scholar-agent/AI-Research-SKILLs
+source_path: /home/xuyang/code/scholar-agent/ref-repos/AI-Research-SKILLs
 last_local_commit: 0ae5872 2026-03-05 chore: Bump versions and remove PDF templates
 ---
 # AI Research SKILLs：AI 研究工程技能库
@@ -55,9 +55,9 @@ flowchart LR
 
 ## 证据与样例
 
-- 使命、安装方式和 21 类目录来自 [AI-Research-SKILLs/README.md](../../AI-Research-SKILLs/README.md)。
-- 技能颗粒度可从 [AI-Research-SKILLs/01-model-architecture](../../AI-Research-SKILLs/01-model-architecture) 和 [AI-Research-SKILLs/06-post-training](../../AI-Research-SKILLs/06-post-training) 直接观察。
-- 包分发入口见 [AI-Research-SKILLs/package.json](../../AI-Research-SKILLs/package.json)。
+- 使命、安装方式和 21 类目录来自 [AI-Research-SKILLs/README.md](../../ref-repos/AI-Research-SKILLs/README.md)。
+- 技能颗粒度可从 [AI-Research-SKILLs/01-model-architecture](../../ref-repos/AI-Research-SKILLs/01-model-architecture) 和 [AI-Research-SKILLs/06-post-training](../../ref-repos/AI-Research-SKILLs/06-post-training) 直接观察。
+- 包分发入口见 [AI-Research-SKILLs/package.json](../../ref-repos/AI-Research-SKILLs/package.json)。
 - 本地最近提交为 `0ae5872`，日期 `2026-03-05`。
 
 ## 优势
@@ -82,6 +82,7 @@ flowchart LR
 
 - [[index]]
 - [[summary/academic-research-agents-overview]]
+- [[projects/argusbot]]
 - [[projects/claude-scholar]]
 - [[projects/everything-claude-code]]
 - [[projects/academic-research-skills]]

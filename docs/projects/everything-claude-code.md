@@ -6,7 +6,7 @@ tags:
   - repo-study
   - harness-baseline
 source_repo: everything-claude-code
-source_path: /home/xuyang/code/scholar-agent/everything-claude-code
+source_path: /home/xuyang/code/scholar-agent/ref-repos/everything-claude-code
 last_local_commit: fdea308 2026-03-13 Merge pull request #428 from zdocapp/zh-CN-pr
 ---
 # Everything Claude Code：通用 Agent Harness 基线
@@ -53,10 +53,10 @@ flowchart TD
 
 ## 证据与样例
 
-- 跨宿主定位、版本演进和 harness-first 叙事见 [everything-claude-code/README.md](../../everything-claude-code/README.md)。
-- 中文版目录式说明见 [everything-claude-code/README.zh-CN.md](../../everything-claude-code/README.zh-CN.md)。
-- 通用 agent 入口可见 [everything-claude-code/agents](../../everything-claude-code/agents) 与 [everything-claude-code/commands](../../everything-claude-code/commands)。
-- 多宿主适配可见 [everything-claude-code/.codex/AGENTS.md](../../everything-claude-code/.codex/AGENTS.md)。
+- 跨宿主定位、版本演进和 harness-first 叙事见 [everything-claude-code/README.md](../../ref-repos/everything-claude-code/README.md)。
+- 中文版目录式说明见 [everything-claude-code/README.zh-CN.md](../../ref-repos/everything-claude-code/README.zh-CN.md)。
+- 通用 agent 入口可见 [everything-claude-code/agents](../../ref-repos/everything-claude-code/agents) 与 [everything-claude-code/commands](../../ref-repos/everything-claude-code/commands)。
+- 多宿主适配可见 [everything-claude-code/.codex/AGENTS.md](../../ref-repos/everything-claude-code/.codex/AGENTS.md)。
 - 本地最近提交为 `fdea308`，日期 `2026-03-13`。
 
 ## 优势
@@ -82,5 +82,6 @@ flowchart TD
 - [[index]]
 - [[summary/academic-research-agents-overview]]
 - [[projects/ai-research-skills]]
+- [[projects/argusbot]]
 - [[projects/claude-scholar]]
 - [[projects/claude-code-deep-research]]

@@ -6,7 +6,7 @@ tags:
   - repo-study
   - paper-proofreading
 source_repo: awesome-claudecode-paper-proofreading
-source_path: /home/xuyang/code/scholar-agent/awesome-claudecode-paper-proofreading
+source_path: /home/xuyang/code/scholar-agent/ref-repos/awesome-claudecode-paper-proofreading
 last_local_commit: e49ed76 2026-03-13 Update em-dash and abstract RESULTS rules
 ---
 # Awesome Claude Code Paper Proofreading：LaTeX 论文校对 prompt 工作流
@@ -52,9 +52,9 @@ flowchart TD
 
 ## 证据与样例
 
-- 工作方式、prompt 设计和使用步骤见 [awesome-claudecode-paper-proofreading/README.md](../../awesome-claudecode-paper-proofreading/README.md)。
-- 具体审查规则见 [awesome-claudecode-paper-proofreading/prompts/01_latex_workspace_review.md](../../awesome-claudecode-paper-proofreading/prompts/01_latex_workspace_review.md)。
-- 内容 proofread prompt 见 [awesome-claudecode-paper-proofreading/prompts/02_paper_proofreading.md](../../awesome-claudecode-paper-proofreading/prompts/02_paper_proofreading.md)。
+- 工作方式、prompt 设计和使用步骤见 [awesome-claudecode-paper-proofreading/README.md](../../ref-repos/awesome-claudecode-paper-proofreading/README.md)。
+- 具体审查规则见 [awesome-claudecode-paper-proofreading/prompts/01_latex_workspace_review.md](../../ref-repos/awesome-claudecode-paper-proofreading/prompts/01_latex_workspace_review.md)。
+- 内容 proofread prompt 见 [awesome-claudecode-paper-proofreading/prompts/02_paper_proofreading.md](../../ref-repos/awesome-claudecode-paper-proofreading/prompts/02_paper_proofreading.md)。
 - 本地最近提交为 `e49ed76`，日期 `2026-03-13`。
 
 ## 优势

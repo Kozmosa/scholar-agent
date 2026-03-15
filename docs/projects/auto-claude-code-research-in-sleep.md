@@ -7,7 +7,7 @@ tags:
   - repo-study
   - autonomous-research
 source_repo: Auto-claude-code-research-in-sleep
-source_path: /home/xuyang/code/scholar-agent/Auto-claude-code-research-in-sleep
+source_path: /home/xuyang/code/scholar-agent/ref-repos/Auto-claude-code-research-in-sleep
 last_local_commit: c4016ec 2026-03-14 docs: warn users to set gpt-5.4 in Codex config
 ---
 # Auto-claude-code-research-in-sleep：过夜自治科研流水线
@@ -57,9 +57,9 @@ flowchart LR
 
 ## 证据与样例
 
-- 工作流、功能亮点、远程服务器和集成项见 [Auto-claude-code-research-in-sleep/README_CN.md](../../Auto-claude-code-research-in-sleep/README_CN.md)。
-- 技能清单见 [Auto-claude-code-research-in-sleep/skills](../../Auto-claude-code-research-in-sleep/skills)。
-- 替代模型和 MCP 方向可从 [Auto-claude-code-research-in-sleep/mcp-servers](../../Auto-claude-code-research-in-sleep/mcp-servers) 观察。
+- 工作流、功能亮点、远程服务器和集成项见 [Auto-claude-code-research-in-sleep/README_CN.md](../../ref-repos/Auto-claude-code-research-in-sleep/README_CN.md)。
+- 技能清单见 [Auto-claude-code-research-in-sleep/skills](../../ref-repos/Auto-claude-code-research-in-sleep/skills)。
+- 替代模型和 MCP 方向可从 [Auto-claude-code-research-in-sleep/mcp-servers](../../ref-repos/Auto-claude-code-research-in-sleep/mcp-servers) 观察。
 - 本地最近提交为 `c4016ec`，日期 `2026-03-14`。
 
 ## 优势
@@ -84,6 +84,7 @@ flowchart LR
 
 - [[index]]
 - [[summary/academic-research-agents-overview]]
+- [[projects/argusbot]]
 - [[projects/claude-code-deep-research]]
 - [[projects/academic-research-skills]]
 - [[projects/claude-scholar]]
