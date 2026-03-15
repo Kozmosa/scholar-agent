@@ -1,0 +1,15 @@
+[project]
+name = "scholar-agent-notes"
+version = "0.1.0"
+description = "Local HTML export tooling for Obsidian-style research notes."
+requires-python = ">=3.13"
+dependencies = [
+  "mkdocs>=1.6.0",
+  "mkdocs-material>=9.5.0",
+  "mkdocs-mermaid2-plugin>=1.1.1",
+  "pymdown-extensions>=10.14",
+  "pyyaml>=6.0.2",
+]
+
+[tool.uv]
+package = false
