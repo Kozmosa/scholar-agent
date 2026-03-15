@@ -13,6 +13,10 @@ from pathlib import Path
 import yaml
 
 
+type FrontmatterValue = str | list[str]
+type Frontmatter = dict[str, FrontmatterValue]
+
+
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE_DOCS = ROOT / "docs"
 GENERATED_ROOT = ROOT / ".cache" / "html-notes"
@@ -39,8 +43,8 @@ class LinkResolutionError(RuntimeError):
     pass
 
 
-def parse_simple_frontmatter(block: list[str]) -> dict[str, object]:
-    meta: dict[str, object] = {}
+def parse_simple_frontmatter(block: list[str]) -> Frontmatter:
+    meta: Frontmatter = {}
     current_list_key: str | None = None
 
     for raw_line in block:
@@ -49,9 +53,11 @@ def parse_simple_frontmatter(block: list[str]) -> dict[str, object]:
             continue
 
         if line.startswith("  - ") and current_list_key:
-            meta.setdefault(current_list_key, [])
-            assert isinstance(meta[current_list_key], list)
-            meta[current_list_key].append(line[4:].strip())
+            existing = meta.get(current_list_key)
+            if isinstance(existing, list):
+                existing.append(line[4:].strip())
+            else:
+                meta[current_list_key] = [line[4:].strip()]
             continue
 
         current_list_key = None
@@ -70,7 +76,24 @@ def parse_simple_frontmatter(block: list[str]) -> dict[str, object]:
     return meta
 
 
-def parse_frontmatter(raw: str) -> tuple[dict[str, object], str]:
+def normalize_frontmatter(meta: object) -> Frontmatter:
+    if not isinstance(meta, dict):
+        return {}
+
+    normalized: Frontmatter = {}
+    for key, value in meta.items():
+        if not isinstance(key, str):
+            continue
+        if isinstance(value, str):
+            normalized[key] = value
+            continue
+        if isinstance(value, list):
+            normalized[key] = [str(item) for item in value if item]
+
+    return normalized
+
+
+def parse_frontmatter(raw: str) -> tuple[Frontmatter, str]:
     lines = raw.splitlines()
     if not lines or lines[0].strip() != "---":
         return {}, raw
@@ -79,7 +102,7 @@ def parse_frontmatter(raw: str) -> tuple[dict[str, object], str]:
         if lines[idx].strip() == "---":
             frontmatter_lines = lines[1:idx]
             try:
-                meta = yaml.safe_load("\n".join(frontmatter_lines)) or {}
+                meta = normalize_frontmatter(yaml.safe_load("\n".join(frontmatter_lines)))
             except yaml.YAMLError:
                 meta = parse_simple_frontmatter(frontmatter_lines)
             body = "\n".join(lines[idx + 1 :])
