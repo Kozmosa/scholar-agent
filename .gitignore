@@ -5,3 +5,14 @@
 /awesome-claudecode-paper-proofreading/
 /claude-scholar/
 /everything-claude-code/
+
+ref-repos/
+
+/.venv/
+/.cache/
+
+
+
+/site/
+__pycache__/
+*.pyc
