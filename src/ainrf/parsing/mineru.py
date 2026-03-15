@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import io
+import json
 import os
 import re
+import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -24,15 +27,25 @@ from ainrf.parsing.models import (
 _TITLE_PATTERN = re.compile(r"^#\s+\S+", re.MULTILINE)
 _ABSTRACT_PATTERN = re.compile(r"(?im)^#+\s*abstract\b")
 _SECTION_PATTERN = re.compile(r"(?m)^##\s+")
+_HEADING_PATTERN = re.compile(r"(?m)^#\s+(?P<title>.+?)\s*$")
+_ABSTRACT_BLOCK_PATTERN = re.compile(
+    r"(?is)^#+\s*abstract\s*$\n(?P<abstract>.*?)(?:^#+\s+|\Z)",
+    re.MULTILINE,
+)
 
 
 @dataclass(slots=True, frozen=True)
 class MinerUConfig:
     base_url: str
     api_key: str
-    submit_path: str = "/v1/tasks"
-    status_path_template: str = "/v1/tasks/{task_id}"
-    result_path_template: str = "/v1/tasks/{task_id}/result"
+    upload_batch_path: str = "/api/v4/file-urls/batch"
+    remote_batch_path: str = "/api/v4/extract/task/batch"
+    result_path_template: str = "/api/v4/extract-results/batch/{batch_id}"
+    model_version: str = "vlm"
+    language: str = "en"
+    enable_formula: bool = True
+    enable_table: bool = True
+    is_ocr: bool = True
     timeout_seconds: float = 30.0
     poll_interval_seconds: float = 2.0
     max_retries: int = 3
@@ -52,10 +65,20 @@ class MinerUConfig:
         max_retries = int(os.environ.get("AINRF_MINERU_MAX_RETRIES", "3"))
         cache_dir_env = os.environ.get("AINRF_MINERU_CACHE_DIR")
         cache_dir = Path(cache_dir_env) if cache_dir_env else default_cache_dir()
+        model_version = os.environ.get("AINRF_MINERU_MODEL_VERSION", "vlm")
+        language = os.environ.get("AINRF_MINERU_LANGUAGE", "en")
+        enable_formula = _parse_bool_env("AINRF_MINERU_ENABLE_FORMULA", default=True)
+        enable_table = _parse_bool_env("AINRF_MINERU_ENABLE_TABLE", default=True)
+        is_ocr = _parse_bool_env("AINRF_MINERU_IS_OCR", default=True)
 
         return cls(
             base_url=base_url,
             api_key=api_key,
+            model_version=model_version,
+            language=language,
+            enable_formula=enable_formula,
+            enable_table=enable_table,
+            is_ocr=is_ocr,
             timeout_seconds=timeout_seconds,
             poll_interval_seconds=poll_interval_seconds,
             max_retries=max_retries,
@@ -137,86 +160,357 @@ class MinerUClient(PaperParser):
                 provider_task_id=exc.task_id,
             )
 
-        if isinstance(result, ParseResult):
-            self._cache.save(pdf_sha256, result)
-
+        self._cache.save(pdf_sha256, result)
         return result
 
     async def _parse_via_provider(self, request: ParseRequest) -> ParseResult:
-        submit_payload = await self._submit_pdf(request)
-        task_id = self._extract_required_str(
-            submit_payload,
-            ("task_id", "data.task_id", "id", "data.id"),
-        )
-
-        terminal_payload = await self._poll_until_terminal(task_id)
-        status = self._extract_required_str(
-            terminal_payload,
-            ("status", "data.status", "state", "data.state"),
-        ).lower()
-
-        if status in {"failed", "error", "rejected", "cancelled"}:
-            reason = self._extract_optional_str(
-                terminal_payload,
-                (
-                    "message",
-                    "error.message",
-                    "data.message",
-                    "data.error.message",
-                    "reason",
-                    "data.reason",
-                ),
-            )
-            raise ProviderRejectedError(
-                task_id=task_id,
-                message=reason or f"MinerU task {task_id} finished with status {status}",
-                retryable=status not in {"rejected", "cancelled"},
-            )
-
-        result_payload = self._extract_optional_mapping(
-            terminal_payload,
-            ("result", "data.result", "output", "data.output"),
-        )
-        if result_payload is None:
-            result_payload = await self._fetch_result(task_id)
-
-        return self._normalize_result(result_payload, request, task_id)
-
-    async def _submit_pdf(self, request: ParseRequest) -> dict[str, Any]:
-        file_bytes = request.pdf_path.read_bytes()
-        files = {"file": (request.pdf_path.name, file_bytes, "application/pdf")}
-        data = {}
         if request.source_url is not None:
-            data["source_url"] = request.source_url
-        if request.role is not None:
-            data["role"] = request.role
-        return await self._request_json("POST", self._config.submit_path, data=data, files=files)
+            batch_id = await self._submit_remote_url(request)
+        else:
+            batch_id = await self._submit_local_file(request)
 
-    async def _poll_until_terminal(self, task_id: str) -> dict[str, Any]:
+        terminal_result = await self._poll_until_terminal(batch_id)
+        state = self._extract_required_str(
+            terminal_result,
+            ("state",),
+            task_id=batch_id,
+        ).lower()
+        if state == "failed":
+            raise ProviderRejectedError(
+                task_id=batch_id,
+                message=self._extract_optional_str(terminal_result, ("err_msg",))
+                or f"MinerU batch {batch_id} failed",
+                retryable=False,
+            )
+
+        full_zip_url = self._extract_required_str(
+            terminal_result,
+            ("full_zip_url",),
+            task_id=batch_id,
+        )
+        archive_bytes = await self._download_result_archive(full_zip_url, batch_id)
+        markdown, figures, metadata = self._extract_archive_payload(archive_bytes, request)
+        warnings = self._validate_markdown(markdown, metadata)
+
+        return ParseResult(
+            markdown=markdown,
+            metadata=metadata,
+            figures=figures,
+            provider_task_id=batch_id,
+            warnings=warnings,
+        )
+
+    async def _submit_local_file(self, request: ParseRequest) -> str:
+        envelope = await self._request_enveloped_json(
+            "POST",
+            self._config.upload_batch_path,
+            json=self._build_upload_request_body(request),
+        )
+        batch_id = self._extract_required_str(envelope, ("batch_id",))
+        file_urls = self._extract_required_list(envelope, ("file_urls",), task_id=batch_id)
+        if len(file_urls) != 1:
+            raise InvalidProviderResponseError(
+                f"Expected exactly one upload URL for batch {batch_id}",
+                task_id=batch_id,
+            )
+
+        upload_url = str(file_urls[0])
+        await self._upload_file(upload_url, request.pdf_path, batch_id)
+        return batch_id
+
+    async def _submit_remote_url(self, request: ParseRequest) -> str:
+        envelope = await self._request_enveloped_json(
+            "POST",
+            self._config.remote_batch_path,
+            json=self._build_remote_request_body(request),
+        )
+        return self._extract_required_str(envelope, ("batch_id",))
+
+    async def _poll_until_terminal(self, batch_id: str) -> dict[str, object]:
         deadline = asyncio.get_running_loop().time() + self._config.timeout_seconds
         while True:
-            payload = await self._request_json(
+            envelope = await self._request_enveloped_json(
                 "GET",
-                self._config.status_path_template.format(task_id=task_id),
-                task_id=task_id,
+                self._config.result_path_template.format(batch_id=batch_id),
+                task_id=batch_id,
             )
-            status = self._extract_required_str(
-                payload,
-                ("status", "data.status", "state", "data.state"),
-                task_id=task_id,
+            extract_result = self._extract_required_mapping(
+                envelope,
+                ("extract_result",),
+                task_id=batch_id,
+            )
+            state = self._extract_required_str(
+                extract_result,
+                ("state",),
+                task_id=batch_id,
             ).lower()
-            if status in {"completed", "succeeded", "success", "failed", "error", "rejected"}:
-                return payload
+            if state in {"done", "failed"}:
+                return extract_result
             if asyncio.get_running_loop().time() >= deadline:
-                raise httpx.ReadTimeout(f"MinerU polling timed out for task {task_id}")
+                raise httpx.ReadTimeout(f"MinerU polling timed out for batch {batch_id}")
             await asyncio.sleep(self._config.poll_interval_seconds)
 
-    async def _fetch_result(self, task_id: str) -> dict[str, Any]:
-        return await self._request_json(
-            "GET",
-            self._config.result_path_template.format(task_id=task_id),
-            task_id=task_id,
+    async def _download_result_archive(self, archive_url: str, batch_id: str) -> bytes:
+        attempts = self._config.max_retries + 1
+        last_rate_limit_error: RateLimitExhaustedError | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                response = await self._get_client().get(archive_url)
+            except httpx.TimeoutException:
+                if attempt == attempts:
+                    raise
+                continue
+            except httpx.HTTPError:
+                if attempt == attempts:
+                    raise
+                continue
+
+            if response.status_code == 429:
+                last_rate_limit_error = RateLimitExhaustedError(
+                    f"MinerU result archive rate limit exhausted after {attempt} attempts",
+                    task_id=batch_id,
+                )
+                if attempt == attempts:
+                    break
+                continue
+
+            if response.status_code >= 500:
+                if attempt == attempts:
+                    response.raise_for_status()
+                continue
+
+            response.raise_for_status()
+            return response.content
+
+        if last_rate_limit_error is not None:
+            raise last_rate_limit_error
+
+        raise InvalidProviderResponseError(
+            "MinerU result archive exhausted retries without a valid response",
+            task_id=batch_id,
         )
+
+    def _extract_archive_payload(
+        self,
+        archive_bytes: bytes,
+        request: ParseRequest,
+    ) -> tuple[str, list[ParseFigure], ParseMetadata]:
+        try:
+            with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
+                markdown = archive.read(self._find_archive_member(archive, "full.md")).decode("utf-8")
+                content_list_name = self._find_optional_archive_member(
+                    archive,
+                    ("content_list.json", "_content_list.json"),
+                )
+                content_list_payload = (
+                    json.loads(archive.read(content_list_name).decode("utf-8"))
+                    if content_list_name is not None
+                    else None
+                )
+        except (OSError, zipfile.BadZipFile, KeyError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise InvalidProviderResponseError(
+                f"Failed to unpack MinerU result archive: {exc}"
+            ) from exc
+
+        metadata = self._build_metadata(markdown, request, content_list_payload)
+        figures = self._parse_figures_from_content_list(content_list_payload)
+        return markdown, figures, metadata
+
+    def _build_metadata(
+        self,
+        markdown: str,
+        request: ParseRequest,
+        content_list_payload: object,
+    ) -> ParseMetadata:
+        title = self._extract_title(markdown, content_list_payload)
+        abstract = self._extract_abstract(markdown)
+        return ParseMetadata(
+            title=title,
+            authors=[],
+            abstract=abstract,
+            source_url=request.source_url,
+            file_name=request.pdf_path.name,
+        )
+
+    def _extract_title(self, markdown: str, content_list_payload: object) -> str | None:
+        heading_match = _HEADING_PATTERN.search(markdown)
+        if heading_match is not None:
+            return heading_match.group("title").strip()
+
+        if isinstance(content_list_payload, list):
+            for item in content_list_payload:
+                if not isinstance(item, dict):
+                    continue
+                item_mapping = self._mapping_from_object(item)
+                item_type = self._mapping_optional(item_mapping, "type")
+                text_level = self._mapping_optional(item_mapping, "text_level")
+                if item_type == "text" and text_level == 1:
+                    text = self._mapping_optional(item_mapping, "text")
+                    if isinstance(text, str) and text.strip():
+                        return text.strip()
+        return None
+
+    def _extract_abstract(self, markdown: str) -> str | None:
+        match = _ABSTRACT_BLOCK_PATTERN.search(markdown)
+        if match is None:
+            return None
+        abstract = match.group("abstract").strip()
+        if abstract.endswith("\n#"):
+            abstract = abstract[:-2].rstrip()
+        return abstract or None
+
+    def _parse_figures_from_content_list(self, payload: object) -> list[ParseFigure]:
+        if not isinstance(payload, list):
+            return []
+
+        figures: list[ParseFigure] = []
+        for item in payload:
+            if not isinstance(item, dict):
+                continue
+            item_mapping = self._mapping_from_object(item)
+            item_type = self._mapping_optional(item_mapping, "type")
+            if item_type not in {"image", "table"}:
+                continue
+
+            caption_field = "image_caption" if item_type == "image" else "table_caption"
+            caption = self._join_caption(self._mapping_optional(item_mapping, caption_field))
+            uri = self._mapping_optional(item_mapping, "img_path")
+            figure_id = str(item_type)
+            page_idx = self._mapping_optional(item_mapping, "page_idx")
+            if isinstance(page_idx, int):
+                figure_id = f"{item_type}-p{page_idx + 1}"
+
+            figures.append(
+                ParseFigure(
+                    figure_id=figure_id,
+                    caption=caption,
+                    uri=str(uri) if isinstance(uri, str) else None,
+                )
+            )
+        return figures
+
+    def _join_caption(self, value: object) -> str | None:
+        if isinstance(value, list):
+            parts = [str(item).strip() for item in value if str(item).strip()]
+            return " ".join(parts) if parts else None
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return None
+
+    def _validate_markdown(self, markdown: str, metadata: ParseMetadata) -> list[str]:
+        normalized = markdown.strip()
+        if not normalized:
+            raise InvalidProviderResponseError("MinerU returned empty markdown")
+        if len(normalized) < 40 and "##" not in normalized:
+            raise InvalidProviderResponseError("MinerU markdown is too short to be useful")
+
+        warnings: list[str] = []
+        if metadata.title is None and _TITLE_PATTERN.search(markdown) is None:
+            warnings.append("missing_title")
+        if metadata.abstract is None and _ABSTRACT_PATTERN.search(markdown) is None:
+            warnings.append("missing_abstract")
+        if len(_SECTION_PATTERN.findall(markdown)) < 3:
+            warnings.append("insufficient_sections")
+        return warnings
+
+    def _build_upload_request_body(self, request: ParseRequest) -> dict[str, object]:
+        return {
+            "enable_formula": self._config.enable_formula,
+            "language": self._config.language,
+            "enable_table": self._config.enable_table,
+            "model_version": self._config.model_version,
+            "files": [
+                {
+                    "name": request.pdf_path.name,
+                    "is_ocr": self._config.is_ocr,
+                    "data_id": request.pdf_path.stem,
+                }
+            ],
+        }
+
+    def _build_remote_request_body(self, request: ParseRequest) -> dict[str, object]:
+        assert request.source_url is not None
+        return {
+            "enable_formula": self._config.enable_formula,
+            "language": self._config.language,
+            "enable_table": self._config.enable_table,
+            "model_version": self._config.model_version,
+            "files": [
+                {
+                    "url": request.source_url,
+                    "is_ocr": self._config.is_ocr,
+                    "data_id": request.pdf_path.stem,
+                }
+            ],
+        }
+
+    async def _upload_file(self, upload_url: str, pdf_path: Path, batch_id: str) -> None:
+        attempts = self._config.max_retries + 1
+        body = pdf_path.read_bytes()
+        last_rate_limit_error: RateLimitExhaustedError | None = None
+
+        for attempt in range(1, attempts + 1):
+            try:
+                response = await self._get_client().put(upload_url, content=body, headers={})
+            except httpx.TimeoutException:
+                if attempt == attempts:
+                    raise
+                continue
+            except httpx.HTTPError:
+                if attempt == attempts:
+                    raise
+                continue
+
+            if response.status_code == 429:
+                last_rate_limit_error = RateLimitExhaustedError(
+                    f"MinerU upload rate limit exhausted after {attempt} attempts",
+                    task_id=batch_id,
+                )
+                if attempt == attempts:
+                    break
+                continue
+
+            if response.status_code >= 500:
+                if attempt == attempts:
+                    response.raise_for_status()
+                continue
+
+            response.raise_for_status()
+            return
+
+        if last_rate_limit_error is not None:
+            raise last_rate_limit_error
+
+        raise InvalidProviderResponseError(
+            "MinerU upload exhausted retries without a valid response",
+            task_id=batch_id,
+        )
+
+    async def _request_enveloped_json(
+        self,
+        method: str,
+        path: str,
+        *,
+        task_id: str | None = None,
+        json: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        payload = await self._request_json(method, path, task_id=task_id, json=json)
+        code = payload.get("code")
+        if code != 0:
+            msg = payload.get("msg")
+            raise ProviderRejectedError(
+                task_id=task_id or "unknown",
+                message=f"MinerU API returned non-zero code {code}: {msg}",
+                retryable=False,
+            )
+
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            raise InvalidProviderResponseError(
+                "MinerU response data must be a JSON object",
+                task_id=task_id,
+            )
+        return {str(key): value for key, value in data.items()}
 
     async def _request_json(
         self,
@@ -224,8 +518,7 @@ class MinerUClient(PaperParser):
         path: str,
         *,
         task_id: str | None = None,
-        data: dict[str, str] | None = None,
-        files: dict[str, tuple[str, bytes, str]] | None = None,
+        json: dict[str, object] | None = None,
     ) -> dict[str, Any]:
         attempts = self._config.max_retries + 1
         last_rate_limit_error: RateLimitExhaustedError | None = None
@@ -236,8 +529,7 @@ class MinerUClient(PaperParser):
                     method,
                     path,
                     headers=self._headers(),
-                    data=data,
-                    files=files,
+                    json=json,
                 )
             except httpx.TimeoutException:
                 if attempt == attempts:
@@ -279,78 +571,6 @@ class MinerUClient(PaperParser):
             task_id=task_id,
         )
 
-    def _normalize_result(
-        self,
-        payload: dict[str, Any],
-        request: ParseRequest,
-        task_id: str,
-    ) -> ParseResult:
-        markdown = self._extract_required_str(
-            payload,
-            ("markdown", "data.markdown", "content.markdown", "result.markdown"),
-            task_id=task_id,
-        )
-        metadata_payload = self._extract_optional_mapping(
-            payload,
-            ("metadata", "data.metadata", "content.metadata", "result.metadata"),
-        )
-        figures_payload = self._extract_optional_list(
-            payload,
-            ("figures", "data.figures", "content.figures", "result.figures"),
-        )
-
-        metadata = ParseMetadata(
-            title=self._extract_optional_str_from_mapping(metadata_payload, ("title",)),
-            authors=self._extract_str_list_from_mapping(metadata_payload, ("authors",)),
-            abstract=self._extract_optional_str_from_mapping(metadata_payload, ("abstract",)),
-            source_url=request.source_url
-            or self._extract_optional_str_from_mapping(metadata_payload, ("source_url",)),
-            file_name=request.pdf_path.name,
-        )
-        figures = self._parse_figures(figures_payload)
-        warnings = self._validate_markdown(markdown, metadata)
-
-        return ParseResult(
-            markdown=markdown,
-            metadata=metadata,
-            figures=figures,
-            provider_task_id=task_id,
-            warnings=warnings,
-        )
-
-    def _validate_markdown(self, markdown: str, metadata: ParseMetadata) -> list[str]:
-        normalized = markdown.strip()
-        if not normalized:
-            raise InvalidProviderResponseError("MinerU returned empty markdown")
-        if len(normalized) < 40 and "##" not in normalized:
-            raise InvalidProviderResponseError("MinerU markdown is too short to be useful")
-
-        warnings: list[str] = []
-        if metadata.title is None and _TITLE_PATTERN.search(markdown) is None:
-            warnings.append("missing_title")
-        if metadata.abstract is None and _ABSTRACT_PATTERN.search(markdown) is None:
-            warnings.append("missing_abstract")
-        if len(_SECTION_PATTERN.findall(markdown)) < 3:
-            warnings.append("insufficient_sections")
-        return warnings
-
-    def _parse_figures(self, payload: list[Any] | None) -> list[ParseFigure]:
-        if payload is None:
-            return []
-
-        figures: list[ParseFigure] = []
-        for item in payload:
-            if not isinstance(item, dict):
-                continue
-            figures.append(
-                ParseFigure(
-                    figure_id=self._optional_str(item.get("figure_id") or item.get("id")),
-                    caption=self._optional_str(item.get("caption")),
-                    uri=self._optional_str(item.get("uri") or item.get("url")),
-                )
-            )
-        return figures
-
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._config.api_key}"}
 
@@ -363,9 +583,58 @@ class MinerUClient(PaperParser):
         )
         return self._http_client
 
+    def _find_archive_member(self, archive: zipfile.ZipFile, suffix: str) -> str:
+        member = self._find_optional_archive_member(archive, (suffix,))
+        if member is None:
+            raise KeyError(suffix)
+        return member
+
+    def _find_optional_archive_member(
+        self,
+        archive: zipfile.ZipFile,
+        suffixes: tuple[str, ...],
+    ) -> str | None:
+        for name in archive.namelist():
+            lowered = name.lower()
+            if any(lowered.endswith(suffix.lower()) for suffix in suffixes):
+                return name
+        return None
+
+    def _extract_required_mapping(
+        self,
+        payload: dict[str, object],
+        candidates: tuple[str, ...],
+        *,
+        task_id: str | None = None,
+    ) -> dict[str, object]:
+        value = self._extract_optional_value(payload, candidates)
+        if not isinstance(value, dict):
+            joined = ", ".join(candidates)
+            raise InvalidProviderResponseError(
+                f"MinerU response is missing required object field: {joined}",
+                task_id=task_id,
+            )
+        return {str(key): item for key, item in value.items()}
+
+    def _extract_required_list(
+        self,
+        payload: dict[str, object],
+        candidates: tuple[str, ...],
+        *,
+        task_id: str | None = None,
+    ) -> list[object]:
+        value = self._extract_optional_value(payload, candidates)
+        if not isinstance(value, list):
+            joined = ", ".join(candidates)
+            raise InvalidProviderResponseError(
+                f"MinerU response is missing required list field: {joined}",
+                task_id=task_id,
+            )
+        return [item for item in value]
+
     def _extract_required_str(
         self,
-        payload: dict[str, Any],
+        payload: dict[str, object],
         candidates: tuple[str, ...],
         *,
         task_id: str | None = None,
@@ -381,79 +650,47 @@ class MinerUClient(PaperParser):
 
     def _extract_optional_str(
         self,
-        payload: dict[str, Any],
+        payload: dict[str, object],
         candidates: tuple[str, ...],
     ) -> str | None:
         value = self._extract_optional_value(payload, candidates)
-        return self._optional_str(value)
-
-    def _extract_optional_mapping(
-        self,
-        payload: dict[str, Any],
-        candidates: tuple[str, ...],
-    ) -> dict[str, Any] | None:
-        value = self._extract_optional_value(payload, candidates)
-        if isinstance(value, dict):
-            return value
-        return None
-
-    def _extract_optional_list(
-        self,
-        payload: dict[str, Any],
-        candidates: tuple[str, ...],
-    ) -> list[Any] | None:
-        value = self._extract_optional_value(payload, candidates)
-        if isinstance(value, list):
-            return value
-        return None
+        if value is None:
+            return None
+        return str(value)
 
     def _extract_optional_value(
         self,
-        payload: dict[str, Any] | None,
+        payload: dict[str, object] | None,
         candidates: tuple[str, ...],
-    ) -> Any | None:
+    ) -> object | None:
         if payload is None:
             return None
 
         for candidate in candidates:
-            current: Any = payload
+            current: object = payload
             found = True
             for segment in candidate.split("."):
-                if isinstance(current, dict) and segment in current:
-                    current = current[segment]
-                else:
+                if not isinstance(current, dict):
                     found = False
                     break
+                current_mapping = self._mapping_from_object(current)
+                if segment not in current_mapping:
+                    found = False
+                    break
+                current = current_mapping[segment]
             if found:
                 return current
         return None
 
-    def _extract_optional_str_from_mapping(
-        self,
-        payload: dict[str, Any] | None,
-        candidates: tuple[str, ...],
-    ) -> str | None:
-        if payload is None:
-            return None
-        value = self._extract_optional_value(payload, candidates)
-        return self._optional_str(value)
+    def _mapping_from_object(self, value: object) -> dict[str, object]:
+        if not isinstance(value, dict):
+            raise InvalidProviderResponseError("Expected a JSON object in MinerU payload")
+        return {str(key): item for key, item in value.items()}
 
-    def _extract_str_list_from_mapping(
-        self,
-        payload: dict[str, Any] | None,
-        candidates: tuple[str, ...],
-    ) -> list[str]:
-        if payload is None:
-            return []
-        value = self._extract_optional_value(payload, candidates)
-        if not isinstance(value, list):
-            return []
-        return [str(item) for item in value]
-
-    def _optional_str(self, value: object) -> str | None:
-        if value is None:
-            return None
-        return str(value)
+    def _mapping_optional(self, mapping: dict[str, object], key: str) -> object | None:
+        if key in mapping:
+            return mapping[key]
+        return None
 
 
 class InvalidProviderResponseError(RuntimeError):
@@ -473,3 +710,15 @@ class ProviderRejectedError(RuntimeError):
         super().__init__(message)
         self.task_id = task_id
         self.retryable = retryable
+
+
+def _parse_bool_env(name: str, *, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise MinerUConfigurationError(f"Invalid boolean value for {name}: {value}")
