@@ -16,6 +16,9 @@ last_local_commit: workspace aggregate
 > [!abstract]
 > 分阶段实现计划，每阶段有明确交付物和可测试标准。总体原则：infrastructure first → Mode 2（更可控）→ Mode 1（更开放）。基础设施阶段（P0-P6）可大量并行；Mode 2（P8）整合全部基础设施；Mode 1（P9）在 Mode 2 之上叠加探索能力。
 
+> [!note]
+> WebUI-v1 作为独立工作台轨道单独规划，不并入 P0-P9 主线；详见 [[framework/webui-v1-rfc]] 与 [[framework/webui-v1-roadmap]]。
+
 ## Overview
 
 > [!tip]
@@ -474,3 +477,5 @@ flowchart TD
 - [[framework/container-workspace-protocol]]
 - [[framework/reference-mapping]]
 - [[framework/v1-rfc]]
+- [[framework/webui-v1-rfc]]
+- [[framework/webui-v1-roadmap]]

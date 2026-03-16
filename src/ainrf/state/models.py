@@ -45,7 +45,7 @@ class AtomicTaskRecord(BaseModel):
     step: str
     status: str | None = None
     at: datetime | None = None
-    details: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+    details: dict[str, JsonValue] = Field(default_factory=dict)
 
 
 class TaskCheckpoint(BaseModel):

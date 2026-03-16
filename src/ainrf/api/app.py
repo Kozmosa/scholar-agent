@@ -8,9 +8,10 @@ from fastapi import FastAPI
 from ainrf.api.config import ApiConfig
 from ainrf.api.middleware import build_api_key_middleware
 from ainrf.events import JsonlTaskEventStore, TaskEventService
-from ainrf.gates import HumanGateManager, WebhookDispatcher, WebhookSecretRegistry
+from ainrf.gates import HumanGateManager, WebhookDispatcher
 from ainrf.api.routes.health import router as health_router
 from ainrf.api.routes.tasks import router as tasks_router
+from ainrf.runtime import WebhookSecretStore
 from ainrf.state import JsonStateStore
 
 
@@ -41,12 +42,12 @@ def create_app(config: ApiConfig | None = None) -> FastAPI:
     app.state.api_config = api_config
     app.state.state_store = state_store
     app.state.event_service = TaskEventService(event_store)
-    app.state.webhook_secret_registry = WebhookSecretRegistry()
+    app.state.webhook_secret_store = WebhookSecretStore(api_config.state_root)
     app.state.gate_manager = HumanGateManager(
         store=state_store,
         event_service=app.state.event_service,
         webhook_dispatcher=WebhookDispatcher(timeout_seconds=api_config.webhook_timeout_seconds),
-        secret_registry=app.state.webhook_secret_registry,
+        secret_registry=app.state.webhook_secret_store,
         gate_timeout_seconds=api_config.gate_timeout_seconds,
     )
     app.middleware("http")(build_api_key_middleware(api_config))

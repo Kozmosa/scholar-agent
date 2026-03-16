@@ -33,6 +33,9 @@ class PlanApprovalGatePayload(BaseModel):
     summary: str
     milestones: list[str] = Field(default_factory=list)
     estimated_steps: int | None = None
+    strategy: str | None = None
+    target_paper_id: str | None = None
+    success_criteria: list[str] = Field(default_factory=list)
 
 
 GatePayload = IntakeGatePayload | PlanApprovalGatePayload

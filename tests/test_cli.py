@@ -21,6 +21,7 @@ def test_help_shows_commands() -> None:
     assert result.exit_code == 0
     assert "serve" in result.stdout
     assert "run" in result.stdout
+    assert "webui" in result.stdout
 
 
 def test_version_outputs_package_version() -> None:
@@ -100,10 +101,41 @@ def test_serve_daemon_runs_background_process(
 
 
 def test_run_stub_runs() -> None:
-    result = runner.invoke(app, ["run"])
+    class FakeEngine:
+        async def run_once(self) -> bool:
+            return False
+
+    def fake_build_task_engine(_state_root: Path) -> FakeEngine:
+        return FakeEngine()
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("ainrf.cli.build_task_engine", fake_build_task_engine)
+    result = runner.invoke(app, ["run", "--once"])
+    monkeypatch.undo()
 
     assert result.exit_code == 0
-    assert "AINRF run stub" in result.stdout
+    assert "AINRF worker found no runnable tasks." in result.stdout
+
+
+def test_run_once_processes_task(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeEngine:
+        async def run_once(self) -> bool:
+            captured["ran"] = True
+            return True
+
+    def fake_build_task_engine(state_root: Path) -> FakeEngine:
+        captured["state_root"] = state_root
+        return FakeEngine()
+
+    monkeypatch.setattr("ainrf.cli.build_task_engine", fake_build_task_engine)
+    result = runner.invoke(app, ["run", "--once", "--state-root", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert captured["state_root"] == tmp_path
+    assert captured["ran"] is True
+    assert "AINRF worker processed one task." in result.stdout
 
 
 def test_python_module_entrypoint() -> None:
@@ -117,3 +149,49 @@ def test_python_module_entrypoint() -> None:
     assert result.returncode == 0
     assert "serve" in result.stdout
     assert "run" in result.stdout
+
+
+def test_webui_help_lists_expected_flags() -> None:
+    result = runner.invoke(app, ["webui", "--help"])
+
+    assert result.exit_code == 0
+    assert "--host" in result.stdout
+    assert "--port" in result.stdout
+    assert "--api-base-url" in result.stdout
+
+
+def test_webui_launches_with_expected_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_launch_webui(config: object) -> None:
+        captured["config"] = config
+
+    monkeypatch.setattr("ainrf.cli.launch_webui", fake_launch_webui)
+
+    result = runner.invoke(app, ["webui"])
+
+    assert result.exit_code == 0
+    config = captured["config"]
+    assert getattr(config, "host") == "127.0.0.1"
+    assert getattr(config, "port") == 7860
+    assert getattr(config, "api_base_url") == "http://127.0.0.1:8000"
+
+
+def test_webui_launches_with_custom_options(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_launch_webui(config: object) -> None:
+        captured["config"] = config
+
+    monkeypatch.setattr("ainrf.cli.launch_webui", fake_launch_webui)
+
+    result = runner.invoke(
+        app,
+        ["webui", "--host", "0.0.0.0", "--port", "9900", "--api-base-url", "http://ainrf.local:8000"],
+    )
+
+    assert result.exit_code == 0
+    config = captured["config"]
+    assert getattr(config, "host") == "0.0.0.0"
+    assert getattr(config, "port") == 9900
+    assert getattr(config, "api_base_url") == "http://ainrf.local:8000"

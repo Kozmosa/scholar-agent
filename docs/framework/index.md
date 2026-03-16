@@ -23,6 +23,7 @@ last_local_commit: workspace aggregate
 - 如果要落近期版本，接着读 [[framework/v1-dual-mode-research-engine]]。
 - 如果要看实现规格（API、组件、状态机），读 [[framework/v1-rfc]]。
 - 如果要看分阶段实现计划和里程碑，读 [[framework/v1-roadmap]]。
+- 如果要看基于 Gradio 的项目工作台设计，读 [[framework/webui-v1-rfc]] 和 [[framework/webui-v1-roadmap]]。
 - 如果要追溯设计来源，最后读 [[framework/reference-mapping]] 和各项目研究报告。
 
 ## 内容索引
@@ -33,6 +34,8 @@ last_local_commit: workspace aggregate
 - [[framework/v1-dual-mode-research-engine]]
 - [[framework/v1-rfc]]
 - [[framework/v1-roadmap]]
+- [[framework/webui-v1-rfc]]
+- [[framework/webui-v1-roadmap]]
 - [[framework/reference-mapping]]
 
 ## 能力入口
@@ -43,6 +46,7 @@ last_local_commit: workspace aggregate
 - 双模式 V1 的工作流、人工关卡与终止合同：[[framework/v1-dual-mode-research-engine]]
 - V1 实现规格（API、组件、状态机）：[[framework/v1-rfc]]
 - V1 分阶段实现路线图：[[framework/v1-roadmap]]
+- WebUI-v1 的项目工作台规格与路线图：[[framework/webui-v1-rfc]]、[[framework/webui-v1-roadmap]]
 - 参考项目如何被吸收到框架中：[[framework/reference-mapping]]
 
 ## 使用说明

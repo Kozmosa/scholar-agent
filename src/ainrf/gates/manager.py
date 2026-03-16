@@ -14,6 +14,7 @@ from ainrf.artifacts import ArtifactType, GateType, HumanGate, HumanGateStatus, 
 from ainrf.events import TaskEventCategory, TaskEventService
 from ainrf.gates.errors import GateConflictError, GateNotFoundError, GateResolutionError
 from ainrf.gates.models import GateWebhookEvent, GateWebhookPayload
+from ainrf.runtime import WebhookSecretStore
 from ainrf.state import ArtifactQuery, GateRecord, JsonStateStore, TaskRecord, TaskStage
 
 logger = logging.getLogger(__name__)
@@ -21,24 +22,6 @@ logger = logging.getLogger(__name__)
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
-
-
-@dataclass(slots=True)
-class WebhookSecretRegistry:
-    _secrets: dict[str, str]
-
-    def __init__(self) -> None:
-        self._secrets = {}
-
-    def set(self, task_id: str, secret: str | None) -> None:
-        if secret:
-            self._secrets[task_id] = secret
-
-    def get(self, task_id: str) -> str | None:
-        return self._secrets.get(task_id)
-
-    def drop(self, task_id: str) -> None:
-        self._secrets.pop(task_id, None)
 
 
 @dataclass(slots=True)
@@ -83,7 +66,7 @@ class HumanGateManager:
         store: JsonStateStore,
         event_service: TaskEventService,
         webhook_dispatcher: WebhookDispatcher,
-        secret_registry: WebhookSecretRegistry,
+        secret_registry: WebhookSecretStore,
         gate_timeout_seconds: int,
     ) -> None:
         self._store = store
@@ -280,6 +263,9 @@ class HumanGateManager:
 
     def register_secret(self, task_id: str, secret: str | None) -> None:
         self._secret_registry.set(task_id, secret)
+
+    def clear_secret(self, task_id: str) -> None:
+        self._secret_registry.drop(task_id)
 
     def _webhook_payload(
         self,

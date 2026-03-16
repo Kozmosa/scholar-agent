@@ -508,3 +508,6 @@ class SSHExecutor:
         if isinstance(exc, (OSError, ConnectionError)):
             return True
         return isinstance(exc, _RETRYABLE_ASYNCSSH_ERROR)
+    @property
+    def container(self) -> ContainerConfig:
+        return self._container
