@@ -64,6 +64,8 @@ def default_state_root() -> Path:
 class StateStore(Protocol):
     def save_artifact(self, artifact: ArtifactRecord) -> Path: ...
 
+    def save_task(self, task: TaskRecord) -> Path: ...
+
     def load_artifact(
         self,
         artifact_type: ArtifactType,
@@ -79,6 +81,8 @@ class StateStore(Protocol):
     def checkpoint_task(self, task: TaskRecord) -> Path: ...
 
     def load_task(self, task_id: str) -> TaskRecord | None: ...
+
+    def list_tasks(self, status: TaskStage | None = None) -> list[TaskRecord]: ...
 
     def resume_task(self, task_id: str) -> TaskRecord | None: ...
 
@@ -154,6 +158,9 @@ class JsonStateStore:
         ]
 
     def checkpoint_task(self, task: TaskRecord) -> Path:
+        return self.save_task(task)
+
+    def save_task(self, task: TaskRecord) -> Path:
         task_path = self._task_path(task.task_id)
         self._write_json(task_path, task.model_dump(mode="json"))
         return task_path
@@ -168,6 +175,19 @@ class JsonStateStore:
         except Exception as exc:  # pragma: no cover - pydantic bundles multiple error types
             raise SerializationError(f"Invalid task payload in {task_path}: {exc}") from exc
 
+    def list_tasks(self, status: TaskStage | None = None) -> list[TaskRecord]:
+        if not self.tasks_dir.exists():
+            return []
+        tasks: list[TaskRecord] = []
+        for task_path in sorted(self.tasks_dir.glob("*.json")):
+            task = self.load_task(task_path.stem)
+            if task is None:
+                continue
+            if status is not None and task.status is not status:
+                continue
+            tasks.append(task)
+        return tasks
+
     def resume_task(self, task_id: str) -> TaskRecord | None:
         task = self.load_task(task_id)
         if task is None:
@@ -177,14 +197,7 @@ class JsonStateStore:
         return task
 
     def list_resumable_tasks(self) -> list[TaskRecord]:
-        if not self.tasks_dir.exists():
-            return []
-        tasks: list[TaskRecord] = []
-        for task_path in sorted(self.tasks_dir.glob("*.json")):
-            task = self.load_task(task_path.stem)
-            if task is not None and task.status not in TERMINAL_TASK_STAGES:
-                tasks.append(task)
-        return tasks
+        return [task for task in self.list_tasks() if task.status not in TERMINAL_TASK_STAGES]
 
     def _artifact_path(self, artifact_type: ArtifactType, artifact_id: str) -> Path:
         directory = self.artifacts_dir / ARTIFACT_DIRECTORY_NAMES[artifact_type]

@@ -169,6 +169,28 @@ def test_checkpoint_and_resume_task_round_trip(tmp_path: Path) -> None:
     assert resumed.model_dump(mode="json") == task.model_dump(mode="json")
 
 
+def test_list_tasks_filters_by_status(tmp_path: Path) -> None:
+    store = JsonStateStore(tmp_path)
+    submitted_task = TaskRecord(
+        task_id="t-001",
+        mode=TaskMode.DEEP_REPRODUCTION,
+        status=TaskStage.SUBMITTED,
+        checkpoint=TaskCheckpoint(current_stage=TaskStage.SUBMITTED),
+    )
+    cancelled_task = TaskRecord(
+        task_id="t-002",
+        mode=TaskMode.DEEP_REPRODUCTION,
+        status=TaskStage.CANCELLED,
+        checkpoint=TaskCheckpoint(current_stage=TaskStage.CANCELLED),
+    )
+    store.save_task(submitted_task)
+    store.save_task(cancelled_task)
+
+    tasks = store.list_tasks(TaskStage.SUBMITTED)
+
+    assert [task.task_id for task in tasks] == ["t-001"]
+
+
 def test_resume_task_rejects_terminal_status(tmp_path: Path) -> None:
     store = JsonStateStore(tmp_path)
     task = TaskRecord(
