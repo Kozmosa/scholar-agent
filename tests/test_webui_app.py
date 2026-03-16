@@ -1,27 +1,30 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 import gradio as gr
 
-from ainrf.api.schemas import ApiStatus
+from ainrf.api.schemas import (
+    ApiStatus,
+    HealthResponse,
+    TaskCreateResponse,
+    TaskListResponse,
+    TaskSummaryResponse,
+)
 from ainrf.state import TaskMode, TaskStage
 from ainrf.webui.app import (
+    build_task_create_request,
     connect_session,
     create_webui,
-    render_connection_banner,
-    render_project_detail_placeholder,
+    normalize_project_slug,
     render_project_list_summary,
-    render_run_detail_placeholder,
-    summarize_task_stages,
-    task_counts_rows,
+    save_project_from_form,
+    submit_project_run,
 )
-from ainrf.webui.client import (
-    ApiAuthenticationError,
-    ApiConnectionError,
-)
-from ainrf.webui.models import ConnectionSession, WebUiConfig
-from ainrf.api.schemas import HealthResponse, TaskListResponse, TaskSummaryResponse
+from ainrf.webui.client import ApiAuthenticationError
+from ainrf.webui.models import ConnectionSession, ProjectRunRecord, WebUiConfig
+from ainrf.webui.store import JsonProjectStore
 
 
 class FakeClient:
@@ -30,10 +33,12 @@ class FakeClient:
         *,
         health: HealthResponse | None = None,
         task_list: TaskListResponse | None = None,
+        create_response: TaskCreateResponse | None = None,
         error: Exception | None = None,
     ) -> None:
         self._health = health
         self._task_list = task_list
+        self._create_response = create_response
         self._error = error
 
     def get_health(self) -> HealthResponse:
@@ -49,6 +54,13 @@ class FakeClient:
         assert self._task_list is not None
         return self._task_list
 
+    def create_task(self, payload: object) -> TaskCreateResponse:
+        _ = payload
+        if self._error is not None:
+            raise self._error
+        assert self._create_response is not None
+        return self._create_response
+
 
 def build_task_summary(task_id: str, mode: TaskMode, status: TaskStage) -> TaskSummaryResponse:
     now = datetime(2026, 3, 16, tzinfo=UTC)
@@ -63,29 +75,47 @@ def build_task_summary(task_id: str, mode: TaskMode, status: TaskStage) -> TaskS
     )
 
 
-def test_create_webui_returns_blocks() -> None:
-    demo = create_webui(WebUiConfig())
+def test_create_webui_returns_blocks(tmp_path: Path) -> None:
+    demo = create_webui(WebUiConfig(state_root=tmp_path))
 
     assert isinstance(demo, gr.Blocks)
 
 
-def test_connect_session_handles_connection_error() -> None:
-    session = ConnectionSession()
-
-    rendered = connect_session(
-        "http://ainrf.local",
-        "secret",
+def test_connect_session_updates_local_run_bindings(tmp_path: Path) -> None:
+    store = JsonProjectStore(tmp_path)
+    session = ConnectionSession(selected_project_slug="vision-stack")
+    save_project_from_form(
         session,
-        client_factory=lambda base_url, api_key: FakeClient(error=ApiConnectionError("unreachable")),
+        store,
+        name="Vision Stack",
+        slug="vision-stack",
+        description="",
+        container_host="gpu-01",
+        container_port=22,
+        container_user="researcher",
+        container_ssh_key_path="",
+        container_project_dir="/workspace/projects/vision-stack",
+        budget_gpu_hours=12.0,
+        budget_api_cost_usd=6.0,
+        budget_wall_clock_hours=24.0,
+        webhook_url="",
+        yolo=False,
+        mode_one_domain_context="",
+        mode_one_max_depth=3,
+        mode_one_focus_directions="",
+        mode_one_ignore_directions="",
+        mode_two_scope="core-only",
+        mode_two_target_tables="",
+        mode_two_baseline_first=True,
     )
-
-    next_session = rendered[0]
-    assert next_session.reachable is False
-    assert "Connection not established" in rendered[1]
-
-
-def test_connect_session_handles_auth_failure_after_health_probe() -> None:
-    session = ConnectionSession()
+    store.save_project_run(
+        build_run_binding(
+            task_id="t-001",
+            project_slug="vision-stack",
+            mode=TaskMode.DEEP_REPRODUCTION,
+            status=TaskStage.SUBMITTED,
+        )
+    )
     health = HealthResponse(
         status=ApiStatus.OK,
         state_root=".ainrf",
@@ -93,78 +123,264 @@ def test_connect_session_handles_auth_failure_after_health_probe() -> None:
         container_health=None,
         detail=None,
     )
+    task_list = TaskListResponse(items=[build_task_summary("t-001", TaskMode.DEEP_REPRODUCTION, TaskStage.PLANNING)])
 
-    class AuthFailClient(FakeClient):
-        def list_tasks(self, status: TaskStage | None = None) -> TaskListResponse:
-            _ = status
-            raise ApiAuthenticationError("Unauthorized")
-
-    rendered = connect_session(
+    next_session = connect_session(
         "http://ainrf.local",
-        "wrong",
-        session,
-        client_factory=lambda base_url, api_key: AuthFailClient(health=health),
-    )
-
-    next_session = rendered[0]
-    assert next_session.reachable is True
-    assert next_session.authenticated is False
-    assert "authentication failed" in rendered[1]
-
-
-def test_connect_session_renders_degraded_connected_state() -> None:
-    health = HealthResponse(
-        status=ApiStatus.DEGRADED,
-        state_root=".ainrf",
-        container_configured=True,
-        container_health=None,
-        detail="Container connectivity degraded",
-    )
-    task_list = TaskListResponse(
-        items=[build_task_summary("t-001", TaskMode.DEEP_REPRODUCTION, TaskStage.PLANNING)]
-    )
-
-    rendered = connect_session(
-        "http://ainrf.local/",
         "secret",
-        ConnectionSession(),
+        session,
+        store=store,
         client_factory=lambda base_url, api_key: FakeClient(health=health, task_list=task_list),
     )
 
-    next_session = rendered[0]
-    assert next_session.reachable is True
     assert next_session.authenticated is True
-    assert next_session.health_status is ApiStatus.DEGRADED
-    assert next_session.api_base_url == "http://ainrf.local"
-    assert rendered[4] == [[stage.value, 1 if stage is TaskStage.PLANNING else 0] for stage in TaskStage]
+    binding = store.load_project_run("t-001")
+    assert binding is not None
+    assert binding.last_known_status is TaskStage.PLANNING
 
 
-def test_task_stage_summary_helpers_cover_all_stages() -> None:
-    summaries = summarize_task_stages(
-        [
-            build_task_summary("t-001", TaskMode.DEEP_REPRODUCTION, TaskStage.SUBMITTED),
-            build_task_summary("t-002", TaskMode.LITERATURE_EXPLORATION, TaskStage.SUBMITTED),
-        ]
+def test_save_project_from_form_persists_defaults(tmp_path: Path) -> None:
+    store = JsonProjectStore(tmp_path)
+    session = ConnectionSession()
+
+    next_session, feedback = save_project_from_form(
+        session,
+        store,
+        name="Vision Stack",
+        slug="",
+        description="Project for experiments",
+        container_host="gpu-01",
+        container_port=22,
+        container_user="researcher",
+        container_ssh_key_path="/tmp/id_rsa",
+        container_project_dir="/workspace/projects/vision-stack",
+        budget_gpu_hours=12.0,
+        budget_api_cost_usd=6.0,
+        budget_wall_clock_hours=24.0,
+        webhook_url="https://example.com/hook",
+        yolo=True,
+        mode_one_domain_context="multimodal",
+        mode_one_max_depth=4,
+        mode_one_focus_directions="clip, llama",
+        mode_one_ignore_directions="speech",
+        mode_two_scope="full-suite",
+        mode_two_target_tables="Table 1, Table 2",
+        mode_two_baseline_first=False,
     )
 
-    rows = task_counts_rows(ConnectionSession(task_summaries=summaries))
+    project = store.load_project("vision-stack")
+    assert next_session.selected_project_slug == "vision-stack"
+    assert "Saved Project" in feedback
+    assert project is not None
+    assert project.defaults.mode_1.focus_directions == ["clip", "llama"]
+    assert project.defaults.mode_2.scope.value == "full-suite"
 
-    assert rows[0] == [TaskStage.SUBMITTED.value, 2]
-    assert rows[-1] == [TaskStage.CANCELLED.value, 0]
+
+def test_build_task_create_request_uses_project_defaults_and_mode_specific_inputs(tmp_path: Path) -> None:
+    store = JsonProjectStore(tmp_path)
+    session = ConnectionSession()
+    save_project_from_form(
+        session,
+        store,
+        name="Vision Stack",
+        slug="vision-stack",
+        description="",
+        container_host="gpu-01",
+        container_port=22,
+        container_user="researcher",
+        container_ssh_key_path="",
+        container_project_dir="/workspace/projects/vision-stack",
+        budget_gpu_hours=12.0,
+        budget_api_cost_usd=6.0,
+        budget_wall_clock_hours=24.0,
+        webhook_url="https://example.com/hook",
+        yolo=False,
+        mode_one_domain_context="multimodal",
+        mode_one_max_depth=4,
+        mode_one_focus_directions="clip",
+        mode_one_ignore_directions="speech",
+        mode_two_scope="core-only",
+        mode_two_target_tables="Table 1",
+        mode_two_baseline_first=True,
+    )
+    project = store.load_project("vision-stack")
+    assert project is not None
+
+    request = build_task_create_request(
+        project=project,
+        mode=TaskMode.LITERATURE_EXPLORATION.value,
+        run_container_host="",
+        run_container_port=None,
+        run_container_user="",
+        run_container_ssh_key_path="",
+        run_container_project_dir="",
+        run_budget_gpu_hours=None,
+        run_budget_api_cost_usd=None,
+        run_budget_wall_clock_hours=None,
+        run_webhook_url="",
+        run_webhook_secret="runtime-secret",
+        run_yolo=False,
+        mode_one_seed_rows=[["Seed Paper", "https://example.com/paper.pdf", ""]],
+        run_mode_one_domain_context="",
+        run_mode_one_max_depth=None,
+        run_mode_one_focus_directions="adapter",
+        run_mode_one_ignore_directions="",
+        mode_two_title="",
+        mode_two_pdf_url="",
+        mode_two_pdf_path="",
+        run_mode_two_scope="core-only",
+        run_mode_two_target_tables="",
+        run_mode_two_baseline_first=True,
+    )
+
+    assert request.container.host == "gpu-01"
+    assert request.config.mode_1 is not None
+    assert request.config.mode_1.focus_directions == ["adapter"]
+    assert request.webhook_secret == "runtime-secret"
 
 
-def test_placeholder_renderers_switch_after_authentication() -> None:
-    disconnected = ConnectionSession()
-    connected = ConnectionSession(
+def test_submit_project_run_creates_binding_and_keeps_secret_out_of_store(tmp_path: Path) -> None:
+    store = JsonProjectStore(tmp_path)
+    session = ConnectionSession(
         api_base_url="http://ainrf.local",
+        api_key="secret",
         reachable=True,
         authenticated=True,
-        health_status=ApiStatus.OK,
-        total_tasks=3,
+    )
+    next_session, _ = save_project_from_form(
+        session,
+        store,
+        name="Vision Stack",
+        slug="vision-stack",
+        description="",
+        container_host="gpu-01",
+        container_port=22,
+        container_user="researcher",
+        container_ssh_key_path="",
+        container_project_dir="/workspace/projects/vision-stack",
+        budget_gpu_hours=12.0,
+        budget_api_cost_usd=6.0,
+        budget_wall_clock_hours=24.0,
+        webhook_url="https://example.com/hook",
+        yolo=False,
+        mode_one_domain_context="multimodal",
+        mode_one_max_depth=4,
+        mode_one_focus_directions="clip",
+        mode_one_ignore_directions="speech",
+        mode_two_scope="core-only",
+        mode_two_target_tables="Table 1",
+        mode_two_baseline_first=True,
+    )
+    health = HealthResponse(
+        status=ApiStatus.OK,
+        state_root=".ainrf",
+        container_configured=False,
+        container_health=None,
+        detail=None,
+    )
+    task_list = TaskListResponse(items=[build_task_summary("t-900", TaskMode.DEEP_REPRODUCTION, TaskStage.GATE_WAITING)])
+
+    updated_session, feedback = submit_project_run(
+        next_session,
+        store,
+        client_factory=lambda base_url, api_key: FakeClient(
+            health=health,
+            task_list=task_list,
+            create_response=TaskCreateResponse(task_id="t-900", status=TaskStage.GATE_WAITING),
+        ),
+        mode=TaskMode.DEEP_REPRODUCTION.value,
+        run_container_host="",
+        run_container_port=None,
+        run_container_user="",
+        run_container_ssh_key_path="",
+        run_container_project_dir="",
+        run_budget_gpu_hours=None,
+        run_budget_api_cost_usd=None,
+        run_budget_wall_clock_hours=None,
+        run_webhook_url="",
+        run_webhook_secret="runtime-secret",
+        run_yolo=False,
+        mode_one_seed_rows=[],
+        run_mode_one_domain_context="",
+        run_mode_one_max_depth=None,
+        run_mode_one_focus_directions="",
+        run_mode_one_ignore_directions="",
+        mode_two_title="Target Paper",
+        mode_two_pdf_url="https://example.com/target.pdf",
+        mode_two_pdf_path="",
+        run_mode_two_scope="core-only",
+        run_mode_two_target_tables="Table 1",
+        run_mode_two_baseline_first=True,
     )
 
-    assert "Project List" in render_project_list_summary(disconnected)
-    assert "Total tasks discovered" in render_project_list_summary(connected)
-    assert "W2 will populate" in render_project_detail_placeholder(connected)
-    assert "W3 will connect" in render_run_detail_placeholder(connected)
-    assert "Connected" in render_connection_banner(connected)
+    binding = store.load_project_run("t-900")
+    assert updated_session.selected_run_task_id == "t-900"
+    assert "Created Run" in feedback
+    assert binding is not None
+    assert binding.project_slug == "vision-stack"
+    assert "runtime-secret" not in (store.project_runs_dir / "t-900.json").read_text(encoding="utf-8")
+
+
+def test_render_project_list_summary_mentions_local_projects_when_disconnected(tmp_path: Path) -> None:
+    store = JsonProjectStore(tmp_path)
+    session = ConnectionSession()
+
+    summary = render_project_list_summary(session, store)
+
+    assert "Local projects" in summary
+
+
+def test_normalize_project_slug_uses_name_when_blank() -> None:
+    assert normalize_project_slug("", "Vision Stack") == "vision-stack"
+
+
+def test_submit_project_run_requires_authenticated_session(tmp_path: Path) -> None:
+    store = JsonProjectStore(tmp_path)
+    session = ConnectionSession(selected_project_slug="vision-stack")
+
+    _, feedback = submit_project_run(
+        session,
+        store,
+        client_factory=lambda base_url, api_key: FakeClient(error=ApiAuthenticationError("Unauthorized")),
+        mode=TaskMode.DEEP_REPRODUCTION.value,
+        run_container_host="",
+        run_container_port=None,
+        run_container_user="",
+        run_container_ssh_key_path="",
+        run_container_project_dir="",
+        run_budget_gpu_hours=None,
+        run_budget_api_cost_usd=None,
+        run_budget_wall_clock_hours=None,
+        run_webhook_url="",
+        run_webhook_secret="",
+        run_yolo=False,
+        mode_one_seed_rows=[],
+        run_mode_one_domain_context="",
+        run_mode_one_max_depth=None,
+        run_mode_one_focus_directions="",
+        run_mode_one_ignore_directions="",
+        mode_two_title="Target Paper",
+        mode_two_pdf_url="https://example.com/target.pdf",
+        mode_two_pdf_path="",
+        run_mode_two_scope="core-only",
+        run_mode_two_target_tables="",
+        run_mode_two_baseline_first=True,
+    )
+
+    assert "Connect to the API" in feedback
+
+
+def build_run_binding(
+    task_id: str,
+    project_slug: str,
+    mode: TaskMode,
+    status: TaskStage,
+) -> ProjectRunRecord:
+    return ProjectRunRecord(
+        task_id=task_id,
+        project_slug=project_slug,
+        mode=mode,
+        paper_titles=["Paper"],
+        last_known_status=status,
+        last_known_stage=status,
+    )

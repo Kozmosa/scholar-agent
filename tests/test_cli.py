@@ -158,6 +158,7 @@ def test_webui_help_lists_expected_flags() -> None:
     assert "--host" in result.stdout
     assert "--port" in result.stdout
     assert "--api-base-url" in result.stdout
+    assert "--state-root" in result.stdout
 
 
 def test_webui_launches_with_expected_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -175,6 +176,7 @@ def test_webui_launches_with_expected_defaults(monkeypatch: pytest.MonkeyPatch) 
     assert getattr(config, "host") == "127.0.0.1"
     assert getattr(config, "port") == 7860
     assert getattr(config, "api_base_url") == "http://127.0.0.1:8000"
+    assert getattr(config, "state_root") == Path(".ainrf")
 
 
 def test_webui_launches_with_custom_options(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -187,7 +189,17 @@ def test_webui_launches_with_custom_options(monkeypatch: pytest.MonkeyPatch) -> 
 
     result = runner.invoke(
         app,
-        ["webui", "--host", "0.0.0.0", "--port", "9900", "--api-base-url", "http://ainrf.local:8000"],
+        [
+            "webui",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "9900",
+            "--api-base-url",
+            "http://ainrf.local:8000",
+            "--state-root",
+            str(Path("/tmp/webui-state")),
+        ],
     )
 
     assert result.exit_code == 0
@@ -195,3 +207,4 @@ def test_webui_launches_with_custom_options(monkeypatch: pytest.MonkeyPatch) -> 
     assert getattr(config, "host") == "0.0.0.0"
     assert getattr(config, "port") == 9900
     assert getattr(config, "api_base_url") == "http://ainrf.local:8000"
+    assert getattr(config, "state_root") == Path("/tmp/webui-state")

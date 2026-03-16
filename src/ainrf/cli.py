@@ -110,8 +110,12 @@ def webui(
         str,
         typer.Option(help="Base URL for an already running AINRF API server."),
     ] = "http://127.0.0.1:8000",
+    state_root: Annotated[
+        Path,
+        typer.Option(help="Local state root for WebUI project records and run registry."),
+    ] = default_state_root(),
 ) -> None:
-    launch_webui(WebUiConfig(host=host, port=port, api_base_url=api_base_url))
+    launch_webui(WebUiConfig(host=host, port=port, api_base_url=api_base_url, state_root=state_root))
 
 
 async def async_once(engine: TaskEngine) -> bool:

@@ -5,7 +5,13 @@ from typing import Any
 
 import httpx
 
-from ainrf.api.schemas import HealthResponse, TaskDetailResponse, TaskListResponse
+from ainrf.api.schemas import (
+    HealthResponse,
+    TaskCreateRequest,
+    TaskCreateResponse,
+    TaskDetailResponse,
+    TaskListResponse,
+)
 from ainrf.state import TaskStage
 
 
@@ -47,6 +53,15 @@ class AinrfApiClient:
         response = self._request("GET", f"/tasks/{task_id}", expected_statuses={200})
         return self._validate_model(response, TaskDetailResponse)
 
+    def create_task(self, payload: TaskCreateRequest) -> TaskCreateResponse:
+        response = self._request(
+            "POST",
+            "/tasks",
+            expected_statuses={201},
+            json=payload.model_dump(mode="json", exclude_none=True),
+        )
+        return self._validate_model(response, TaskCreateResponse)
+
     def _request(
         self,
         method: str,
@@ -55,6 +70,7 @@ class AinrfApiClient:
         authenticate: bool = True,
         expected_statuses: set[int],
         params: dict[str, str] | None = None,
+        json: dict[str, Any] | None = None,
     ) -> httpx.Response:
         headers: dict[str, str] = {}
         if authenticate and self.api_key:
@@ -66,7 +82,7 @@ class AinrfApiClient:
                 timeout=self.timeout_seconds,
                 transport=self.transport,
             ) as client:
-                response = client.request(method, path, params=params)
+                response = client.request(method, path, params=params, json=json)
         except httpx.HTTPError as exc:
             raise ApiConnectionError(f"Failed to reach AINRF API at {self.base_url}: {exc}") from exc
         if response.status_code == 401:

@@ -4,7 +4,9 @@ import httpx
 import pytest
 
 from ainrf.api.config import hash_api_key
-from ainrf.api.schemas import ApiStatus
+from ainrf.api.schemas import ApiStatus, TaskCreateRequest
+from ainrf.artifacts import ResourceUsage
+from ainrf.state import TaskMode
 from ainrf.state import TaskStage
 from ainrf.webui.client import (
     AinrfApiClient,
@@ -121,3 +123,43 @@ def test_get_task_parses_detail_payload() -> None:
 
     assert detail.task_id == "t-001"
     assert detail.status is TaskStage.GATE_WAITING
+
+
+def test_create_task_posts_validated_payload() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = request.read().decode("utf-8")
+        assert request.headers["X-API-Key"] == "secret-key"
+        assert '"mode":"deep_reproduction"' in payload
+        return httpx.Response(201, json={"task_id": "t-123", "status": "gate_waiting"})
+
+    client = AinrfApiClient(
+        "http://ainrf.local",
+        api_key="secret-key",
+        transport=httpx.MockTransport(handler),
+    )
+    request = TaskCreateRequest.model_validate(
+        {
+            "mode": TaskMode.DEEP_REPRODUCTION.value,
+            "papers": [
+                {
+                    "title": "Paper",
+                    "pdf_url": "https://example.com/paper.pdf",
+                    "role": "target",
+                }
+            ],
+            "config": {"mode_2": {"scope": "core-only", "baseline_first": True, "target_tables": []}},
+            "container": {
+                "host": "gpu-01",
+                "port": 22,
+                "user": "researcher",
+                "project_dir": "/workspace/projects/demo",
+            },
+            "budget": ResourceUsage().model_dump(mode="json"),
+            "yolo": False,
+        }
+    )
+
+    response = client.create_task(request)
+
+    assert response.task_id == "t-123"
+    assert response.status is TaskStage.GATE_WAITING

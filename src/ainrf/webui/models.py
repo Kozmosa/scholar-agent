@@ -1,9 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
 
+from pydantic import BaseModel, ConfigDict, Field
+
+from ainrf.api.schemas import ModeTwoScope
 from ainrf.api.schemas import ApiStatus
-from ainrf.state import TaskStage
+from ainrf.state import TaskMode, TaskStage
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 @dataclass(slots=True)
@@ -11,6 +20,7 @@ class WebUiConfig:
     host: str = "127.0.0.1"
     port: int = 7860
     api_base_url: str = "http://127.0.0.1:8000"
+    state_root: Path = Path(".ainrf")
 
 
 @dataclass(slots=True)
@@ -31,4 +41,75 @@ class ConnectionSession:
     container_detail: str | None = None
     total_tasks: int = 0
     task_summaries: tuple[TaskStageSummary, ...] = ()
+    selected_project_slug: str | None = None
+    selected_run_task_id: str | None = None
     last_error: str | None = None
+
+
+class ModeOneDefaults(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    domain_context: str = ""
+    max_depth: int = 3
+    focus_directions: list[str] = Field(default_factory=list)
+    ignore_directions: list[str] = Field(default_factory=list)
+
+
+class ModeTwoDefaults(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    scope: ModeTwoScope = ModeTwoScope.CORE_ONLY
+    target_tables: list[str] = Field(default_factory=list)
+    baseline_first: bool = True
+
+
+class ProjectDefaults(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    container_host: str = ""
+    container_port: int = 22
+    container_user: str = ""
+    container_ssh_key_path: str = ""
+    container_project_dir: str = ""
+    budget_gpu_hours: float | None = None
+    budget_api_cost_usd: float | None = None
+    budget_wall_clock_hours: float | None = None
+    webhook_url: str = ""
+    yolo: bool = False
+    mode_1: ModeOneDefaults = Field(default_factory=ModeOneDefaults)
+    mode_2: ModeTwoDefaults = Field(default_factory=ModeTwoDefaults)
+
+
+class ProjectRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    slug: str
+    name: str
+    description: str = ""
+    defaults: ProjectDefaults = Field(default_factory=ProjectDefaults)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class ProjectRunRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: str
+    project_slug: str
+    mode: TaskMode
+    paper_titles: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=utc_now)
+    last_known_status: TaskStage
+    last_known_stage: TaskStage
+    termination_reason: str | None = None
+
+
+class RunCreateFormState(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: TaskMode = TaskMode.DEEP_REPRODUCTION
+    webhook_secret: str = ""
+    mode_1_seed_rows: list[list[str]] = Field(default_factory=list)
+    mode_2_title: str = ""
+    mode_2_pdf_url: str = ""
+    mode_2_pdf_path: str = ""
