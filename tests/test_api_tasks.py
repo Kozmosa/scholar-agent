@@ -10,6 +10,7 @@ import pytest
 from ainrf.api.app import create_app
 from ainrf.api.config import ApiConfig, hash_api_key
 from ainrf.artifacts import ArtifactType, GateType, HumanGate, HumanGateStatus, PaperCard, PaperCardStatus
+from ainrf.events import JsonlTaskEventStore
 from ainrf.state import (
     GateRecord,
     JsonStateStore,
@@ -123,6 +124,13 @@ async def test_create_task_persists_waiting_intake_gate_and_sanitizes_secret(
     assert active_gate.status is HumanGateStatus.WAITING
     assert active_gate.payload["paper_count"] == 1
 
+    events = JsonlTaskEventStore(tmp_path).list_events(payload["task_id"])
+    assert [event.event for event in events] == [
+        "artifact.created",
+        "gate.waiting",
+        "task.stage_changed",
+    ]
+
     assert webhook_calls
     assert webhook_calls[0]["secret"] == "hmac-shared-secret"
 
@@ -149,6 +157,12 @@ async def test_create_task_in_yolo_mode_auto_approves_without_webhook(
     assert task.status is TaskStage.PLANNING
     assert task.gates[0].status is HumanGateStatus.APPROVED
     assert task.gates[0].resolved_at is not None
+    events = JsonlTaskEventStore(tmp_path).list_events(response.json()["task_id"])
+    assert [event.event for event in events] == [
+        "artifact.created",
+        "gate.resolved",
+        "task.stage_changed",
+    ]
 
 
 @pytest.mark.anyio
@@ -308,6 +322,13 @@ async def test_cancel_task_updates_status_and_cancels_waiting_gate(tmp_path: Pat
     gate = store.load_artifact(ArtifactType.HUMAN_GATE, "g-intake-001")
     assert isinstance(gate, HumanGate)
     assert gate.status is HumanGateStatus.CANCELLED
+    events = JsonlTaskEventStore(tmp_path).list_events("t-001")
+    assert [event.event for event in events] == [
+        "artifact.updated",
+        "gate.resolved",
+        "task.stage_changed",
+        "task.cancelled",
+    ]
 
 
 @pytest.mark.anyio
@@ -518,11 +539,9 @@ async def test_approve_reject_require_waiting_gate(tmp_path: Path) -> None:
             headers=auth_headers(),
             json={"feedback": "revise"},
         )
-        events = await client.get("/tasks/t-001/events", headers=auth_headers())
 
     assert approve.status_code == 409
     assert reject.status_code == 409
-    assert events.status_code == 501
 
 
 @pytest.mark.anyio

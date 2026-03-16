@@ -254,6 +254,8 @@ gantt
 
 > [!info]
 > Server-Sent Events 提供任务执行的实时可观测性。客户端（CLI、Web UI、webhook consumer）通过 SSE 订阅任务事件流。
+>
+> 结合当前仓库已落地的 P4 task-scoped 路由、P5 Human Gate 生命周期与本地 JSON state 约束，P6 的具体实施规划见 [[LLM-Working/p6-sse-streaming-implementation-plan]]。
 
 **交付物：**
 

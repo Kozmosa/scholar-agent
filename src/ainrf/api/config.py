@@ -29,6 +29,8 @@ class ApiConfig:
     gate_timeout_seconds: int = 3600
     gate_sweep_interval_seconds: int = 30
     webhook_timeout_seconds: float = 10.0
+    sse_keepalive_seconds: float = 15.0
+    sse_poll_interval_seconds: float = 0.5
 
     @classmethod
     def from_env(cls, state_root: Path | None = None) -> ApiConfig:
@@ -53,6 +55,8 @@ class ApiConfig:
         gate_timeout_seconds = int(os.environ.get("AINRF_GATE_TIMEOUT_SECONDS", "3600"))
         gate_sweep_interval_seconds = int(os.environ.get("AINRF_GATE_SWEEP_INTERVAL_SECONDS", "30"))
         webhook_timeout_seconds = float(os.environ.get("AINRF_WEBHOOK_TIMEOUT_SECONDS", "10"))
+        sse_keepalive_seconds = float(os.environ.get("AINRF_SSE_KEEPALIVE_SECONDS", "15"))
+        sse_poll_interval_seconds = float(os.environ.get("AINRF_SSE_POLL_INTERVAL_SECONDS", "0.5"))
 
         return cls(
             api_key_hashes=api_key_hashes,
@@ -61,6 +65,8 @@ class ApiConfig:
             gate_timeout_seconds=gate_timeout_seconds,
             gate_sweep_interval_seconds=gate_sweep_interval_seconds,
             webhook_timeout_seconds=webhook_timeout_seconds,
+            sse_keepalive_seconds=sse_keepalive_seconds,
+            sse_poll_interval_seconds=sse_poll_interval_seconds,
         )
 
     @staticmethod

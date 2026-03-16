@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 from collections import Counter
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
+import json
 import logging
+import time
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from starlette.responses import StreamingResponse
 
-from ainrf.api.dependencies import get_gate_manager, get_state_store
+from ainrf.api.dependencies import get_api_config, get_event_service, get_gate_manager, get_state_store
 from ainrf.api.schemas import (
     ActiveGateResponse,
     ArtifactItemResponse,
@@ -23,6 +28,7 @@ from ainrf.api.schemas import (
     TaskSummaryResponse,
 )
 from ainrf.artifacts import ArtifactRecord, ArtifactType, GateType, HumanGate, HumanGateStatus
+from ainrf.events import TaskEvent, TaskEventCategory, TaskEventService
 from ainrf.gates import GateConflictError, GateNotFoundError, GateResolutionError, IntakeGatePayload
 from ainrf.state import ArtifactQuery, JsonStateStore, TaskCheckpoint, TaskRecord, TaskStage
 
@@ -101,6 +107,112 @@ def _load_task_or_404(store: JsonStateStore, task_id: str) -> TaskRecord:
     if task is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
     return task
+
+
+def _artifact_event_payload(artifact: ArtifactRecord) -> dict[str, object]:
+    status_value = getattr(artifact, "status", None)
+    return {
+        "artifact_id": artifact.artifact_id,
+        "artifact_type": artifact.artifact_type.value,
+        "status": status_value.value if hasattr(status_value, "value") else status_value,
+        "summary": artifact.summary,
+    }
+
+
+def _gate_event_payload(gate: HumanGate) -> dict[str, object]:
+    return {
+        "gate_id": gate.artifact_id,
+        "gate_type": gate.gate_type.value,
+        "status": gate.status.value,
+        "summary": gate.summary,
+        "payload": gate.payload,
+        "deadline_at": gate.deadline_at.isoformat() if gate.deadline_at is not None else None,
+        "resolved_at": gate.resolved_at.isoformat() if gate.resolved_at is not None else None,
+        "reminder_sent_at": gate.reminder_sent_at.isoformat()
+        if gate.reminder_sent_at is not None
+        else None,
+        "feedback": gate.feedback,
+        "auto_approved": gate.auto_approved,
+    }
+
+
+def _publish_task_stage_events(
+    *,
+    event_service: TaskEventService,
+    previous_stage: TaskStage,
+    updated_task: TaskRecord,
+) -> None:
+    event_service.publish(
+        task_id=updated_task.task_id,
+        category=TaskEventCategory.TASK,
+        event="task.stage_changed",
+        payload={
+            "previous_stage": previous_stage.value,
+            "current_stage": updated_task.status.value,
+            "termination_reason": updated_task.termination_reason,
+        },
+    )
+    terminal_event: str | None = None
+    if updated_task.status is TaskStage.CANCELLED:
+        terminal_event = "task.cancelled"
+    elif updated_task.status is TaskStage.FAILED:
+        terminal_event = "task.failed"
+    elif updated_task.status is TaskStage.COMPLETED:
+        terminal_event = "task.completed"
+    if terminal_event is not None:
+        event_service.publish(
+            task_id=updated_task.task_id,
+            category=TaskEventCategory.TASK,
+            event=terminal_event,
+            payload={
+                "current_stage": updated_task.status.value,
+                "termination_reason": updated_task.termination_reason,
+            },
+        )
+
+
+def _parse_event_categories(raw_types: str | None) -> set[TaskEventCategory] | None:
+    if raw_types is None or not raw_types.strip():
+        return None
+    categories: set[TaskEventCategory] = set()
+    for value in raw_types.split(","):
+        normalized = value.strip()
+        if not normalized:
+            continue
+        try:
+            categories.add(TaskEventCategory(normalized))
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Unsupported event type filter: {normalized}",
+            ) from exc
+    return categories or None
+
+
+def _parse_last_event_id(raw_value: str | None) -> int | None:
+    if raw_value is None:
+        return None
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Last-Event-ID must be an integer",
+        ) from exc
+    if value < 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Last-Event-ID must be non-negative",
+        )
+    return value
+
+
+def _encode_sse(event: TaskEvent) -> str:
+    return (
+        f"id: {event.event_id}\n"
+        f"event: {event.event}\n"
+        f"data: {json.dumps(event.model_dump(mode='json'), ensure_ascii=False)}\n\n"
+    )
 
 
 @router.post("", response_model=TaskCreateResponse, status_code=status.HTTP_201_CREATED)
@@ -182,6 +294,7 @@ async def get_task(request: Request, task_id: str) -> TaskDetailResponse:
 async def cancel_task(request: Request, task_id: str) -> TaskActionResponse:
     store = get_state_store(request)
     gate_manager = get_gate_manager(request)
+    event_service = get_event_service(request)
     task = _load_task_or_404(store, task_id)
     if task.status in _TERMINAL_STAGES:
         raise HTTPException(
@@ -199,6 +312,18 @@ async def cancel_task(request: Request, task_id: str) -> TaskActionResponse:
             update={"resolved_at": now, "updated_at": now}
         )
         store.save_artifact(cancelled_gate)
+        event_service.publish(
+            task_id=task_id,
+            category=TaskEventCategory.ARTIFACT,
+            event="artifact.updated",
+            payload=_artifact_event_payload(cancelled_gate),
+        )
+        event_service.publish(
+            task_id=task_id,
+            category=TaskEventCategory.GATE,
+            event="gate.resolved",
+            payload=_gate_event_payload(cancelled_gate),
+        )
         task_gates = [
             gate.model_copy(
                 update={
@@ -222,6 +347,11 @@ async def cancel_task(request: Request, task_id: str) -> TaskActionResponse:
         }
     )
     store.save_task(cancelled)
+    _publish_task_stage_events(
+        event_service=event_service,
+        previous_stage=task.status,
+        updated_task=cancelled,
+    )
     return TaskActionResponse(
         task_id=task_id,
         status=TaskStage.CANCELLED,
@@ -284,7 +414,53 @@ async def reject_task(request: Request, task_id: str, payload: TaskRejectRequest
 
 
 @router.get("/{task_id}/events")
-async def task_events(request: Request, task_id: str) -> Response:
+async def task_events(
+    request: Request,
+    task_id: str,
+    types: str | None = Query(default=None),
+) -> Response:
     store = get_state_store(request)
+    api_config = get_api_config(request)
+    event_service = get_event_service(request)
     _load_task_or_404(store, task_id)
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Task events are planned for P6")
+    categories = _parse_event_categories(types)
+    last_event_id = _parse_last_event_id(request.headers.get("Last-Event-ID"))
+
+    async def stream() -> AsyncIterator[str]:
+        current_event_id = last_event_id
+        last_keepalive = time.monotonic()
+        while True:
+            if await request.is_disconnected():
+                break
+
+            events = event_service.list_events(
+                task_id,
+                after_id=current_event_id,
+                categories=categories,
+            )
+            if events:
+                for event in events:
+                    current_event_id = event.event_id
+                    yield _encode_sse(event)
+                last_keepalive = time.monotonic()
+                continue
+
+            task = store.load_task(task_id)
+            if task is None or task.status in _TERMINAL_STAGES:
+                break
+
+            if time.monotonic() - last_keepalive >= api_config.sse_keepalive_seconds:
+                yield ": keepalive\n\n"
+                last_keepalive = time.monotonic()
+
+            await asyncio.sleep(api_config.sse_poll_interval_seconds)
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

@@ -7,6 +7,7 @@ from fastapi import FastAPI
 
 from ainrf.api.config import ApiConfig
 from ainrf.api.middleware import build_api_key_middleware
+from ainrf.events import JsonlTaskEventStore, TaskEventService
 from ainrf.gates import HumanGateManager, WebhookDispatcher, WebhookSecretRegistry
 from ainrf.api.routes.health import router as health_router
 from ainrf.api.routes.tasks import router as tasks_router
@@ -36,11 +37,14 @@ def create_app(config: ApiConfig | None = None) -> FastAPI:
     api_config = config or ApiConfig.from_env()
     app = FastAPI(title="AINRF API", version="0.1.0", lifespan=lifespan)
     state_store = JsonStateStore(api_config.state_root)
+    event_store = JsonlTaskEventStore(api_config.state_root)
     app.state.api_config = api_config
     app.state.state_store = state_store
+    app.state.event_service = TaskEventService(event_store)
     app.state.webhook_secret_registry = WebhookSecretRegistry()
     app.state.gate_manager = HumanGateManager(
         store=state_store,
+        event_service=app.state.event_service,
         webhook_dispatcher=WebhookDispatcher(timeout_seconds=api_config.webhook_timeout_seconds),
         secret_registry=app.state.webhook_secret_registry,
         gate_timeout_seconds=api_config.gate_timeout_seconds,

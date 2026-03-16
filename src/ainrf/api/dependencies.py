@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import Request
 
 from ainrf.api.config import ApiConfig
+from ainrf.events import TaskEventService
 from ainrf.gates import HumanGateManager
 from ainrf.state import JsonStateStore
 
@@ -17,3 +18,7 @@ def get_state_store(request: Request) -> JsonStateStore:
 
 def get_gate_manager(request: Request) -> HumanGateManager:
     return request.app.state.gate_manager
+
+
+def get_event_service(request: Request) -> TaskEventService:
+    return request.app.state.event_service

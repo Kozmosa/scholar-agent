@@ -11,6 +11,7 @@ from uuid import uuid4
 import httpx
 
 from ainrf.artifacts import ArtifactType, GateType, HumanGate, HumanGateStatus, JsonValue
+from ainrf.events import TaskEventCategory, TaskEventService
 from ainrf.gates.errors import GateConflictError, GateNotFoundError, GateResolutionError
 from ainrf.gates.models import GateWebhookEvent, GateWebhookPayload
 from ainrf.state import ArtifactQuery, GateRecord, JsonStateStore, TaskRecord, TaskStage
@@ -80,11 +81,13 @@ class HumanGateManager:
         self,
         *,
         store: JsonStateStore,
+        event_service: TaskEventService,
         webhook_dispatcher: WebhookDispatcher,
         secret_registry: WebhookSecretRegistry,
         gate_timeout_seconds: int,
     ) -> None:
         self._store = store
+        self._event_service = event_service
         self._webhook_dispatcher = webhook_dispatcher
         self._secret_registry = secret_registry
         self._gate_timeout_seconds = gate_timeout_seconds
@@ -152,6 +155,7 @@ class HumanGateManager:
             }
         )
         self._store.save_task(updated_task)
+        self._publish_gate_trigger_events(previous_task=task, updated_task=updated_task, gate=gate)
         return updated_task, gate
 
     async def resolve_current_gate(
@@ -219,6 +223,7 @@ class HumanGateManager:
             }
         )
         self._store.save_task(next_task)
+        self._publish_gate_resolution_events(previous_task=task, updated_task=next_task, gate=resolved_gate)
         return next_task, resolved_gate
 
     async def sweep_overdue_gates(self) -> None:
@@ -233,6 +238,18 @@ class HumanGateManager:
 
             reminded_gate = gate.model_copy(update={"reminder_sent_at": now, "updated_at": now})
             self._store.save_artifact(reminded_gate)
+            self._event_service.publish(
+                task_id=task.task_id,
+                category=TaskEventCategory.ARTIFACT,
+                event="artifact.updated",
+                payload=self._artifact_payload(reminded_gate),
+            )
+            self._event_service.publish(
+                task_id=task.task_id,
+                category=TaskEventCategory.GATE,
+                event="gate.reminder",
+                payload=self._gate_payload(reminded_gate),
+            )
 
             webhook_url = task.config.get("webhook_url")
             if not isinstance(webhook_url, str) or not webhook_url:
@@ -286,6 +303,110 @@ class HumanGateManager:
     def _build_gate_id(self) -> str:
         timestamp = utc_now().strftime("%Y%m%d%H%M%S")
         return f"g-{timestamp}-{uuid4().hex[:8]}"
+
+    def _artifact_payload(self, gate: HumanGate) -> dict[str, JsonValue]:
+        return {
+            "artifact_id": gate.artifact_id,
+            "artifact_type": gate.artifact_type.value,
+            "status": gate.status.value,
+            "summary": gate.summary,
+        }
+
+    def _gate_payload(self, gate: HumanGate) -> dict[str, JsonValue]:
+        return {
+            "gate_id": gate.artifact_id,
+            "gate_type": gate.gate_type.value,
+            "status": gate.status.value,
+            "summary": gate.summary,
+            "payload": gate.payload,
+            "deadline_at": gate.deadline_at.isoformat() if gate.deadline_at is not None else None,
+            "resolved_at": gate.resolved_at.isoformat() if gate.resolved_at is not None else None,
+            "reminder_sent_at": gate.reminder_sent_at.isoformat()
+            if gate.reminder_sent_at is not None
+            else None,
+            "feedback": gate.feedback,
+            "auto_approved": gate.auto_approved,
+        }
+
+    def _publish_gate_trigger_events(
+        self,
+        *,
+        previous_task: TaskRecord,
+        updated_task: TaskRecord,
+        gate: HumanGate,
+    ) -> None:
+        self._event_service.publish(
+            task_id=updated_task.task_id,
+            category=TaskEventCategory.ARTIFACT,
+            event="artifact.created",
+            payload=self._artifact_payload(gate),
+        )
+        self._event_service.publish(
+            task_id=updated_task.task_id,
+            category=TaskEventCategory.GATE,
+            event="gate.resolved" if gate.status is HumanGateStatus.APPROVED else "gate.waiting",
+            payload=self._gate_payload(gate),
+        )
+        self._publish_task_stage_events(previous_task=previous_task, updated_task=updated_task)
+
+    def _publish_gate_resolution_events(
+        self,
+        *,
+        previous_task: TaskRecord,
+        updated_task: TaskRecord,
+        gate: HumanGate,
+    ) -> None:
+        self._event_service.publish(
+            task_id=updated_task.task_id,
+            category=TaskEventCategory.ARTIFACT,
+            event="artifact.updated",
+            payload=self._artifact_payload(gate),
+        )
+        self._event_service.publish(
+            task_id=updated_task.task_id,
+            category=TaskEventCategory.GATE,
+            event="gate.resolved",
+            payload=self._gate_payload(gate),
+        )
+        self._publish_task_stage_events(previous_task=previous_task, updated_task=updated_task)
+
+    def _publish_task_stage_events(
+        self,
+        *,
+        previous_task: TaskRecord,
+        updated_task: TaskRecord,
+    ) -> None:
+        self._event_service.publish(
+            task_id=updated_task.task_id,
+            category=TaskEventCategory.TASK,
+            event="task.stage_changed",
+            payload={
+                "previous_stage": previous_task.status.value,
+                "current_stage": updated_task.status.value,
+                "termination_reason": updated_task.termination_reason,
+            },
+        )
+        terminal_event = self._terminal_event_name(updated_task.status)
+        if terminal_event is None:
+            return
+        self._event_service.publish(
+            task_id=updated_task.task_id,
+            category=TaskEventCategory.TASK,
+            event=terminal_event,
+            payload={
+                "current_stage": updated_task.status.value,
+                "termination_reason": updated_task.termination_reason,
+            },
+        )
+
+    def _terminal_event_name(self, stage: TaskStage) -> str | None:
+        if stage is TaskStage.CANCELLED:
+            return "task.cancelled"
+        if stage is TaskStage.FAILED:
+            return "task.failed"
+        if stage is TaskStage.COMPLETED:
+            return "task.completed"
+        return None
 
     def _post_trigger_task_stage(self, gate_type: GateType, approved: bool) -> TaskStage:
         if not approved:
