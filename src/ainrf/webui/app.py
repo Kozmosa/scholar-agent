@@ -12,11 +12,15 @@ from ainrf.api.schemas import (
     ApiStatus,
     ModeTwoScope,
     TaskCreateRequest,
+    TaskDetailResponse,
     TaskSummaryResponse,
 )
+from ainrf.artifacts import HumanGateStatus
+from ainrf.events import TaskEvent
 from ainrf.state import TaskMode, TaskStage
 from ainrf.webui.client import (
     AinrfApiClient,
+    ApiClientError,
     ApiAuthenticationError,
     ApiConnectionError,
     ApiProtocolError,
@@ -26,6 +30,7 @@ from ainrf.webui.models import (
     ProjectDefaults,
     ProjectRecord,
     ProjectRunRecord,
+    RunTimelineItem,
     TaskStageSummary,
     WebUiConfig,
 )
@@ -63,6 +68,7 @@ _APP_CSS = """
 _MODE_ONE_SEED_HEADERS = ["Title", "PDF URL", "PDF Path"]
 _PROJECT_TABLE_HEADERS = ["Project", "Slug", "Runs", "Latest Status", "Updated At"]
 _RUN_TABLE_HEADERS = ["Task ID", "Mode", "Status", "Stage", "Created At", "Papers"]
+_TIMELINE_LIMIT = 12
 
 
 def create_webui(
@@ -166,6 +172,12 @@ def create_webui(
                 value=[],
                 label="Runs in Active Project",
             )
+            run_selector = gr.Dropdown(
+                label="Active Run",
+                choices=run_selector_choices(store, None),
+                value=None,
+                allow_custom_value=False,
+            )
             run_feedback = gr.Markdown(value="Select a Project to create a Run.")
             with gr.Row():
                 run_mode = gr.Radio(
@@ -223,6 +235,11 @@ def create_webui(
             submit_run_button = gr.Button("Create Run", variant="primary")
 
         with gr.Tab("Run Detail"):
+            with gr.Row():
+                refresh_run_button = gr.Button("Refresh Run Detail", variant="secondary")
+                approve_run_button = gr.Button("Approve Gate", variant="primary")
+                reject_run_button = gr.Button("Reject Gate", variant="stop")
+            reject_feedback = gr.Textbox(label="Reject Feedback", lines=2)
             run_detail = gr.Markdown(value=render_run_detail(initial_session, store))
 
         connect_outputs = [
@@ -235,6 +252,7 @@ def create_webui(
             project_feedback,
             project_detail_summary,
             project_runs,
+            run_selector,
             run_feedback,
             run_detail,
         ]
@@ -275,6 +293,7 @@ def create_webui(
             mode_two_target_tables,
             mode_two_baseline_first,
             project_runs,
+            run_selector,
             run_feedback,
             run_mode,
             run_container_host,
@@ -302,7 +321,12 @@ def create_webui(
             run_detail,
         ]
         project_selector.change(
-            fn=lambda slug, current_session: select_project_and_render(current_session, store, slug),
+            fn=lambda slug, current_session: select_project_and_render(
+                current_session,
+                store,
+                slug,
+                client_factory=factory,
+            ),
             inputs=[project_selector, session_state],
             outputs=selection_outputs,
         )
@@ -431,6 +455,73 @@ def create_webui(
                 project_list_summary,
                 project_table,
                 project_runs,
+                run_selector,
+                run_feedback,
+                run_detail,
+            ],
+        )
+
+        run_selector.change(
+            fn=lambda task_id, current_session: select_run_and_render(
+                current_session,
+                store,
+                task_id,
+                client_factory=factory,
+            ),
+            inputs=[run_selector, session_state],
+            outputs=[session_state, run_selector, run_feedback, run_detail],
+        )
+
+        refresh_run_button.click(
+            fn=lambda current_session: refresh_run_and_render(
+                current_session,
+                store,
+                client_factory=factory,
+            ),
+            inputs=[session_state],
+            outputs=[
+                session_state,
+                project_list_summary,
+                project_table,
+                project_runs,
+                run_selector,
+                run_feedback,
+                run_detail,
+            ],
+        )
+
+        approve_run_button.click(
+            fn=lambda current_session: approve_run_and_render(
+                current_session,
+                store,
+                client_factory=factory,
+            ),
+            inputs=[session_state],
+            outputs=[
+                session_state,
+                project_list_summary,
+                project_table,
+                project_runs,
+                run_selector,
+                run_feedback,
+                run_detail,
+            ],
+        )
+
+        reject_run_button.click(
+            fn=lambda current_session, feedback: reject_run_and_render(
+                current_session,
+                store,
+                feedback,
+                client_factory=factory,
+            ),
+            inputs=[session_state, reject_feedback],
+            outputs=[
+                session_state,
+                project_list_summary,
+                project_table,
+                project_runs,
+                run_selector,
                 run_feedback,
                 run_detail,
             ],
@@ -458,6 +549,11 @@ def connect_session(
         api_key=api_key,
         selected_project_slug=session.selected_project_slug,
         selected_run_task_id=session.selected_run_task_id,
+        selected_run_detail=session.selected_run_detail,
+        run_timeline_items=session.run_timeline_items,
+        last_event_id_by_task=dict(session.last_event_id_by_task),
+        run_event_mode=session.run_event_mode,
+        run_refresh_error=session.run_refresh_error,
     )
     factory = client_factory or (lambda base_url, key: AinrfApiClient(base_url, key))
     client = factory(normalized_url, api_key)
@@ -500,6 +596,8 @@ def connect_session(
         if next_session.selected_project_slug:
             project_runs = store.list_project_runs(next_session.selected_project_slug)
             next_session.selected_run_task_id = project_runs[0].task_id if project_runs else None
+        if next_session.selected_run_task_id is None:
+            clear_run_observation(next_session)
     return next_session
 
 
@@ -523,14 +621,101 @@ def connect_and_render(
         store=store,
         client_factory=client_factory,
     )
+    if next_session.authenticated and next_session.selected_run_task_id is not None:
+        next_session = refresh_selected_run(next_session, store, client_factory=client_factory)
     feedback = "Connected to API." if next_session.authenticated else "Connection updated."
     return render_connection_outputs(next_session, store, project_feedback=feedback)
+
+
+def clear_run_observation(session: ConnectionSession) -> ConnectionSession:
+    session.selected_run_detail = None
+    session.run_timeline_items = ()
+    session.run_event_mode = None
+    session.run_refresh_error = None
+    return session
+
+
+def refresh_selected_run(
+    session: ConnectionSession,
+    store: JsonProjectStore,
+    *,
+    client_factory: ApiClientFactory,
+) -> ConnectionSession:
+    task_id = session.selected_run_task_id
+    if not session.authenticated or task_id is None:
+        return clear_run_observation(session)
+
+    client = client_factory(session.api_base_url, session.api_key)
+    previous_detail = session.selected_run_detail
+    if previous_detail is None or previous_detail.task_id != task_id:
+        session.run_timeline_items = ()
+        session.run_refresh_error = None
+
+    try:
+        detail = client.get_task(task_id)
+    except ApiClientError as exc:
+        session.selected_run_detail = None
+        session.run_refresh_error = f"Failed to load run detail: {exc}"
+        return session
+
+    session.selected_run_detail = detail
+    store.update_project_run_status(
+        task_id,
+        status=detail.status,
+        stage=detail.current_stage,
+        termination_reason=detail.termination_reason,
+    )
+
+    after_id = session.last_event_id_by_task.get(task_id)
+    if previous_detail is None or previous_detail.task_id != task_id:
+        after_id = None
+
+    try:
+        events = client.list_task_events(task_id, after_id=after_id)
+        session.run_event_mode = "sse"
+        session.run_refresh_error = None
+        session.run_timeline_items = merge_timeline_items(session.run_timeline_items, events, reset=after_id is None)
+        if events:
+            session.last_event_id_by_task[task_id] = events[-1].event_id
+    except ApiClientError as exc:
+        session.run_event_mode = "polling"
+        session.run_refresh_error = (
+            "Event stream unavailable; keeping detail view in manual refresh fallback mode. "
+            f"Cause: {exc}"
+        )
+    return session
+
+
+def merge_timeline_items(
+    existing: tuple[RunTimelineItem, ...],
+    events: list[TaskEvent],
+    *,
+    reset: bool,
+) -> tuple[RunTimelineItem, ...]:
+    base = [] if reset else list(existing)
+    seen_ids = {item.event_id for item in base}
+    for event in events:
+        if event.event_id in seen_ids:
+            continue
+        base.append(
+            RunTimelineItem(
+                event_id=event.event_id,
+                event=event.event,
+                category=event.category,
+                created_at=event.timestamp,
+                payload=event.payload,
+            )
+        )
+        seen_ids.add(event.event_id)
+    return tuple(base[-_TIMELINE_LIMIT:])
 
 
 def select_project_and_render(
     session: ConnectionSession,
     store: JsonProjectStore,
     selected_slug: str | None,
+    *,
+    client_factory: ApiClientFactory,
 ) -> ProjectRenderResult:
     next_session = session
     next_session.selected_project_slug = selected_slug or None
@@ -539,6 +724,9 @@ def select_project_and_render(
         next_session.selected_run_task_id = runs[0].task_id if runs else None
     else:
         next_session.selected_run_task_id = None
+    clear_run_observation(next_session)
+    if next_session.authenticated and next_session.selected_run_task_id is not None:
+        next_session = refresh_selected_run(next_session, store, client_factory=client_factory)
     return render_project_outputs(next_session, store, project_feedback="Project selection updated.")
 
 
@@ -549,6 +737,7 @@ def reset_project_and_render(
     next_session = session
     next_session.selected_project_slug = None
     next_session.selected_run_task_id = None
+    clear_run_observation(next_session)
     return render_project_outputs(next_session, store, project_feedback="Creating a new local Project.")
 
 
@@ -628,6 +817,7 @@ def save_project_from_form(
     next_session.selected_project_slug = effective_slug
     runs = store.list_project_runs(effective_slug)
     next_session.selected_run_task_id = runs[0].task_id if runs else None
+    clear_run_observation(next_session)
     return next_session, f"Saved Project `{effective_slug}`."
 
 
@@ -777,6 +967,7 @@ def submit_project_run(
     )
     next_session.selected_project_slug = project.slug
     next_session.selected_run_task_id = response.task_id
+    next_session = refresh_selected_run(next_session, store, client_factory=client_factory)
     return next_session, f"Created Run `{response.task_id}` for Project `{project.slug}`."
 
 
@@ -842,9 +1033,122 @@ def submit_run_and_render(
         render_project_list_summary(next_session, store),
         project_table_rows(store),
         project_runs_rows(store, next_session.selected_project_slug),
+        gr.update(
+            choices=run_selector_choices(store, next_session.selected_project_slug),
+            value=next_session.selected_run_task_id,
+        ),
         feedback,
         render_run_detail(next_session, store),
     )
+
+
+def select_run_and_render(
+    session: ConnectionSession,
+    store: JsonProjectStore,
+    task_id: str | None,
+    *,
+    client_factory: ApiClientFactory,
+) -> tuple[ConnectionSession, object, str, str]:
+    next_session = session
+    next_session.selected_run_task_id = task_id or None
+    clear_run_observation(next_session)
+    if next_session.authenticated and next_session.selected_run_task_id is not None:
+        next_session = refresh_selected_run(next_session, store, client_factory=client_factory)
+    return (
+        next_session,
+        gr.update(
+            choices=run_selector_choices(store, next_session.selected_project_slug),
+            value=next_session.selected_run_task_id,
+        ),
+        render_run_feedback(next_session),
+        render_run_detail(next_session, store),
+    )
+
+
+def refresh_run_and_render(
+    session: ConnectionSession,
+    store: JsonProjectStore,
+    *,
+    client_factory: ApiClientFactory,
+) -> RunSubmitRenderResult:
+    next_session = refresh_selected_run(session, store, client_factory=client_factory)
+    return (
+        next_session,
+        render_project_list_summary(next_session, store),
+        project_table_rows(store),
+        project_runs_rows(store, next_session.selected_project_slug),
+        gr.update(
+            choices=run_selector_choices(store, next_session.selected_project_slug),
+            value=next_session.selected_run_task_id,
+        ),
+        render_run_feedback(next_session),
+        render_run_detail(next_session, store),
+    )
+
+
+def approve_run_and_render(
+    session: ConnectionSession,
+    store: JsonProjectStore,
+    *,
+    client_factory: ApiClientFactory,
+) -> RunSubmitRenderResult:
+    next_session = session
+    task_id = next_session.selected_run_task_id
+    if not next_session.authenticated or task_id is None:
+        next_session.run_refresh_error = "Connect to the API and select a Run before approving a gate."
+        return refresh_run_and_render(next_session, store, client_factory=client_factory)
+    if not can_resolve_active_gate(next_session):
+        next_session.run_refresh_error = "The selected Run does not have a waiting gate to approve."
+        return refresh_run_and_render(next_session, store, client_factory=client_factory)
+
+    client = client_factory(next_session.api_base_url, next_session.api_key)
+    try:
+        client.approve_task(task_id)
+    except ApiClientError as exc:
+        next_session.run_refresh_error = f"Failed to approve gate: {exc}"
+        return refresh_run_and_render(next_session, store, client_factory=client_factory)
+    next_session = connect_session(
+        next_session.api_base_url,
+        next_session.api_key,
+        next_session,
+        store=store,
+        client_factory=client_factory,
+    )
+    next_session = refresh_selected_run(next_session, store, client_factory=client_factory)
+    return refresh_run_and_render(next_session, store, client_factory=client_factory)
+
+
+def reject_run_and_render(
+    session: ConnectionSession,
+    store: JsonProjectStore,
+    feedback: str,
+    *,
+    client_factory: ApiClientFactory,
+) -> RunSubmitRenderResult:
+    next_session = session
+    task_id = next_session.selected_run_task_id
+    if not next_session.authenticated or task_id is None:
+        next_session.run_refresh_error = "Connect to the API and select a Run before rejecting a gate."
+        return refresh_run_and_render(next_session, store, client_factory=client_factory)
+    if not can_resolve_active_gate(next_session):
+        next_session.run_refresh_error = "The selected Run does not have a waiting gate to reject."
+        return refresh_run_and_render(next_session, store, client_factory=client_factory)
+
+    client = client_factory(next_session.api_base_url, next_session.api_key)
+    try:
+        client.reject_task(task_id, feedback.strip() or None)
+    except ApiClientError as exc:
+        next_session.run_refresh_error = f"Failed to reject gate: {exc}"
+        return refresh_run_and_render(next_session, store, client_factory=client_factory)
+    next_session = connect_session(
+        next_session.api_base_url,
+        next_session.api_key,
+        next_session,
+        store=store,
+        client_factory=client_factory,
+    )
+    next_session = refresh_selected_run(next_session, store, client_factory=client_factory)
+    return refresh_run_and_render(next_session, store, client_factory=client_factory)
 
 
 def build_task_create_request(
@@ -961,6 +1265,10 @@ def render_connection_outputs(
         project_feedback,
         render_project_detail_summary(session, store),
         project_runs_rows(store, session.selected_project_slug),
+        gr.update(
+            choices=run_selector_choices(store, session.selected_project_slug),
+            value=session.selected_run_task_id,
+        ),
         render_run_feedback(session),
         render_run_detail(session, store),
     )
@@ -1046,6 +1354,10 @@ def render_project_outputs(
         mode_two_target_tables,
         mode_two_baseline_first,
         project_runs_rows(store, session.selected_project_slug),
+        gr.update(
+            choices=run_selector_choices(store, session.selected_project_slug),
+            value=session.selected_run_task_id,
+        ),
         render_run_feedback(session),
         run_mode,
         run_container_host,
@@ -1164,7 +1476,17 @@ def render_run_feedback(session: ConnectionSession) -> str:
         return "Select or create a Project before creating a Run."
     if not session.authenticated:
         return "Connect to the API before creating a Run."
-    return "Project selected. Edit defaults or submit a new Run."
+    if session.selected_run_task_id is None:
+        return "Project selected. Edit defaults or submit a new Run."
+    if session.run_refresh_error:
+        return session.run_refresh_error
+    detail = session.selected_run_detail
+    if detail is None:
+        return "Run selected. Refresh Run Detail to load gate state and event timeline."
+    if detail.active_gate is not None and detail.active_gate.status is HumanGateStatus.WAITING:
+        return f"Waiting gate `{detail.active_gate.gate_type.value}` can be approved or rejected."
+    mode = session.run_event_mode or "snapshot"
+    return f"Run detail loaded in `{mode}` mode."
 
 
 def render_run_detail(session: ConnectionSession, store: JsonProjectStore) -> str:
@@ -1172,17 +1494,39 @@ def render_run_detail(session: ConnectionSession, store: JsonProjectStore) -> st
     if run is None:
         return (
             "## Run Detail\n"
-            "No bound Run selected yet. W2 records local run bindings and last-known task status only."
+            "No bound Run selected yet. Select a local Run to load real task detail, gates, and events."
         )
+    detail = session.selected_run_detail
+    if detail is None or detail.task_id != run.task_id:
+        return (
+            "## Run Detail\n"
+            f"- Task ID: `{run.task_id}`\n"
+            f"- Project: `{run.project_slug}`\n"
+            f"- Last known status: `{run.last_known_status.value}`\n"
+            f"- Last known stage: `{run.last_known_stage.value}`\n"
+            "- Live task detail not loaded yet. Use Refresh Run Detail after connecting to the API."
+        )
+    gate_section = render_active_gate(detail)
+    artifact_section = render_artifact_summary(detail)
+    timeline_section = render_timeline(session.run_timeline_items)
+    observation_mode = session.run_event_mode or "snapshot"
     return (
         "## Run Detail\n"
-        f"- Task ID: `{run.task_id}`\n"
+        f"- Task ID: `{detail.task_id}`\n"
         f"- Project: `{run.project_slug}`\n"
-        f"- Mode: `{run.mode.value}`\n"
-        f"- Last known status: `{run.last_known_status.value}`\n"
-        f"- Last known stage: `{run.last_known_stage.value}`\n"
+        f"- Mode: `{detail.mode.value}`\n"
+        f"- Status: `{detail.status.value}`\n"
+        f"- Current stage: `{detail.current_stage.value}`\n"
+        f"- Observation mode: `{observation_mode}`\n"
+        f"- Created at: `{detail.created_at.isoformat(timespec='seconds')}`\n"
+        f"- Updated at: `{detail.updated_at.isoformat(timespec='seconds')}`\n"
+        f"- Termination reason: {detail.termination_reason or 'N/A'}\n"
         f"- Papers: {', '.join(run.paper_titles) if run.paper_titles else 'None'}\n"
-        f"- Termination reason: {run.termination_reason or 'N/A'}"
+        f"- Budget limit: GPU `{detail.budget_limit.gpu_hours}` / API `${detail.budget_limit.api_cost_usd}` / Wall `{detail.budget_limit.wall_clock_hours}`\n"
+        f"- Budget used: GPU `{detail.budget_used.gpu_hours}` / API `${detail.budget_used.api_cost_usd}` / Wall `{detail.budget_used.wall_clock_hours}`\n"
+        f"{gate_section}\n"
+        f"{artifact_section}\n"
+        f"{timeline_section}"
     )
 
 
@@ -1221,6 +1565,15 @@ def project_runs_rows(store: JsonProjectStore, project_slug: str | None) -> list
     return rows
 
 
+def run_selector_choices(store: JsonProjectStore, project_slug: str | None) -> list[tuple[str, str]]:
+    if project_slug is None:
+        return []
+    return [
+        (f"{run.task_id} · {run.last_known_status.value}", run.task_id)
+        for run in store.list_project_runs(project_slug)
+    ]
+
+
 def project_selector_choices(store: JsonProjectStore) -> list[tuple[str, str]]:
     return [(project.name, project.slug) for project in store.list_projects()]
 
@@ -1235,6 +1588,58 @@ def selected_run(store: JsonProjectStore, session: ConnectionSession) -> Project
     if session.selected_run_task_id is None:
         return None
     return store.load_project_run(session.selected_run_task_id)
+
+
+def can_resolve_active_gate(session: ConnectionSession) -> bool:
+    detail = session.selected_run_detail
+    return (
+        detail is not None
+        and detail.active_gate is not None
+        and detail.active_gate.status is HumanGateStatus.WAITING
+    )
+
+
+def render_active_gate(detail: TaskDetailResponse) -> str:
+    active_gate = detail.active_gate
+    if active_gate is None:
+        return "### Active Gate\n- No waiting gate."
+    return (
+        "### Active Gate\n"
+        f"- Gate ID: `{active_gate.gate_id}`\n"
+        f"- Type: `{active_gate.gate_type.value}`\n"
+        f"- Status: `{active_gate.status.value}`\n"
+        f"- Summary: {active_gate.summary}\n"
+        f"- Deadline: {active_gate.deadline_at.isoformat(timespec='seconds') if active_gate.deadline_at else 'N/A'}\n"
+        f"- Feedback: {active_gate.feedback or 'N/A'}\n"
+        f"- Auto approved: `{active_gate.auto_approved}`"
+    )
+
+
+def render_artifact_summary(detail: TaskDetailResponse) -> str:
+    if not detail.artifact_summary.counts:
+        return "### Artifact Summary\n- No artifacts recorded yet."
+    rows = [
+        f"- `{artifact_type}`: `{count}`"
+        for artifact_type, count in sorted(detail.artifact_summary.counts.items())
+    ]
+    return "### Artifact Summary\n" + "\n".join(rows)
+
+
+def render_timeline(items: tuple[RunTimelineItem, ...]) -> str:
+    if not items:
+        return "### Event Timeline\n- No events loaded yet."
+    rows = [
+        f"- `#{item.event_id}` `{item.event}` at `{item.created_at.isoformat(timespec='seconds')}` :: {summarize_payload(item.payload)}"
+        for item in items
+    ]
+    return "### Event Timeline\n" + "\n".join(rows)
+
+
+def summarize_payload(payload: dict[str, Any]) -> str:
+    if not payload:
+        return "no payload"
+    parts = [f"{key}={value}" for key, value in list(payload.items())[:4]]
+    return ", ".join(parts)
 
 
 def project_form_values(project: ProjectRecord | None) -> tuple[str, str, str, str, int, str, str, str, float | None, float | None, float | None, str, bool, str, int, str, str, str, str, bool]:

@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ainrf.api.schemas import ModeTwoScope
-from ainrf.api.schemas import ApiStatus
+from ainrf.api.schemas import ApiStatus, ModeTwoScope, TaskDetailResponse
+from ainrf.events import TaskEventCategory
 from ainrf.state import TaskMode, TaskStage
 
 
@@ -30,6 +31,15 @@ class TaskStageSummary:
 
 
 @dataclass(slots=True)
+class RunTimelineItem:
+    event_id: int
+    event: str
+    category: TaskEventCategory
+    created_at: datetime
+    payload: dict[str, Any]
+
+
+@dataclass(slots=True)
 class ConnectionSession:
     api_base_url: str = "http://127.0.0.1:8000"
     api_key: str = ""
@@ -43,6 +53,11 @@ class ConnectionSession:
     task_summaries: tuple[TaskStageSummary, ...] = ()
     selected_project_slug: str | None = None
     selected_run_task_id: str | None = None
+    selected_run_detail: TaskDetailResponse | None = None
+    run_timeline_items: tuple[RunTimelineItem, ...] = ()
+    last_event_id_by_task: dict[str, int] = field(default_factory=dict)
+    run_event_mode: str | None = None
+    run_refresh_error: str | None = None
     last_error: str | None = None
 
 

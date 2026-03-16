@@ -8,17 +8,25 @@ import gradio as gr
 from ainrf.api.schemas import (
     ApiStatus,
     HealthResponse,
+    TaskActionResponse,
     TaskCreateResponse,
+    TaskDetailResponse,
     TaskListResponse,
     TaskSummaryResponse,
 )
+from ainrf.artifacts import GateType, HumanGateStatus
+from ainrf.events import TaskEvent, TaskEventCategory
 from ainrf.state import TaskMode, TaskStage
 from ainrf.webui.app import (
+    approve_run_and_render,
     build_task_create_request,
     connect_session,
     create_webui,
     normalize_project_slug,
+    refresh_selected_run,
     render_project_list_summary,
+    render_run_detail,
+    reject_run_and_render,
     save_project_from_form,
     submit_project_run,
 )
@@ -34,11 +42,17 @@ class FakeClient:
         health: HealthResponse | None = None,
         task_list: TaskListResponse | None = None,
         create_response: TaskCreateResponse | None = None,
+        task_detail: TaskDetailResponse | None = None,
+        action_response: TaskActionResponse | None = None,
+        events: list[TaskEvent] | None = None,
         error: Exception | None = None,
     ) -> None:
         self._health = health
         self._task_list = task_list
         self._create_response = create_response
+        self._task_detail = task_detail
+        self._action_response = action_response
+        self._events = events or []
         self._error = error
 
     def get_health(self) -> HealthResponse:
@@ -61,6 +75,33 @@ class FakeClient:
         assert self._create_response is not None
         return self._create_response
 
+    def get_task(self, task_id: str) -> TaskDetailResponse:
+        _ = task_id
+        if self._error is not None:
+            raise self._error
+        assert self._task_detail is not None
+        return self._task_detail
+
+    def approve_task(self, task_id: str) -> TaskActionResponse:
+        _ = task_id
+        if self._error is not None:
+            raise self._error
+        assert self._action_response is not None
+        return self._action_response
+
+    def reject_task(self, task_id: str, feedback: str | None) -> TaskActionResponse:
+        _ = (task_id, feedback)
+        if self._error is not None:
+            raise self._error
+        assert self._action_response is not None
+        return self._action_response
+
+    def list_task_events(self, task_id: str, **kwargs: object) -> list[TaskEvent]:
+        _unused = (task_id, kwargs)
+        if self._error is not None:
+            raise self._error
+        return list(self._events)
+
 
 def build_task_summary(task_id: str, mode: TaskMode, status: TaskStage) -> TaskSummaryResponse:
     now = datetime(2026, 3, 16, tzinfo=UTC)
@@ -72,6 +113,40 @@ def build_task_summary(task_id: str, mode: TaskMode, status: TaskStage) -> TaskS
         updated_at=now,
         current_stage=status,
         termination_reason=None,
+    )
+
+
+def build_task_detail(task_id: str, status: TaskStage) -> TaskDetailResponse:
+    now = datetime(2026, 3, 16, tzinfo=UTC)
+    return TaskDetailResponse.model_validate(
+        {
+            "task_id": task_id,
+            "mode": TaskMode.DEEP_REPRODUCTION.value,
+            "status": status.value,
+            "created_at": now,
+            "updated_at": now,
+            "current_stage": status.value,
+            "termination_reason": None,
+            "budget_limit": {"gpu_hours": 1.0, "api_cost_usd": 2.0, "wall_clock_hours": 3.0},
+            "budget_used": {"gpu_hours": 0.1, "api_cost_usd": 0.2, "wall_clock_hours": 0.3},
+            "gates": [],
+            "active_gate": {
+                "gate_id": "g-001",
+                "gate_type": GateType.INTAKE.value,
+                "status": HumanGateStatus.WAITING.value,
+                "summary": "Review intake",
+                "payload": {"paper_count": 1},
+                "deadline_at": now,
+                "resolved_at": None,
+                "reminder_sent_at": None,
+                "feedback": None,
+                "auto_approved": False,
+            }
+            if status is TaskStage.GATE_WAITING
+            else None,
+            "artifact_summary": {"counts": {"human_gate": 1}, "total": 1},
+            "config": {},
+        }
     )
 
 
@@ -287,6 +362,7 @@ def test_submit_project_run_creates_binding_and_keeps_secret_out_of_store(tmp_pa
             health=health,
             task_list=task_list,
             create_response=TaskCreateResponse(task_id="t-900", status=TaskStage.GATE_WAITING),
+            task_detail=build_task_detail("t-900", TaskStage.GATE_WAITING),
         ),
         mode=TaskMode.DEEP_REPRODUCTION.value,
         run_container_host="",
@@ -368,6 +444,221 @@ def test_submit_project_run_requires_authenticated_session(tmp_path: Path) -> No
     )
 
     assert "Connect to the API" in feedback
+
+
+def test_refresh_selected_run_loads_detail_and_timeline(tmp_path: Path) -> None:
+    store = JsonProjectStore(tmp_path)
+    session = ConnectionSession(
+        api_base_url="http://ainrf.local",
+        api_key="secret",
+        reachable=True,
+        authenticated=True,
+    )
+    next_session, _ = save_project_from_form(
+        session,
+        store,
+        name="Vision Stack",
+        slug="vision-stack",
+        description="",
+        container_host="gpu-01",
+        container_port=22,
+        container_user="researcher",
+        container_ssh_key_path="",
+        container_project_dir="/workspace/projects/vision-stack",
+        budget_gpu_hours=12.0,
+        budget_api_cost_usd=6.0,
+        budget_wall_clock_hours=24.0,
+        webhook_url="https://example.com/hook",
+        yolo=False,
+        mode_one_domain_context="multimodal",
+        mode_one_max_depth=4,
+        mode_one_focus_directions="clip",
+        mode_one_ignore_directions="speech",
+        mode_two_scope="core-only",
+        mode_two_target_tables="Table 1",
+        mode_two_baseline_first=True,
+    )
+    store.save_project_run(
+        build_run_binding(
+            task_id="t-001",
+            project_slug="vision-stack",
+            mode=TaskMode.DEEP_REPRODUCTION,
+            status=TaskStage.GATE_WAITING,
+        )
+    )
+    next_session.selected_run_task_id = "t-001"
+
+    updated = refresh_selected_run(
+        next_session,
+        store,
+        client_factory=lambda base_url, api_key: FakeClient(
+            task_detail=build_task_detail("t-001", TaskStage.GATE_WAITING),
+            events=[
+                TaskEvent.model_validate(
+                    {
+                        "event_id": 1,
+                        "task_id": "t-001",
+                        "category": TaskEventCategory.GATE.value,
+                        "event": "gate.waiting",
+                        "timestamp": "2026-03-16T00:00:00Z",
+                        "payload": {"gate_id": "g-001"},
+                    }
+                )
+            ],
+        ),
+    )
+
+    assert updated.selected_run_detail is not None
+    assert updated.selected_run_detail.active_gate is not None
+    assert updated.run_event_mode == "sse"
+    assert len(updated.run_timeline_items) == 1
+    assert "Event Timeline" in render_run_detail(updated, store)
+
+
+def test_approve_run_and_render_updates_run_status(tmp_path: Path) -> None:
+    store = JsonProjectStore(tmp_path)
+    session = ConnectionSession(
+        api_base_url="http://ainrf.local",
+        api_key="secret",
+        reachable=True,
+        authenticated=True,
+        selected_project_slug="vision-stack",
+        selected_run_task_id="t-001",
+        selected_run_detail=build_task_detail("t-001", TaskStage.GATE_WAITING),
+    )
+    next_session, _ = save_project_from_form(
+        session,
+        store,
+        name="Vision Stack",
+        slug="vision-stack",
+        description="",
+        container_host="gpu-01",
+        container_port=22,
+        container_user="researcher",
+        container_ssh_key_path="",
+        container_project_dir="/workspace/projects/vision-stack",
+        budget_gpu_hours=12.0,
+        budget_api_cost_usd=6.0,
+        budget_wall_clock_hours=24.0,
+        webhook_url="",
+        yolo=False,
+        mode_one_domain_context="",
+        mode_one_max_depth=3,
+        mode_one_focus_directions="",
+        mode_one_ignore_directions="",
+        mode_two_scope="core-only",
+        mode_two_target_tables="",
+        mode_two_baseline_first=True,
+    )
+    next_session.selected_run_task_id = "t-001"
+    next_session.selected_run_detail = build_task_detail("t-001", TaskStage.GATE_WAITING)
+    store.save_project_run(
+        build_run_binding(
+            task_id="t-001",
+            project_slug="vision-stack",
+            mode=TaskMode.DEEP_REPRODUCTION,
+            status=TaskStage.GATE_WAITING,
+        )
+    )
+    health = HealthResponse(
+        status=ApiStatus.OK,
+        state_root=".ainrf",
+        container_configured=False,
+        container_health=None,
+        detail=None,
+    )
+    task_list = TaskListResponse(items=[build_task_summary("t-001", TaskMode.DEEP_REPRODUCTION, TaskStage.PLANNING)])
+
+    updated = approve_run_and_render(
+        next_session,
+        store,
+        client_factory=lambda base_url, api_key: FakeClient(
+            health=health,
+            task_list=task_list,
+            task_detail=build_task_detail("t-001", TaskStage.PLANNING),
+            action_response=TaskActionResponse(task_id="t-001", status=TaskStage.PLANNING, detail="approved"),
+        ),
+    )
+
+    next_session = updated[0]
+    assert next_session.selected_run_detail is not None
+    assert next_session.selected_run_detail.status is TaskStage.PLANNING
+    binding = store.load_project_run("t-001")
+    assert binding is not None
+    assert binding.last_known_status is TaskStage.PLANNING
+
+
+def test_reject_run_and_render_updates_feedback_message(tmp_path: Path) -> None:
+    store = JsonProjectStore(tmp_path)
+    session = ConnectionSession(
+        api_base_url="http://ainrf.local",
+        api_key="secret",
+        reachable=True,
+        authenticated=True,
+        selected_project_slug="vision-stack",
+        selected_run_task_id="t-001",
+        selected_run_detail=build_task_detail("t-001", TaskStage.GATE_WAITING),
+    )
+    next_session, _ = save_project_from_form(
+        session,
+        store,
+        name="Vision Stack",
+        slug="vision-stack",
+        description="",
+        container_host="gpu-01",
+        container_port=22,
+        container_user="researcher",
+        container_ssh_key_path="",
+        container_project_dir="/workspace/projects/vision-stack",
+        budget_gpu_hours=12.0,
+        budget_api_cost_usd=6.0,
+        budget_wall_clock_hours=24.0,
+        webhook_url="",
+        yolo=False,
+        mode_one_domain_context="",
+        mode_one_max_depth=3,
+        mode_one_focus_directions="",
+        mode_one_ignore_directions="",
+        mode_two_scope="core-only",
+        mode_two_target_tables="",
+        mode_two_baseline_first=True,
+    )
+    next_session.selected_run_task_id = "t-001"
+    next_session.selected_run_detail = build_task_detail("t-001", TaskStage.GATE_WAITING)
+    store.save_project_run(
+        build_run_binding(
+            task_id="t-001",
+            project_slug="vision-stack",
+            mode=TaskMode.DEEP_REPRODUCTION,
+            status=TaskStage.GATE_WAITING,
+        )
+    )
+    health = HealthResponse(
+        status=ApiStatus.OK,
+        state_root=".ainrf",
+        container_configured=False,
+        container_health=None,
+        detail=None,
+    )
+    task_list = TaskListResponse(items=[build_task_summary("t-001", TaskMode.DEEP_REPRODUCTION, TaskStage.CANCELLED)])
+
+    updated = reject_run_and_render(
+        next_session,
+        store,
+        "not in scope",
+        client_factory=lambda base_url, api_key: FakeClient(
+            health=health,
+            task_list=task_list,
+            task_detail=TaskDetailResponse.model_validate(
+                build_task_detail("t-001", TaskStage.CANCELLED).model_dump(mode="json")
+            ),
+            action_response=TaskActionResponse(task_id="t-001", status=TaskStage.CANCELLED, detail="rejected"),
+        ),
+    )
+
+    next_session = updated[0]
+    assert next_session.selected_run_detail is not None
+    assert next_session.selected_run_detail.status is TaskStage.CANCELLED
 
 
 def build_run_binding(

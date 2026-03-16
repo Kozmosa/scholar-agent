@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from ainrf.api.schemas import TaskSummaryResponse
+from ainrf.state import TaskStage
 from ainrf.webui.models import ProjectRecord, ProjectRunRecord
 
 
@@ -82,6 +83,27 @@ class JsonProjectStore:
                 }
             )
             self.save_project_run(updated)
+
+    def update_project_run_status(
+        self,
+        task_id: str,
+        *,
+        status: TaskStage,
+        stage: TaskStage,
+        termination_reason: str | None,
+    ) -> None:
+        project_run = self.load_project_run(task_id)
+        if project_run is None:
+            return
+        self.save_project_run(
+            project_run.model_copy(
+                update={
+                    "last_known_status": status,
+                    "last_known_stage": stage,
+                    "termination_reason": termination_reason,
+                }
+            )
+        )
 
     @staticmethod
     def _read_json(path: Path) -> object:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from typing import Any
 
 import httpx
@@ -9,9 +10,11 @@ from ainrf.api.schemas import (
     HealthResponse,
     TaskCreateRequest,
     TaskCreateResponse,
+    TaskActionResponse,
     TaskDetailResponse,
     TaskListResponse,
 )
+from ainrf.events import TaskEvent, TaskEventCategory
 from ainrf.state import TaskStage
 
 
@@ -62,6 +65,76 @@ class AinrfApiClient:
         )
         return self._validate_model(response, TaskCreateResponse)
 
+    def approve_task(self, task_id: str) -> TaskActionResponse:
+        response = self._request("POST", f"/tasks/{task_id}/approve", expected_statuses={200})
+        return self._validate_model(response, TaskActionResponse)
+
+    def reject_task(self, task_id: str, feedback: str | None) -> TaskActionResponse:
+        payload = {"feedback": feedback} if feedback is not None else {}
+        response = self._request(
+            "POST",
+            f"/tasks/{task_id}/reject",
+            expected_statuses={200},
+            json=payload,
+        )
+        return self._validate_model(response, TaskActionResponse)
+
+    def list_task_events(
+        self,
+        task_id: str,
+        *,
+        after_id: int | None = None,
+        categories: set[TaskEventCategory] | None = None,
+        read_timeout_seconds: float = 0.2,
+    ) -> list[TaskEvent]:
+        params: dict[str, str] | None = None
+        if categories:
+            params = {"types": ",".join(sorted(category.value for category in categories))}
+        headers = self._headers()
+        if after_id is not None:
+            headers["Last-Event-ID"] = str(after_id)
+
+        current: dict[str, str] = {}
+        events: list[TaskEvent] = []
+        timeout = httpx.Timeout(self.timeout_seconds, read=read_timeout_seconds)
+        try:
+            with httpx.Client(
+                base_url=self.base_url.rstrip("/"),
+                headers=headers,
+                timeout=timeout,
+                transport=self.transport,
+            ) as client:
+                with client.stream("GET", f"/tasks/{task_id}/events", params=params) as response:
+                    if response.status_code == 401:
+                        raise ApiAuthenticationError("Unauthorized")
+                    if response.status_code != 200:
+                        raise ApiProtocolError(
+                            f"Unexpected response status {response.status_code} for GET /tasks/{task_id}/events"
+                        )
+                    try:
+                        for line in response.iter_lines():
+                            if line.startswith(":"):
+                                continue
+                            if line == "":
+                                event = self._build_task_event_from_sse(current)
+                                if event is not None:
+                                    events.append(event)
+                                current = {}
+                                continue
+                            key, _, value = line.partition(":")
+                            if not _:
+                                continue
+                            current[key] = value.lstrip()
+                    except httpx.ReadTimeout:
+                        pass
+        except httpx.HTTPError as exc:
+            raise ApiConnectionError(f"Failed to reach AINRF API at {self.base_url}: {exc}") from exc
+
+        trailing_event = self._build_task_event_from_sse(current)
+        if trailing_event is not None:
+            events.append(trailing_event)
+        return events
+
     def _request(
         self,
         method: str,
@@ -93,6 +166,12 @@ class AinrfApiClient:
             )
         return response
 
+    def _headers(self) -> dict[str, str]:
+        headers: dict[str, str] = {}
+        if self.api_key:
+            headers["X-API-Key"] = self.api_key
+        return headers
+
     @staticmethod
     def _validate_model(response: httpx.Response, model_type: type[Any]) -> Any:
         try:
@@ -103,3 +182,17 @@ class AinrfApiClient:
             return model_type.model_validate(payload)
         except Exception as exc:
             raise ApiProtocolError(f"AINRF API returned invalid payload: {exc}") from exc
+
+    @staticmethod
+    def _build_task_event_from_sse(payload: dict[str, str]) -> TaskEvent | None:
+        data = payload.get("data")
+        if data is None:
+            return None
+        try:
+            parsed = json.loads(data)
+        except json.JSONDecodeError as exc:
+            raise ApiProtocolError(f"AINRF API returned invalid SSE payload: {exc}") from exc
+        try:
+            return TaskEvent.model_validate(parsed)
+        except Exception as exc:
+            raise ApiProtocolError(f"AINRF API returned invalid event payload: {exc}") from exc

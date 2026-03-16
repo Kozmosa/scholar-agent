@@ -6,6 +6,7 @@ import pytest
 from ainrf.api.config import hash_api_key
 from ainrf.api.schemas import ApiStatus, TaskCreateRequest
 from ainrf.artifacts import ResourceUsage
+from ainrf.events import TaskEventCategory
 from ainrf.state import TaskMode
 from ainrf.state import TaskStage
 from ainrf.webui.client import (
@@ -163,3 +164,69 @@ def test_create_task_posts_validated_payload() -> None:
 
     assert response.task_id == "t-123"
     assert response.status is TaskStage.GATE_WAITING
+
+
+def test_approve_task_posts_expected_endpoint() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/tasks/t-123/approve"
+        return httpx.Response(200, json={"task_id": "t-123", "status": "planning", "detail": "approved"})
+
+    client = AinrfApiClient(
+        "http://ainrf.local",
+        api_key="secret-key",
+        transport=httpx.MockTransport(handler),
+    )
+
+    response = client.approve_task("t-123")
+
+    assert response.task_id == "t-123"
+    assert response.status is TaskStage.PLANNING
+
+
+def test_reject_task_posts_feedback_payload() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/tasks/t-123/reject"
+        assert request.read().decode("utf-8") == '{"feedback":"tighten scope"}'
+        return httpx.Response(200, json={"task_id": "t-123", "status": "planning", "detail": "rejected"})
+
+    client = AinrfApiClient(
+        "http://ainrf.local",
+        api_key="secret-key",
+        transport=httpx.MockTransport(handler),
+    )
+
+    response = client.reject_task("t-123", "tighten scope")
+
+    assert response.task_id == "t-123"
+    assert response.status is TaskStage.PLANNING
+
+
+def test_list_task_events_parses_sse_history() -> None:
+    body = (
+        'id: 1\n'
+        'event: gate.waiting\n'
+        'data: {"event_id":1,"task_id":"t-123","category":"gate","event":"gate.waiting","timestamp":"2026-03-16T00:00:00Z","payload":{"gate_id":"g-1"}}\n\n'
+        'id: 2\n'
+        'event: task.stage_changed\n'
+        'data: {"event_id":2,"task_id":"t-123","category":"task","event":"task.stage_changed","timestamp":"2026-03-16T00:00:01Z","payload":{"current_stage":"planning"}}\n\n'
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["Last-Event-ID"] == "0"
+        assert request.url.params["types"] == "gate,task"
+        return httpx.Response(200, text=body, headers={"content-type": "text/event-stream"})
+
+    client = AinrfApiClient(
+        "http://ainrf.local",
+        api_key="secret-key",
+        transport=httpx.MockTransport(handler),
+    )
+
+    events = client.list_task_events(
+        "t-123",
+        after_id=0,
+        categories={TaskEventCategory.GATE, TaskEventCategory.TASK},
+    )
+
+    assert [event.event_id for event in events] == [1, 2]
+    assert events[0].category is TaskEventCategory.GATE
