@@ -28,7 +28,7 @@ last_local_commit: d9ea76f
 
 - 已有代码风格：当前 `src/ainrf/execution/` 与 `src/ainrf/parsing/` 均按“models / errors / implementation”拆分，P3 应复用这种子包组织，而不是堆到顶层单文件。
 - 已有质量基线：本地已通过 `pytest`、`ruff check`、`ty check`，说明可以按增量功能切片推进，不需要先做基线修复。
-- 长期约束：`PROJECT_BASIS.md` 要求所有关键编辑、验证和提交动作都落到 `docs/LLM-Working/worklog/YYYY-MM-DD.md`；P3 实施必须把这部分作为正式流程，而不是会话内约定。
+- 长期约束：`PROJECT_BASIS.md` 要求按已完成的修改计划 / 工作批次向 `docs/LLM-Working/worklog/YYYY-MM-DD.md` 追加 changelog；P3 实施必须把这部分作为正式流程，而不是会话内约定。
 - 当前工作树存在与 P3 无关的文档改动；实施时需要路径级隔离提交，不得回滚他人未提交内容。
 
 ## 范围界定

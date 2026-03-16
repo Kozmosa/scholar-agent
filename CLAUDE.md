@@ -97,8 +97,9 @@ Important: never edit files under `.cache/html-notes/` or `site/` — they are g
 - `docs/LLM-Working/` is the repository's versioned area for working notes and agent-side execution records.
 - Daily work logs must be stored in `docs/LLM-Working/worklog/` with one append-only file per day named `YYYY-MM-DD.md`.
 - At the start of work, create today's file if it does not exist yet, then keep appending to that same file throughout the day.
-- Every key action requires its own appended log entry: file modification batch, development batch, validation/build/test command, and commit action all count.
-- Each entry must include at least the timestamp, action type, and concise summary. Commit entries must also include the commit hash and commit subject after the commit is created.
+- The default unit is one changelog entry per completed modification plan or work slice, not one line per edit, validation, or commit action.
+- Each changelog entry must include the timestamp, the completed slice label, a concise summary of what changed, and the validation result. If commits were produced in that slice, append the commit hash and subject in the same entry.
+- Do not treat the worklog as a transcript of commit messages or atomic slice labels; summarize the completed batch in higher-level changelog form.
 
 ## Code Quality
 

@@ -182,8 +182,6 @@ gantt
 > FastAPI 服务是框架的对外接口层（详见 [[framework/v1-rfc]]）。本阶段交付 API 骨架、认证和所有端点的 request/response models。
 >
 > 结合当前仓库已落地的 `execution`、`artifacts`、`state` 模块边界与本地 daemon 约束，P4 的具体实施规划见 [[LLM-Working/p4-fastapi-service-auth-implementation-plan]]。
->
-> 结合当前仓库已落地的 `execution`、`artifacts`、`state` 模块边界与本地 daemon 约束，P4 的具体实施规划见 [[LLM-Working/p4-fastapi-service-auth-implementation-plan]]。
 
 **交付物：**
 

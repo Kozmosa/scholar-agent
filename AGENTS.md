@@ -25,8 +25,9 @@ Reference repositories live under `ref-repos/` and are treated as read-only rese
 - `docs/LLM-Working/` is versioned working memory for plans, checklists, smoke notes, and agent-side implementation records.
 - Daily work logs must live under `docs/LLM-Working/worklog/` using one file per day named `YYYY-MM-DD.md`.
 - Before or during a work session, if today's file does not exist yet, create it first and keep appending to that same file for the rest of the day.
-- Every key action must append one new log entry on the same day: file-edit batch, development/implementation batch, validation command run, and commit action all count.
-- Each log entry must record at least the time, action type, and a concise summary. Commit entries must also record the commit hash and subject once available.
+- The default unit is one changelog entry per completed modification plan or work slice, not one line per atomic edit/validation/commit action.
+- Each changelog entry must record at least the time, the completed slice or plan label, the substantive change summary, and the validation outcome. If that slice produced commits, append the commit hash and subject in the same entry.
+- Do not use the worklog as a transcript of commit subjects or atomic slice labels; summarize what the completed batch actually changed and verified.
 - Treat the worklog as append-only session history. Do not silently rewrite earlier entries unless you are correcting an objective factual mistake.
 
 ## Build, Test, and Development Commands

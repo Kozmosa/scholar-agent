@@ -21,8 +21,10 @@
 - 文档文件名使用英文 slug，正文以中文为主，优先使用 Obsidian 双链格式，例如 `[[framework/v1-rfc]]`。
 - 会话日志、实现复盘或 agent 中间产物，存放于`docs/LLM-Working/` 当中。
 - 每日工作日志固定存放于 `docs/LLM-Working/worklog/`，按天创建 `YYYY-MM-DD.md` 文件，并在同一日内持续追加。
-- 每个关键动作都必须在当日工作日志中追加一条记录：文件修改批次、开发实现批次、验证命令执行、提交动作均属于必须记账的范围。
-- 每条工作日志至少包含时间、动作类型和简要摘要；提交动作在 hash 产生后还需补充 commit hash 与 commit 首行。
+- 工作日志默认按“每个已完成的修改计划 / 工作批次追加一条 changelog”记账，不把同一批次里的 edit、validation、commit 强拆成多条流水账。
+- 每条 changelog 至少包含时间、批次或计划名、实际改动摘要与验证结论；若该批次产生 commit，在同一条末尾补充 commit hash 与 commit 首行。
+- changelog 应总结“这一批完成了什么、影响了哪些部分、验证结果如何”，不要简单复述 commit message 或原子提交标题。
+- 示例：`2026-03-16 10:40 changelog：完成 P3 worklog 规则调整，统一仓库级约束并同步修订 P3 规划说明；执行 docs build 成功；关联提交：abcd123 docs: revise worklog policy`
 
 ## 工程编码风格与规范
 
