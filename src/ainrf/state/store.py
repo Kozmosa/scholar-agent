@@ -162,7 +162,9 @@ class JsonStateStore:
 
     def save_task(self, task: TaskRecord) -> Path:
         task_path = self._task_path(task.task_id)
-        self._write_json(task_path, task.model_dump(mode="json"))
+        payload = task.model_dump(mode="json")
+        payload["config"] = task.sanitized_config()
+        self._write_json(task_path, payload)
         return task_path
 
     def load_task(self, task_id: str) -> TaskRecord | None:

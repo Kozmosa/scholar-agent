@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -9,6 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+JsonValue = Any
 
 
 class ArtifactType(StrEnum):
@@ -220,6 +224,10 @@ class HumanGate(LifecycleArtifactModel):
     status: HumanGateStatus
     gate_type: GateType
     summary: str
+    payload: dict[str, JsonValue] = Field(default_factory=dict)
+    deadline_at: datetime | None = None
+    resolved_at: datetime | None = None
+    reminder_sent_at: datetime | None = None
     feedback: str | None = None
     auto_approved: bool = False
 

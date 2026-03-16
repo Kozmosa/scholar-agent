@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import Request
 
 from ainrf.api.config import ApiConfig
+from ainrf.gates import HumanGateManager
 from ainrf.state import JsonStateStore
 
 
@@ -12,3 +13,7 @@ def get_api_config(request: Request) -> ApiConfig:
 
 def get_state_store(request: Request) -> JsonStateStore:
     return request.app.state.state_store
+
+
+def get_gate_manager(request: Request) -> HumanGateManager:
+    return request.app.state.gate_manager

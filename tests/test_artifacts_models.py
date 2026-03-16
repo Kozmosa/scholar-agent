@@ -52,6 +52,7 @@ def test_human_gate_terminal_transition_is_rejected() -> None:
         status=HumanGateStatus.WAITING,
         gate_type=GateType.PLAN_APPROVAL,
         summary="Need approval",
+        payload={"mode": "deep_reproduction", "summary": "Review plan"},
     ).transition_to(HumanGateStatus.APPROVED)
 
     with pytest.raises(InvalidTransitionError):
@@ -116,3 +117,17 @@ def test_resource_usage_defaults_are_optional() -> None:
 
     assert manifest.budget_limit.gpu_hours == 24
     assert manifest.budget_used.api_cost_usd is None
+
+
+def test_human_gate_payload_round_trip() -> None:
+    gate = HumanGate(
+        artifact_id="gate-002",
+        status=HumanGateStatus.WAITING,
+        gate_type=GateType.INTAKE,
+        summary="Need intake review",
+        payload={"paper_count": 1, "paper_titles": ["Attention Is All You Need"], "mode": "deep_reproduction", "yolo": False},
+    )
+
+    payload = gate.model_dump(mode="json")
+
+    assert payload["payload"]["paper_count"] == 1

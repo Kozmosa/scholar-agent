@@ -228,6 +228,23 @@ def test_list_resumable_tasks_filters_terminal_records(tmp_path: Path) -> None:
     assert [task.task_id for task in resumable] == ["t-001"]
 
 
+def test_save_task_sanitizes_webhook_secret_from_persisted_config(tmp_path: Path) -> None:
+    store = JsonStateStore(tmp_path)
+    task = TaskRecord(
+        task_id="t-001",
+        mode=TaskMode.DEEP_REPRODUCTION,
+        status=TaskStage.SUBMITTED,
+        checkpoint=TaskCheckpoint(current_stage=TaskStage.SUBMITTED),
+        config={"webhook_url": "https://example.com/hooks/ainrf", "webhook_secret": "secret"},
+    )
+
+    store.save_task(task)
+
+    payload = json.loads((tmp_path / "tasks" / "t-001.json").read_text(encoding="utf-8"))
+    assert payload["config"]["webhook_url"] == "https://example.com/hooks/ainrf"
+    assert "webhook_secret" not in payload["config"]
+
+
 def test_relation_index_tracks_saved_artifacts(tmp_path: Path) -> None:
     store = JsonStateStore(tmp_path)
     paper_card = PaperCard(

@@ -130,7 +130,23 @@ class GateRecordResponse(BaseModel):
     gate_type: GateType
     status: HumanGateStatus
     at: datetime
+    resolved_at: datetime | None = None
     feedback: str | None = None
+
+
+class ActiveGateResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    gate_id: str
+    gate_type: GateType
+    status: HumanGateStatus
+    summary: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+    deadline_at: datetime | None = None
+    resolved_at: datetime | None = None
+    reminder_sent_at: datetime | None = None
+    feedback: str | None = None
+    auto_approved: bool = False
 
 
 class ArtifactSummaryResponse(BaseModel):
@@ -156,6 +172,7 @@ class TaskDetailResponse(TaskSummaryResponse):
     budget_limit: ResourceUsage
     budget_used: ResourceUsage
     gates: list[GateRecordResponse] = Field(default_factory=list)
+    active_gate: ActiveGateResponse | None = None
     artifact_summary: ArtifactSummaryResponse
     config: dict[str, Any] = Field(default_factory=dict)
 

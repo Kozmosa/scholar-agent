@@ -5,7 +5,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ainrf.artifacts import ArtifactRef, GateType, HumanGateStatus, ResourceUsage
+from ainrf.artifacts import ArtifactRef, GateType, HumanGateStatus, JsonValue, ResourceUsage
 
 
 def utc_now() -> datetime:
@@ -35,6 +35,7 @@ class GateRecord(BaseModel):
     gate_type: GateType
     status: HumanGateStatus
     at: datetime = Field(default_factory=utc_now)
+    resolved_at: datetime | None = None
     feedback: str | None = None
 
 
@@ -70,6 +71,11 @@ class TaskRecord(BaseModel):
     budget_used: ResourceUsage = Field(default_factory=ResourceUsage)
     gates: list[GateRecord] = Field(default_factory=list)
     termination_reason: str | None = None
+
+    def sanitized_config(self) -> dict[str, JsonValue]:
+        sanitized = dict(self.config)
+        sanitized.pop("webhook_secret", None)
+        return sanitized
 
 
 class ArtifactQuery(BaseModel):

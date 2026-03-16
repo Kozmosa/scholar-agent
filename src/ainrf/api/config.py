@@ -26,6 +26,9 @@ class ApiConfig:
     api_key_hashes: frozenset[str]
     state_root: Path
     container_config: ContainerConfig | None = None
+    gate_timeout_seconds: int = 3600
+    gate_sweep_interval_seconds: int = 30
+    webhook_timeout_seconds: float = 10.0
 
     @classmethod
     def from_env(cls, state_root: Path | None = None) -> ApiConfig:
@@ -47,10 +50,17 @@ class ApiConfig:
         except ValueError:
             container_config = None
 
+        gate_timeout_seconds = int(os.environ.get("AINRF_GATE_TIMEOUT_SECONDS", "3600"))
+        gate_sweep_interval_seconds = int(os.environ.get("AINRF_GATE_SWEEP_INTERVAL_SECONDS", "30"))
+        webhook_timeout_seconds = float(os.environ.get("AINRF_WEBHOOK_TIMEOUT_SECONDS", "10"))
+
         return cls(
             api_key_hashes=api_key_hashes,
             state_root=resolved_state_root,
             container_config=container_config,
+            gate_timeout_seconds=gate_timeout_seconds,
+            gate_sweep_interval_seconds=gate_sweep_interval_seconds,
+            webhook_timeout_seconds=webhook_timeout_seconds,
         )
 
     @staticmethod

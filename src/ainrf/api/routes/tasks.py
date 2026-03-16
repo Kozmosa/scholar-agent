@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import UTC, datetime
+import logging
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 
-from ainrf.api.dependencies import get_state_store
+from ainrf.api.dependencies import get_gate_manager, get_state_store
 from ainrf.api.schemas import (
+    ActiveGateResponse,
     ArtifactItemResponse,
     ArtifactSummaryResponse,
     GateRecordResponse,
@@ -20,8 +22,11 @@ from ainrf.api.schemas import (
     TaskRejectRequest,
     TaskSummaryResponse,
 )
-from ainrf.artifacts import ArtifactRecord, ArtifactType
+from ainrf.artifacts import ArtifactRecord, ArtifactType, GateType, HumanGate, HumanGateStatus
+from ainrf.gates import GateConflictError, GateNotFoundError, GateResolutionError, IntakeGatePayload
 from ainrf.state import ArtifactQuery, JsonStateStore, TaskCheckpoint, TaskRecord, TaskStage
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -67,6 +72,23 @@ def _artifact_item(artifact: ArtifactRecord) -> ArtifactItemResponse:
     )
 
 
+def _active_gate_response(active_gate: HumanGate | None) -> ActiveGateResponse | None:
+    if active_gate is None:
+        return None
+    return ActiveGateResponse(
+        gate_id=active_gate.artifact_id,
+        gate_type=active_gate.gate_type,
+        status=active_gate.status,
+        summary=active_gate.summary,
+        payload=active_gate.payload,
+        deadline_at=active_gate.deadline_at,
+        resolved_at=active_gate.resolved_at,
+        reminder_sent_at=active_gate.reminder_sent_at,
+        feedback=active_gate.feedback,
+        auto_approved=active_gate.auto_approved,
+    )
+
+
 def _task_artifacts(store: JsonStateStore, task_id: str) -> list[ArtifactRecord]:
     artifacts: list[ArtifactRecord] = []
     for artifact_type in ArtifactType:
@@ -74,9 +96,17 @@ def _task_artifacts(store: JsonStateStore, task_id: str) -> list[ArtifactRecord]
     return artifacts
 
 
+def _load_task_or_404(store: JsonStateStore, task_id: str) -> TaskRecord:
+    task = store.load_task(task_id)
+    if task is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    return task
+
+
 @router.post("", response_model=TaskCreateResponse, status_code=status.HTTP_201_CREATED)
 async def create_task(request: Request, payload: TaskCreateRequest) -> TaskCreateResponse:
     store = get_state_store(request)
+    gate_manager = get_gate_manager(request)
     task_id = _build_task_id()
     now = _utc_now()
     task = TaskRecord(
@@ -93,7 +123,28 @@ async def create_task(request: Request, payload: TaskCreateRequest) -> TaskCreat
         ),
     )
     store.save_task(task)
-    return TaskCreateResponse(task_id=task_id, status=task.status)
+    gate_manager.register_secret(task_id, payload.webhook_secret)
+
+    intake_payload = IntakeGatePayload(
+        mode=payload.mode.value,
+        paper_titles=[paper.title for paper in payload.papers],
+        paper_count=len(payload.papers),
+        yolo=payload.yolo,
+    )
+    updated_task, gate = await gate_manager.trigger_gate(
+        task=task,
+        gate_type=GateType.INTAKE,
+        summary=f"Review intake for {len(payload.papers)} paper(s)",
+        payload=intake_payload.model_dump(mode="json"),
+        yolo=payload.yolo,
+    )
+    if not payload.yolo:
+        try:
+            await gate_manager.send_waiting_webhook(task=updated_task, gate=gate)
+        except Exception:
+            logger.exception("Failed to deliver intake gate webhook", extra={"task_id": task_id})
+
+    return TaskCreateResponse(task_id=task_id, status=updated_task.status)
 
 
 @router.get("", response_model=TaskListResponse)
@@ -109,15 +160,19 @@ async def list_tasks(
 @router.get("/{task_id}", response_model=TaskDetailResponse)
 async def get_task(request: Request, task_id: str) -> TaskDetailResponse:
     store = get_state_store(request)
-    task = store.load_task(task_id)
-    if task is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    gate_manager = get_gate_manager(request)
+    task = _load_task_or_404(store, task_id)
     artifacts = _task_artifacts(store, task_id)
+    try:
+        active_gate = gate_manager.get_active_gate(task_id)
+    except GateConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return TaskDetailResponse(
         **_task_summary(task).model_dump(),
         budget_limit=task.budget_limit,
         budget_used=task.budget_used,
         gates=[GateRecordResponse.model_validate(gate.model_dump(mode="json")) for gate in task.gates],
+        active_gate=_active_gate_response(active_gate),
         artifact_summary=_artifact_summary(artifacts),
         config=task.config,
     )
@@ -126,20 +181,44 @@ async def get_task(request: Request, task_id: str) -> TaskDetailResponse:
 @router.post("/{task_id}/cancel", response_model=TaskActionResponse)
 async def cancel_task(request: Request, task_id: str) -> TaskActionResponse:
     store = get_state_store(request)
-    task = store.load_task(task_id)
-    if task is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    gate_manager = get_gate_manager(request)
+    task = _load_task_or_404(store, task_id)
     if task.status in _TERMINAL_STAGES:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Task is already terminal",
         )
 
+    now = _utc_now()
+    try:
+        active_gate = gate_manager.get_active_gate(task_id)
+    except GateConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if active_gate is not None:
+        cancelled_gate = active_gate.transition_to(HumanGateStatus.CANCELLED).model_copy(
+            update={"resolved_at": now, "updated_at": now}
+        )
+        store.save_artifact(cancelled_gate)
+        task_gates = [
+            gate.model_copy(
+                update={
+                    "status": HumanGateStatus.CANCELLED,
+                    "resolved_at": now,
+                }
+            )
+            if gate.gate_id == active_gate.artifact_id
+            else gate
+            for gate in task.gates
+        ]
+    else:
+        task_gates = task.gates
+
     cancelled = task.model_copy(
         update={
             "status": TaskStage.CANCELLED,
-            "updated_at": _utc_now(),
+            "updated_at": now,
             "checkpoint": task.checkpoint.model_copy(update={"current_stage": TaskStage.CANCELLED}),
+            "gates": task_gates,
         }
     )
     store.save_task(cancelled)
@@ -153,9 +232,7 @@ async def cancel_task(request: Request, task_id: str) -> TaskActionResponse:
 @router.get("/{task_id}/artifacts", response_model=TaskArtifactsResponse)
 async def get_task_artifacts(request: Request, task_id: str) -> TaskArtifactsResponse:
     store = get_state_store(request)
-    task = store.load_task(task_id)
-    if task is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    _load_task_or_404(store, task_id)
     artifacts = [_artifact_item(artifact) for artifact in _task_artifacts(store, task_id)]
     return TaskArtifactsResponse(task_id=task_id, items=artifacts)
 
@@ -163,23 +240,51 @@ async def get_task_artifacts(request: Request, task_id: str) -> TaskArtifactsRes
 @router.post("/{task_id}/approve", response_model=TaskActionResponse)
 async def approve_task(request: Request, task_id: str) -> TaskActionResponse:
     store = get_state_store(request)
-    if store.load_task(task_id) is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Task approval is planned for P5")
+    gate_manager = get_gate_manager(request)
+    task = _load_task_or_404(store, task_id)
+    try:
+        updated_task, gate = await gate_manager.resolve_current_gate(
+            task=task,
+            approved=True,
+            feedback=None,
+        )
+    except GateNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except (GateConflictError, GateResolutionError) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    return TaskActionResponse(
+        task_id=task_id,
+        status=updated_task.status,
+        detail=f"{gate.gate_type.value} gate approved",
+    )
 
 
 @router.post("/{task_id}/reject", response_model=TaskActionResponse)
 async def reject_task(request: Request, task_id: str, payload: TaskRejectRequest) -> TaskActionResponse:
     store = get_state_store(request)
-    if store.load_task(task_id) is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
-    _ = payload
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Task rejection is planned for P5")
+    gate_manager = get_gate_manager(request)
+    task = _load_task_or_404(store, task_id)
+    try:
+        updated_task, gate = await gate_manager.resolve_current_gate(
+            task=task,
+            approved=False,
+            feedback=payload.feedback,
+        )
+    except GateNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except (GateConflictError, GateResolutionError) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    return TaskActionResponse(
+        task_id=task_id,
+        status=updated_task.status,
+        detail=f"{gate.gate_type.value} gate rejected",
+    )
 
 
 @router.get("/{task_id}/events")
 async def task_events(request: Request, task_id: str) -> Response:
     store = get_state_store(request)
-    if store.load_task(task_id) is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    _load_task_or_404(store, task_id)
     raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Task events are planned for P6")

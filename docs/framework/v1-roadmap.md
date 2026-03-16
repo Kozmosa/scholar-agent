@@ -221,23 +221,25 @@ gantt
 
 > [!info]
 > 人工关卡是有界自治的核心机制（详见 [[framework/ai-native-research-framework]] 和 [[framework/v1-dual-mode-research-engine]]）。V1 保留两个显式关卡：纳入关卡和计划关卡。
+>
+> 结合当前仓库已落地的 P4 task-scoped 路由、`HumanGate` artifact 与本地 state read model，P5 的具体实施规划见 [[LLM-Working/p5-human-gate-webhook-implementation-plan]]。
 
 **交付物：**
 
 - `HumanGateManager` 类：管理关卡的创建、等待、审批/拒绝生命周期
-- 关卡类型：`inclusion`（纳入关卡）和 `plan`（计划关卡），各有专属的 payload schema
+- 关卡类型：`intake`（纳入关卡）和 `plan_approval`（计划关卡），各有专属的 payload schema
 - Webhook 发送：关卡触发时向配置的 URL 发送 POST 请求，包含关卡详情和审批链接
 - 审批端点：
-  - `POST /gates/{id}/approve` — 附带可选的修改意见
-  - `POST /gates/{id}/reject` — 附带拒绝原因
-  - `GET /gates/pending` — 列出所有待审批关卡
+  - `POST /tasks/{id}/approve` — 审批当前 waiting gate
+  - `POST /tasks/{id}/reject` — 拒绝当前 waiting gate，并可附带反馈
+  - `GET /tasks?status=gate_waiting` — 列出所有待审批任务
 - Yolo 模式旁路：配置 `yolo: true` 时自动批准所有关卡，用于测试和信任场景
 - 超时处理：关卡超过配置时间未审批 → 自动暂停任务 + 发送提醒 webhook
 **可测试标准：**
 
 - 任务到达纳入关卡 → webhook POST 发出 → 包含 gate_id 和 payload
-- `POST /gates/{id}/approve` → 关卡状态变为 `approved` → 任务继续执行
-- `POST /gates/{id}/reject` → 关卡状态变为 `rejected` → 任务终止并记录原因
+- `POST /tasks/{id}/approve` → 当前 waiting gate 变为 `approved` → 任务继续执行
+- `POST /tasks/{id}/reject` → 当前 waiting gate 变为 `rejected` → 任务按 gate 语义回退或终止
 - Yolo 模式开启 → 关卡创建后立即自动批准 → 不发送 webhook → 任务无阻塞
 - 关卡超时 → 任务暂停 → 提醒 webhook 发出 → 人工审批后恢复
 
