@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from pathlib import Path
+
+import pytest
 
 from ainrf.agents import ClaudeCodeAdapter
 from ainrf.agents.base import AgentExecutionError
 from ainrf.agents.claude_code import _REMOTE_RUNNER_SOURCE
 from ainrf.engine.models import AtomicTaskSpec
 from ainrf.execution import CommandResult, CommandTimeoutError, ContainerConfig
+from ainrf.execution import SSHExecutor
 
 
 class FakeSSHExecutor:
@@ -323,3 +327,38 @@ def test_execute_step_parses_compare_tables_step_updates() -> None:
 
     assert result.status == "succeeded"
     assert "table_comparisons" in result.step_updates
+
+
+@pytest.mark.skipif(
+    not os.environ.get("AINRF_CONTAINER_HOST"),
+    reason="AINRF_CONTAINER_HOST not set; real adapter smoke test requires container access",
+)
+def test_claude_code_adapter_e2e_smoke_with_real_runtime() -> None:
+    adapter = ClaudeCodeAdapter(executor_factory=SSHExecutor)
+    container = ContainerConfig.from_env()
+
+    asyncio.run(adapter.bootstrap(container))
+    assert asyncio.run(adapter.health_check(container)) is True
+
+    plan = asyncio.run(
+        adapter.plan_reproduction(
+            container=container,
+            prompt="Generate a minimal runnable reproduction plan.",
+            context={
+                "task_id": "smoke-task",
+                "task_mode": "deep_reproduction",
+                "paper_card": {"artifact_id": "pc-smoke"},
+                "task_config": {"config": {"mode_2": {"target_tables": []}}},
+            },
+        )
+    )
+    assert plan.steps
+
+    result = asyncio.run(
+        adapter.execute_step(
+            container=container,
+            step=plan.steps[0],
+            context={"task_id": "smoke-task", "config": {}},
+        )
+    )
+    assert result.status in {"succeeded", "failed"}

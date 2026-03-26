@@ -172,6 +172,112 @@ class FakeAdapter(AgentAdapter):
         )
 
 
+class RankingAdapter(FakeAdapter):
+    async def plan_reproduction(
+        self,
+        *,
+        container: object,
+        prompt: str,
+        context: dict[str, object],
+    ) -> TaskPlanResult:
+        _ = container, prompt, context
+        return TaskPlanResult(
+            summary="Ranking-heavy discovery plan",
+            milestones=["Extract", "Rank", "Explore", "Report"],
+            estimated_steps=4,
+            strategy="research-discovery",
+            target_paper_id="pc-001",
+            success_criteria=["rank and prune references"],
+            steps=[
+                AtomicTaskSpec(
+                    step_id="m1-step-1",
+                    kind="extract_references",
+                    title="Extract references",
+                    payload={},
+                ),
+                AtomicTaskSpec(
+                    step_id="m1-step-2",
+                    kind="prioritize_references",
+                    title="Prioritize references",
+                    payload={},
+                ),
+                AtomicTaskSpec(
+                    step_id="m1-step-3",
+                    kind="check_termination",
+                    title="Check termination",
+                    payload={},
+                ),
+                AtomicTaskSpec(
+                    step_id="m1-step-4",
+                    kind="generate_discovery_report",
+                    title="Generate report",
+                    payload={},
+                ),
+            ],
+        )
+
+    async def execute_step(
+        self,
+        *,
+        container: object,
+        step: AtomicTaskSpec,
+        context: dict[str, object],
+    ) -> TaskExecutionResult:
+        _ = container, context
+        if step.kind == "extract_references":
+            return TaskExecutionResult(
+                status="succeeded",
+                summary="Extracted candidates",
+                resource_usage={"gpu_hours": 0.0, "api_cost_usd": 0.1, "wall_clock_hours": 0.01},
+                step_updates={
+                    "reference_candidates": [
+                        {"paper_id": "pc-ref-001", "score": 0.91, "novelty": 0.7, "method_diff": 0.6, "citation_count": 130},
+                        {"paper_id": "pc-ref-002", "score": 0.83, "novelty": 0.62, "method_diff": 0.58, "citation_count": 80},
+                        {"paper_id": "pc-ref-003", "score": 0.64, "novelty": 0.54, "method_diff": 0.49, "citation_count": 34},
+                    ]
+                },
+            )
+        if step.kind == "prioritize_references":
+            return TaskExecutionResult(
+                status="succeeded",
+                summary="Prioritized candidates",
+                resource_usage={"gpu_hours": 0.0, "api_cost_usd": 0.1, "wall_clock_hours": 0.01},
+                step_updates={
+                    "ranked_references": [
+                        {"paper_id": "pc-ref-001", "score": 0.91, "novelty": 0.7, "method_diff": 0.6, "citation_count": 130},
+                        {"paper_id": "pc-ref-002", "score": 0.83, "novelty": 0.62, "method_diff": 0.58, "citation_count": 80},
+                    ]
+                },
+            )
+        if step.kind == "explore_paper":
+            payload = step.payload
+            paper_id = str(payload.get("paper_id", "pc-unknown"))
+            raw_depth = payload.get("depth")
+            depth = int(raw_depth) if isinstance(raw_depth, int | float) else 1
+            return TaskExecutionResult(
+                status="succeeded",
+                summary=f"Explored {paper_id}",
+                resource_usage={"gpu_hours": 0.0, "api_cost_usd": 0.1, "wall_clock_hours": 0.01},
+                step_updates={
+                    "exploration": {
+                        "paper_id": paper_id,
+                        "visited_paper_ids": [paper_id],
+                        "queued_paper_ids": [],
+                        "current_depth": depth,
+                        "new_claims": [],
+                    }
+                },
+            )
+        if step.kind == "check_termination":
+            return TaskExecutionResult(
+                status="succeeded",
+                summary="Continue",
+                resource_usage={"gpu_hours": 0.0, "api_cost_usd": 0.0, "wall_clock_hours": 0.0},
+                step_updates={"termination": {"should_terminate": False, "reason": "continue"}},
+            )
+        return await super().execute_step(container=container, step=step, context=context)
+
+
 def make_task(tmp_path: Path, *, mode: TaskMode = TaskMode.DEEP_REPRODUCTION, yolo: bool = False) -> TaskRecord:
     pdf_path = tmp_path / "paper.pdf"
     pdf_path.write_bytes(b"%PDF-1.4")
@@ -305,6 +411,70 @@ def test_run_once_executes_research_discovery_mode(tmp_path: Path) -> None:
 
     claims = store.query_artifacts(ArtifactType.CLAIM)
     assert claims
+
+
+def test_mode1_ranking_and_pruning_fields_are_persisted(tmp_path: Path) -> None:
+    adapter = RankingAdapter()
+    engine, store, _gate_manager = make_engine(tmp_path, adapter=adapter)
+    task = make_task(tmp_path, mode=TaskMode.RESEARCH_DISCOVERY, yolo=True)
+    task = task.model_copy(
+        update={
+            "config": {
+                **task.config,
+                "config": {
+                    "mode_1": {
+                        "max_depth": 3,
+                        "max_breadth": 2,
+                        "max_no_claim_rounds": 1,
+                    }
+                },
+            }
+        }
+    )
+    store.save_task(task)
+
+    for _ in range(8):
+        asyncio.run(engine.run_once())
+
+    graphs = store.query_artifacts(ArtifactType.EXPLORATION_GRAPH)
+    assert len(graphs) == 1
+    graph = graphs[0]
+    assert isinstance(graph, ExplorationGraph)
+    assert graph.max_breadth == 2
+    assert len(graph.ranked_reference_ids) <= 2
+    assert graph.pruned_paper_ids
+    assert graph.reference_scores
+
+
+def test_mode1_auto_expands_explore_steps_from_ranked_queue(tmp_path: Path) -> None:
+    adapter = RankingAdapter()
+    engine, store, _gate_manager = make_engine(tmp_path, adapter=adapter)
+    task = make_task(tmp_path, mode=TaskMode.RESEARCH_DISCOVERY, yolo=True)
+    task = task.model_copy(
+        update={
+            "config": {
+                **task.config,
+                "config": {
+                    "mode_1": {
+                        "max_depth": 3,
+                        "max_breadth": 2,
+                        "max_no_claim_rounds": 3,
+                    }
+                },
+            }
+        }
+    )
+    store.save_task(task)
+
+    asyncio.run(engine.run_once())
+    asyncio.run(engine.run_once())
+    asyncio.run(engine.run_once())
+
+    current = store.load_task("t-001")
+    assert current is not None
+    pending_steps = [item.step for item in current.checkpoint.pending_queue]
+    assert pending_steps[0] == "explore_paper"
+    assert "generate_discovery_report" in pending_steps
 
 
 def test_run_once_completes_when_budget_exhausted(tmp_path: Path) -> None:
