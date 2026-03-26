@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 import json
+import os
 import shlex
 from pathlib import Path
 from typing import Annotated
@@ -12,6 +13,7 @@ import typer
 
 from ainrf.agents import ClaudeCodeAdapter
 from ainrf import __version__
+from ainrf.api.config import hash_api_key
 from ainrf.engine.engine import EngineContext, TaskEngine
 from ainrf.events import JsonlTaskEventStore, TaskEventService
 from ainrf.gates import HumanGateManager, WebhookDispatcher
@@ -60,9 +62,7 @@ def main_callback(
 def serve(
     host: Annotated[str, typer.Option(help="Bind host for the future API server.")] = "127.0.0.1",
     port: Annotated[int, typer.Option(help="Bind port for the future API server.")] = 8000,
-    daemon: Annotated[
-        bool, typer.Option(help="Run the API server in the background.")
-    ] = False,
+    daemon: Annotated[bool, typer.Option(help="Run the API server in the background.")] = False,
     state_root: Annotated[
         Path,
         typer.Option(help="State root for task records, artifacts, and daemon runtime files."),
@@ -76,6 +76,7 @@ def serve(
         typer.Option(help="Optional log file path for daemon mode."),
     ] = None,
 ) -> None:
+    _ensure_api_key_hashes_configured(state_root)
     if daemon:
         runtime_dir = state_root / "runtime"
         resolved_pid_file = pid_file or runtime_dir / "ainrf-api.pid"
@@ -104,7 +105,9 @@ def run(
     engine = build_task_engine(state_root)
     if once:
         ran = asyncio.run(async_once(engine))
-        typer.echo("AINRF worker processed one task." if ran else "AINRF worker found no runnable tasks.")
+        typer.echo(
+            "AINRF worker processed one task." if ran else "AINRF worker found no runnable tasks."
+        )
         return
     asyncio.run(async_forever(engine, poll_interval))
 
@@ -122,7 +125,9 @@ def webui(
         typer.Option(help="Local state root for WebUI project records and run registry."),
     ] = default_state_root(),
 ) -> None:
-    launch_webui(WebUiConfig(host=host, port=port, api_base_url=api_base_url, state_root=state_root))
+    launch_webui(
+        WebUiConfig(host=host, port=port, api_base_url=api_base_url, state_root=state_root)
+    )
 
 
 @container_app.command("add")
@@ -295,3 +300,33 @@ def _load_runtime_config(config_path: Path) -> dict[str, Any]:
 def _save_runtime_config(config_path: Path, payload: dict[str, Any]) -> None:
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
+
+
+def _ensure_api_key_hashes_configured(state_root: Path) -> None:
+    env_hashes = os.environ.get("AINRF_API_KEY_HASHES", "").strip()
+    if env_hashes:
+        return
+    config_path = state_root / "config.json"
+    payload = _load_runtime_config(config_path)
+    hashes = payload.get("api_key_hashes")
+    if isinstance(hashes, list) and any(isinstance(item, str) and item for item in hashes):
+        return
+    typer.echo("No API key hashes configured. Starting interactive bootstrap.")
+    try:
+        api_key = typer.prompt(
+            "API key for AINRF clients",
+            hide_input=True,
+            confirmation_prompt=True,
+        ).strip()
+    except (
+        EOFError,
+        typer.Abort,
+    ) as exc:  # pragma: no cover - defensive for non-interactive shells
+        raise typer.BadParameter(
+            "AINRF API key hashes are not configured. Set AINRF_API_KEY_HASHES or run `ainrf serve` interactively."
+        ) from exc
+    if not api_key:
+        raise typer.BadParameter("API key cannot be empty.")
+    payload["api_key_hashes"] = [hash_api_key(api_key)]
+    _save_runtime_config(config_path, payload)
+    typer.echo(f"Saved API key hash to `{config_path}`.")

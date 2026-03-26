@@ -10,6 +10,7 @@ import pytest
 from typer.testing import CliRunner
 
 from ainrf import __version__
+from ainrf.api.config import hash_api_key
 from ainrf.cli import _parse_ssh_command, app
 
 
@@ -86,7 +87,16 @@ def test_serve_daemon_runs_background_process(
     monkeypatch.setattr("ainrf.cli.run_server_daemon", fake_run_server_daemon)
     result = runner.invoke(
         app,
-        ["serve", "--host", "127.0.0.1", "--port", "8765", "--daemon", "--state-root", str(state_root)],
+        [
+            "serve",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8765",
+            "--daemon",
+            "--state-root",
+            str(state_root),
+        ],
         env={
             **os.environ,
             "AINRF_API_KEY_HASHES": "2bb80d537b1da3e38bd30361aa855686bde0baef694f41fbabd9831f0a0ff5ff",
@@ -100,6 +110,65 @@ def test_serve_daemon_runs_background_process(
     assert captured["state_root"] == state_root
     assert captured["pid_file"] == state_root / "runtime" / "ainrf-api.pid"
     assert captured["log_file"] == state_root / "runtime" / "ainrf-api.log"
+
+
+def test_serve_bootstraps_api_key_hashes_interactively(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_server(host: str, port: int, state_root: Path) -> None:
+        captured["host"] = host
+        captured["port"] = port
+        captured["state_root"] = state_root
+
+    monkeypatch.delenv("AINRF_API_KEY_HASHES", raising=False)
+    monkeypatch.setattr("ainrf.cli.run_server", fake_run_server)
+
+    result = runner.invoke(
+        app,
+        ["serve", "--state-root", str(tmp_path)],
+        input="bootstrap-secret\nbootstrap-secret\n",
+    )
+
+    assert result.exit_code == 0
+    assert captured == {"host": "127.0.0.1", "port": 8000, "state_root": tmp_path}
+    payload = json.loads((tmp_path / "config.json").read_text(encoding="utf-8"))
+    assert payload["api_key_hashes"] == [hash_api_key("bootstrap-secret")]
+
+
+def test_serve_daemon_bootstraps_api_key_hashes_interactively(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_server_daemon(
+        host: str,
+        port: int,
+        state_root: Path,
+        pid_file: Path,
+        log_file: Path,
+    ) -> int:
+        captured["host"] = host
+        captured["port"] = port
+        captured["state_root"] = state_root
+        captured["pid_file"] = pid_file
+        captured["log_file"] = log_file
+        return 9001
+
+    monkeypatch.delenv("AINRF_API_KEY_HASHES", raising=False)
+    monkeypatch.setattr("ainrf.cli.run_server_daemon", fake_run_server_daemon)
+
+    result = runner.invoke(
+        app,
+        ["serve", "--daemon", "--state-root", str(tmp_path)],
+        input="daemon-secret\ndaemon-secret\n",
+    )
+
+    assert result.exit_code == 0
+    assert "pid=9001" in result.stdout
+    payload = json.loads((tmp_path / "config.json").read_text(encoding="utf-8"))
+    assert payload["api_key_hashes"] == [hash_api_key("daemon-secret")]
 
 
 def test_run_stub_runs() -> None:
