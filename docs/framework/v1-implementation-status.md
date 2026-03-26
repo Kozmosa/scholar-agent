@@ -149,7 +149,7 @@ last_local_commit: workspace aggregate
 
 **差异：**
 - ⚠️ **API 路径未加 `/v1/` 版本前缀**：[[framework/v1-rfc]] 建议"版本化 API（`/v1/`）"，但实际端点直接挂在根路径（如 `/tasks` 而非 `/v1/tasks`）。
-- ⚠️ **`TaskMode` 枚举命名差异**：RFC 定义为 `research_discovery | deep_reproduction`，实现为 `literature_exploration | deep_reproduction`。RFC 中有备注"代码实现需后续补迁移"。
+- ✅ **`TaskMode` 命名已完成迁移**：实现现使用 `research_discovery | deep_reproduction`；同时保留 `literature_exploration` 兼容解析，避免旧请求与历史任务回放中断。
 - 多 key 管理：✅ 支持（逗号分隔的 hash 列表）。
 
 **关键文件：**
@@ -273,19 +273,21 @@ last_local_commit: workspace aggregate
 
 **roadmap 要求：** 从种子材料出发的递归调研发现——需求澄清 → 文献扩展 → 图谱更新 → idea 发现 → 终止控制 → 调研报告。
 
-**当前状态：** 已实现 Mode 1 最小闭环：
-- [x] TaskEngine 对 `literature_exploration` 不再 fail-fast，进入 planning/executing 正常路径
+**当前状态：** 已实现 Mode 1 可运行闭环（含排序/递归控制，SDK 路径可选）：
+- [x] TaskEngine 对 `research_discovery` 不再 fail-fast，进入 planning/executing 正常路径
 - [x] planning 阶段创建/更新 `ExplorationGraph` 并走计划关卡
 - [x] 执行阶段消费 discovery 原子步骤并更新图谱（visited/queued/pruned/depth）
 - [x] 消费 `knowledge_graph_update`/`exploration.new_claims` 落库 `Claim`
 - [x] 消费 `check_termination` 的 `should_terminate/reason`，收敛到报告步骤并完成任务
+- [x] 引入参考打分与排序持久化（`reference_scores`/`ranked_reference_ids`）
+- [x] 引入 top-K 扩展与递归控制（`max_depth`/`max_breadth`/`max_no_claim_rounds`）
+- [x] 递归扩展时自动注入 `explore_paper` 步骤，包含去重与剪枝原因追踪
 - [x] fallback runner 提供 Mode 1 原子步骤与结构化 `step_updates`
-- [x] 单测覆盖：`tests/test_task_engine.py::test_run_once_executes_literature_exploration_mode`、`tests/test_claude_code_adapter.py::test_remote_runner_fallback_plan_contains_p9_atomic_steps`
+- [x] 单测覆盖：`tests/test_task_engine.py`（基础闭环 + 排序/递归扩展）、`tests/test_claude_code_adapter.py`（含可选真实运行时 smoke）
 
 **边界与后续增强（非阻塞 P9 完成）：**
-- [ ] 使用真实 `claude_code_sdk` 语义替换 Mode 1 fallback 结果
-- [ ] 引入更细粒度的引用打分信号（被引统计/方法差异/创新潜力）
-- [ ] 增加 Mode 1 专属 webhook payload 字段与端到端容器 smoke
+- [ ] 真实 `claude_code_sdk` 语义覆盖面继续扩展（当前仍保留 fallback 降级路径）
+- [ ] 增加 Mode 1 专属 webhook payload 字段（当前沿用通用 plan payload）
 
 ---
 
@@ -322,7 +324,7 @@ last_local_commit: workspace aggregate
 
 | 差异项 | 涉及阶段 | 详情 | 严重程度 |
 |--------|----------|------|----------|
-| Mode 1 枚举命名 | P4, RFC | RFC: `research_discovery`；代码: `literature_exploration` | 中 — 需要迁移 |
+| Mode 1 枚举命名 | P4, RFC | RFC 与代码均使用 `research_discovery`，并兼容 `literature_exploration` 旧值 | 已解决 |
 | API 路径无版本前缀 | P4 | RFC 建议 `/v1/`，实际为 `/tasks` | 低 — 可后续添加 |
 | AgentAdapter 工件类型缺失 | P3 | roadmap 列出但未实现为持久化工件 | 低 — 设计合理 |
 | CC SDK 未真实集成 | P7, P9 | 仍以 fallback 为主，SDK 真实语义待增强 | 中 — 主要影响生产质量与策略效果 |
