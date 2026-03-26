@@ -122,13 +122,20 @@ def _normalize_skill_step_updates(
                     if output_key in parsed:
                         return parsed
                     return {output_key: parsed}
-        return None
+        return {output_key: result_mapping}
     if isinstance(result, str):
         parsed = _extract_json_object(result)
         if parsed is not None:
             if output_key in parsed:
                 return parsed
             return {output_key: parsed}
+        if result.strip():
+            return {output_key: {"text": result.strip()}}
+        return None
+    if isinstance(result, list):
+        return {output_key: cast(list[object], result)}
+    if isinstance(result, int | float | bool):
+        return {output_key: result}
     return None
 
 

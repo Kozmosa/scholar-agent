@@ -302,6 +302,54 @@ def test_remote_runner_normalizes_skill_style_string_response() -> None:
     assert result["status"] == "succeeded"
 
 
+def test_normalize_skill_execution_result_wraps_plain_dict_under_output_key() -> None:
+    request = cast(
+        dict[str, object],
+        {
+            "step": {"kind": "run_baseline", "title": "Run baseline"},
+            "skill": {
+                "output_key": "metrics",
+                "skill_name": "run-experiment",
+                "objective": "Return baseline metrics.",
+            },
+        },
+    )
+
+    result = _normalize_skill_execution_result(
+        {"accuracy": 0.87, "f1": 0.83},
+        request,
+    )
+
+    assert isinstance(result, dict)
+    assert result["step_updates"] == {"metrics": {"accuracy": 0.87, "f1": 0.83}}
+
+
+def test_normalize_skill_execution_result_wraps_plain_text_under_output_key() -> None:
+    request = cast(
+        dict[str, object],
+        {
+            "step": {"kind": "generate_quality_assessment", "title": "Generate quality assessment"},
+            "skill": {
+                "output_key": "quality_assessment",
+                "skill_name": "research-review",
+                "objective": "Return a concise quality assessment.",
+            },
+        },
+    )
+
+    result = _normalize_skill_execution_result(
+        "Contribution is solid but reproducibility is still limited.",
+        request,
+    )
+
+    assert isinstance(result, dict)
+    assert result["step_updates"] == {
+        "quality_assessment": {
+            "text": "Contribution is solid but reproducibility is still limited."
+        }
+    }
+
+
 def test_health_check_returns_false_when_sdk_missing() -> None:
     FakeSSHExecutor.ensure_calls = 0
     adapter = ClaudeCodeAdapter(executor_factory=FakeSSHExecutor)
