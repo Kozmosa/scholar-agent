@@ -6,7 +6,7 @@ from typing import cast
 
 from ainrf.agents import AgentAdapter
 from ainrf.agents.base import AgentExecutionError
-from ainrf.artifacts import ArtifactType, ExperimentRun, QualityAssessment
+from ainrf.artifacts import ArtifactType, EvidenceRecord, EvidenceType, ExperimentRun, QualityAssessment
 from ainrf.engine.engine import EngineContext, TaskEngine
 from ainrf.engine.models import AtomicTaskSpec, TaskExecutionResult, TaskPlanResult
 from ainrf.events import JsonlTaskEventStore, TaskEventService
@@ -412,3 +412,68 @@ def test_run_once_produces_experiment_runs_and_quality_assessment(tmp_path: Path
     assert len(assessments) == 1
     assert isinstance(assessments[0], QualityAssessment)
     assert assessments[0].source_task_id == "t-001"
+
+
+def test_run_once_records_deviation_evidence_when_threshold_exceeded(tmp_path: Path) -> None:
+    class DeviationAdapter(FakeAdapter):
+        async def plan_reproduction(
+            self,
+            *,
+            container: object,
+            prompt: str,
+            context: dict[str, object],
+        ) -> TaskPlanResult:
+            _ = container, prompt, context
+            return TaskPlanResult(
+                summary="Deviation plan",
+                milestones=["Baseline"],
+                estimated_steps=1,
+                strategy="implement-from-paper",
+                target_paper_id="pc-001",
+                success_criteria=["detect deviation"],
+                steps=[
+                    AtomicTaskSpec(
+                        step_id="step-baseline",
+                        kind="run_baseline",
+                        title="Run baseline",
+                        payload={
+                            "expected_metrics": {"accuracy": 0.95},
+                            "deviation_threshold_percent": 5.0,
+                        },
+                    )
+                ],
+            )
+
+        async def execute_step(
+            self,
+            *,
+            container: object,
+            step: AtomicTaskSpec,
+            context: dict[str, object],
+        ) -> TaskExecutionResult:
+            _ = container, step, context
+            return TaskExecutionResult(
+                status="succeeded",
+                summary="Baseline completed",
+                step_updates={"metrics": {"accuracy": 0.80}},
+                resource_usage={"gpu_hours": 0.1, "api_cost_usd": 0.5, "wall_clock_hours": 0.05},
+            )
+
+    adapter = DeviationAdapter()
+    engine, store, _gate_manager = make_engine(tmp_path, adapter=adapter)
+    store.save_task(make_task(tmp_path, yolo=True))
+
+    asyncio.run(engine.run_once())
+    asyncio.run(engine.run_once())
+
+    evidence_items = store.query_artifacts(ArtifactType.EVIDENCE_RECORD)
+    assert len(evidence_items) == 1
+    evidence = evidence_items[0]
+    assert isinstance(evidence, EvidenceRecord)
+    assert evidence.evidence_type is EvidenceType.DEVIATION_ANALYSIS
+    assert evidence.source_task_id == "t-001"
+
+    events = JsonlTaskEventStore(tmp_path).list_events("t-001")
+    event_names = [item.event for item in events]
+    assert "deviation.detected" in event_names
+    assert "diagnosis.completed" in event_names

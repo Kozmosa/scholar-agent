@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -51,6 +52,7 @@ class EngineContext:
 
 class TaskEngine:
     _DEFAULT_MAX_STEP_RETRIES = 3
+    _DEFAULT_DEVIATION_THRESHOLD_PERCENT = 5.0
 
     def __init__(self, context: EngineContext) -> None:
         self._context = context
@@ -180,6 +182,7 @@ class TaskEngine:
             self._fail_task(task, reason="agent_execution_failed", detail=str(exc))
             return
         experiment_ref = self._record_experiment_run(task, step, result)
+        deviation_ref = self._record_deviation_evidence(task, step, result)
         updated = task.model_copy(
             update={
                 "updated_at": utc_now(),
@@ -206,6 +209,18 @@ class TaskEngine:
                     }
                 ),
                 "budget_used": self._merge_budget(task.budget_used, result.resource_usage),
+            }
+        )
+        updated = updated.model_copy(
+            update={
+                "checkpoint": updated.checkpoint.model_copy(
+                    update={
+                        "artifact_refs": self._upsert_artifact_ref_if_needed(
+                            updated.checkpoint.artifact_refs,
+                            deviation_ref,
+                        )
+                    }
+                )
             }
         )
         if self._budget_exhausted(updated):
@@ -625,6 +640,110 @@ class TaskEngine:
             artifact_id=run.artifact_id,
         )
 
+    def _record_deviation_evidence(
+        self,
+        task: TaskRecord,
+        step: AtomicTaskSpec,
+        result: TaskExecutionResult,
+    ) -> ArtifactRef | None:
+        if not self._is_experiment_step(step):
+            return None
+        expected_metrics = self._extract_expected_metrics(step.payload)
+        actual_metrics = self._extract_actual_metrics(result.step_updates)
+        if not expected_metrics or not actual_metrics:
+            return None
+        threshold_percent = self._extract_threshold_percent(step.payload)
+        deviations: list[dict[str, object]] = []
+        for metric, expected_value in expected_metrics.items():
+            actual_value = actual_metrics.get(metric)
+            if actual_value is None:
+                continue
+            deviation_percent = abs(actual_value - expected_value) / abs(expected_value) * 100.0
+            deviations.append(
+                {
+                    "metric": metric,
+                    "expected": expected_value,
+                    "actual": actual_value,
+                    "deviation_percent": round(deviation_percent, 4),
+                }
+            )
+        if not deviations:
+            return None
+        exceeded = [
+            item for item in deviations if float(item["deviation_percent"]) > threshold_percent
+        ]
+        if not exceeded:
+            return None
+        evidence = EvidenceRecord(
+            artifact_id=f"ev-{uuid4().hex[:8]}",
+            source_task_id=task.task_id,
+            evidence_type=EvidenceType.DEVIATION_ANALYSIS,
+            statement=(
+                f"Detected {len(exceeded)} metric deviations above {threshold_percent:.2f}% "
+                f"during {step.kind}."
+            ),
+            content=json.dumps(
+                {
+                    "step": step.kind,
+                    "step_id": step.step_id,
+                    "threshold_percent": threshold_percent,
+                    "deviations": deviations,
+                },
+                ensure_ascii=False,
+            ),
+            summary=f"Deviation detected in {step.kind}",
+        )
+        self._context.state_store.save_artifact(evidence)
+        self._publish_task_event(
+            task.task_id,
+            "deviation.detected",
+            {
+                "step": step.kind,
+                "step_id": step.step_id,
+                "threshold_percent": threshold_percent,
+                "count": len(exceeded),
+            },
+        )
+        self._publish_artifact_event("artifact.created", evidence)
+        self._publish_task_event(
+            task.task_id,
+            "diagnosis.completed",
+            {
+                "evidence_id": evidence.artifact_id,
+                "evidence_type": evidence.evidence_type.value,
+            },
+        )
+        return ArtifactRef(
+            artifact_type=ArtifactType.EVIDENCE_RECORD,
+            artifact_id=evidence.artifact_id,
+        )
+
+    def _extract_expected_metrics(self, payload: dict[str, object]) -> dict[str, float]:
+        raw_expected = payload.get("expected_metrics")
+        if not isinstance(raw_expected, dict):
+            return {}
+        expected: dict[str, float] = {}
+        for key, value in raw_expected.items():
+            if isinstance(key, str) and isinstance(value, int | float) and value != 0:
+                expected[key] = float(value)
+        return expected
+
+    def _extract_actual_metrics(self, step_updates: dict[str, object]) -> dict[str, float]:
+        raw_metrics = step_updates.get("metrics")
+        if not isinstance(raw_metrics, dict):
+            return {}
+        actual: dict[str, float] = {}
+        for key, value in raw_metrics.items():
+            if isinstance(key, str) and isinstance(value, int | float):
+                actual[key] = float(value)
+        return actual
+
+    def _extract_threshold_percent(self, payload: dict[str, object]) -> float:
+        raw_threshold = payload.get("deviation_threshold_percent")
+        if isinstance(raw_threshold, int | float) and raw_threshold > 0:
+            return float(raw_threshold)
+        return self._DEFAULT_DEVIATION_THRESHOLD_PERCENT
+
     def _existing_quality_assessment(self, task_id: str) -> QualityAssessment | None:
         for artifact in self._context.state_store.query_artifacts(
             ArtifactType.QUALITY_ASSESSMENT,
@@ -649,9 +768,20 @@ class TaskEngine:
         successful_runs = len(
             [run for run in experiment_runs if run.status is ExperimentRunStatus.COMPLETED]
         )
+        deviation_records = [
+            artifact
+            for artifact in self._context.state_store.query_artifacts(
+                ArtifactType.EVIDENCE_RECORD,
+                ArtifactQuery(source_task_id=task.task_id),
+            )
+            if isinstance(artifact, EvidenceRecord)
+            and artifact.evidence_type is EvidenceType.DEVIATION_ANALYSIS
+        ]
         completed_steps = len(task.checkpoint.completed_steps)
         reproducibility_score = 5.0 if total_runs == 0 else 5.0 * (successful_runs / total_runs)
         existing = self._existing_quality_assessment(task.task_id)
+        run_ids = [run.artifact_id for run in experiment_runs]
+        deviation_ids = [record.artifact_id for record in deviation_records]
         quality_assessment = QualityAssessment(
             artifact_id=existing.artifact_id if existing is not None else f"qa-{uuid4().hex[:8]}",
             source_task_id=task.task_id,
@@ -663,16 +793,18 @@ class TaskEngine:
             ),
             reproducibility=AssessmentDimension(
                 score=round(reproducibility_score, 2),
-                summary="Scored from completed vs failed experiment runs.",
-                evidence_ids=[run.artifact_id for run in experiment_runs],
+                summary="Scored from completed vs failed experiment runs and deviation evidence.",
+                evidence_ids=[*run_ids, *deviation_ids],
             ),
             scientific_rigor=AssessmentDimension(
-                score=min(5.0, 2.0 + (total_runs * 0.5)),
-                summary="Scored from experiment coverage and execution evidence.",
-                evidence_ids=[run.artifact_id for run in experiment_runs],
+                score=max(1.0, min(5.0, 2.0 + (total_runs * 0.5) - (len(deviation_ids) * 0.3))),
+                summary="Scored from experiment coverage and deviation diagnostics.",
+                evidence_ids=[*run_ids, *deviation_ids],
             ),
             overall_summary=(
-                f"Completed {completed_steps} steps with {successful_runs}/{total_runs} successful runs."
+                "Completed "
+                f"{completed_steps} steps with {successful_runs}/{total_runs} successful runs "
+                f"and {len(deviation_ids)} deviation diagnostics."
             ),
             related_artifacts=[
                 ArtifactRef(
@@ -680,6 +812,13 @@ class TaskEngine:
                     artifact_id=run.artifact_id,
                 )
                 for run in experiment_runs
+            ]
+            + [
+                ArtifactRef(
+                    artifact_type=ArtifactType.EVIDENCE_RECORD,
+                    artifact_id=record.artifact_id,
+                )
+                for record in deviation_records
             ],
         )
         self._context.state_store.save_artifact(quality_assessment)
