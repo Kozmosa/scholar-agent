@@ -4,12 +4,13 @@ import asyncio
 import json
 import os
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from ainrf.agents import ClaudeCodeAdapter, build_step_skill_payload, get_step_skill_profile
 from ainrf.agents.base import AgentExecutionError
-from ainrf.agents.claude_code import _REMOTE_RUNNER_SOURCE
+from ainrf.agents.claude_code import _REMOTE_RUNNER_SOURCE, _normalize_skill_execution_result
 from ainrf.engine.models import AtomicTaskSpec
 from ainrf.execution import CommandResult, CommandTimeoutError, ContainerConfig
 from ainrf.execution import SSHExecutor
@@ -220,6 +221,12 @@ def test_remote_runner_contains_mode1_priority_sdk_dispatch() -> None:
     assert '"check_termination"' in _REMOTE_RUNNER_SOURCE
 
 
+def test_remote_runner_contains_skill_prompt_and_normalization_helpers() -> None:
+    assert "def _build_skill_prompt" in _REMOTE_RUNNER_SOURCE
+    assert "def _normalize_skill_execution_result" in _REMOTE_RUNNER_SOURCE
+    assert "STRICT: return only a JSON object" in _REMOTE_RUNNER_SOURCE
+
+
 def test_execute_step_propagates_error_field_from_runner_response() -> None:
     class FakeSSHExecutorError(FakeSSHExecutor):
         async def download(self, remote: str, local: str | Path) -> None:
@@ -269,6 +276,30 @@ def test_execute_step_uploads_skill_payload_for_mapped_step() -> None:
     assert isinstance(skill, dict)
     assert skill["skill_name"] == "analyze-results"
     assert skill["output_key"] == "diagnosis"
+
+
+def test_remote_runner_normalizes_skill_style_string_response() -> None:
+    request = {
+        "step": {"kind": "diagnose_deviation", "title": "Diagnose deviation"},
+        "skill": {
+            "output_key": "diagnosis",
+            "skill_name": "analyze-results",
+            "objective": "Diagnose reproduction drift.",
+        },
+    }
+    result = _normalize_skill_execution_result(
+        '{"diagnosis": {"summary": "Mismatch caused by tokenizer drift.", "actions": ["align tokenizer"]}}',
+        cast(dict[str, object], request),
+    )
+
+    assert isinstance(result, dict)
+    assert result["step_updates"] == {
+        "diagnosis": {
+            "summary": "Mismatch caused by tokenizer drift.",
+            "actions": ["align tokenizer"],
+        }
+    }
+    assert result["status"] == "succeeded"
 
 
 def test_health_check_returns_false_when_sdk_missing() -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 from dataclasses import dataclass
 from pathlib import Path
@@ -71,12 +72,94 @@ def _skill_payload_for_step(
     return build_step_skill_payload(step, context)
 
 
+def _extract_json_object(candidate: str) -> dict[str, object] | None:
+    text = candidate.strip()
+    if not text:
+        return None
+    candidates = [text]
+    fenced = re.findall(r"```(?:json)?\s*(\{.*?\})\s*```", text, flags=re.DOTALL)
+    candidates.extend(fenced)
+    for item in candidates:
+        try:
+            parsed = json.loads(item)
+        except Exception:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    try:
+        parsed = json.loads(text[start : end + 1])
+    except Exception:
+        return None
+    if isinstance(parsed, dict):
+        return parsed
+    return None
+
+
+def _normalize_skill_step_updates(
+    result: object,
+    request: dict[str, object],
+) -> dict[str, object] | None:
+    skill = request.get("skill")
+    if not isinstance(skill, dict):
+        return None
+    skill_mapping = cast(dict[str, object], skill)
+    output_key = skill_mapping.get("output_key")
+    if not isinstance(output_key, str) or not output_key:
+        return None
+    if isinstance(result, dict):
+        result_mapping = cast(dict[str, object], result)
+        if output_key in result_mapping:
+            return result_mapping
+        for field_name in ("message", "content", "text"):
+            field = result_mapping.get(field_name)
+            if isinstance(field, str):
+                parsed = _extract_json_object(field)
+                if parsed is not None:
+                    if output_key in parsed:
+                        return parsed
+                    return {output_key: parsed}
+        return None
+    if isinstance(result, str):
+        parsed = _extract_json_object(result)
+        if parsed is not None:
+            if output_key in parsed:
+                return parsed
+            return {output_key: parsed}
+    return None
+
+
+def _normalize_skill_execution_result(
+    result: object,
+    request: dict[str, object],
+) -> dict[str, object] | None:
+    step_obj = request.get("step")
+    step = cast(dict[str, object], step_obj) if isinstance(step_obj, dict) else {}
+    step_kind = step.get("kind") if isinstance(step.get("kind"), str) else "unknown"
+    step_updates = _normalize_skill_step_updates(result, request)
+    if step_updates is None:
+        return None
+    return {
+        "status": "succeeded",
+        "summary": f"Executed {step_kind} via skill profile",
+        "messages": [f"Executed {step_kind} via skill profile"],
+        "artifacts": [],
+        "resource_usage": {"gpu_hours": 0.0, "api_cost_usd": 0.0, "wall_clock_hours": 0.0},
+        "step_updates": step_updates,
+        "error": None,
+    }
+
+
 _REMOTE_RUNNER_SOURCE = """\
 from __future__ import annotations
 
 import json
 import asyncio
 import inspect
+import re
 import sys
 import time
 from pathlib import Path
@@ -442,6 +525,127 @@ def _unknown_action_response(action: object) -> dict[str, object]:
     }
 
 
+def _build_skill_prompt(request: dict[str, object]) -> str | None:
+    skill = request.get("skill")
+    if not isinstance(skill, dict):
+        return None
+    output_key = skill.get("output_key")
+    skill_name = skill.get("skill_name")
+    objective = skill.get("objective")
+    step_kind = skill.get("step_kind")
+    step_title = skill.get("step_title")
+    step_payload = skill.get("step_payload") if isinstance(skill.get("step_payload"), dict) else {}
+    task_context = skill.get("task_context") if isinstance(skill.get("task_context"), dict) else {}
+    guidance = skill.get("guidance") if isinstance(skill.get("guidance"), list) else []
+    if not isinstance(output_key, str) or not output_key:
+        return None
+    guidance_lines = []
+    for item in guidance:
+        if isinstance(item, str) and item:
+            guidance_lines.append(f"- {item}")
+    parts = [
+        "You are executing an AINRF atomic research step using an internal skill-inspired profile.",
+        f"Skill inspiration: {skill_name}" if isinstance(skill_name, str) and skill_name else "Skill inspiration: unspecified",
+        f"Objective: {objective}" if isinstance(objective, str) and objective else "Objective: produce the requested structured update.",
+        f"Step kind: {step_kind}" if isinstance(step_kind, str) and step_kind else "Step kind: unknown",
+        f"Step title: {step_title}" if isinstance(step_title, str) and step_title else "Step title: unknown",
+        "Step payload:",
+        json.dumps(step_payload, ensure_ascii=False, sort_keys=True),
+        "Task context:",
+        json.dumps(task_context, ensure_ascii=False, sort_keys=True),
+        "Guidance:",
+        "\n".join(guidance_lines) if guidance_lines else "- Return only what is necessary to satisfy the step.",
+        "STRICT: return only a JSON object with this exact shape and no surrounding prose:",
+        json.dumps({output_key: {"summary": "fill with structured data"}}, ensure_ascii=False),
+    ]
+    return "\n\n".join(parts)
+
+
+def _extract_json_object(candidate: str) -> dict[str, object] | None:
+    text = candidate.strip()
+    if not text:
+        return None
+    candidates = [text]
+    fenced = re.findall(r"```(?:json)?\s*(\{.*?\})\s*```", text, flags=re.DOTALL)
+    candidates.extend(fenced)
+    for item in candidates:
+        try:
+            parsed = json.loads(item)
+        except Exception:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    try:
+        parsed = json.loads(text[start : end + 1])
+    except Exception:
+        return None
+    if isinstance(parsed, dict):
+        return parsed
+    return None
+
+
+def _normalize_skill_step_updates(result: object, request: dict[str, object]) -> dict[str, object] | None:
+    skill = request.get("skill")
+    if not isinstance(skill, dict):
+        return None
+    output_key = skill.get("output_key")
+    if not isinstance(output_key, str) or not output_key:
+        return None
+    if isinstance(result, dict):
+        if output_key in result:
+            return result
+        message_obj = result.get("message")
+        if isinstance(message_obj, str):
+            parsed = _extract_json_object(message_obj)
+            if parsed is not None:
+                if output_key in parsed:
+                    return parsed
+                return {output_key: parsed}
+        content_obj = result.get("content")
+        if isinstance(content_obj, str):
+            parsed = _extract_json_object(content_obj)
+            if parsed is not None:
+                if output_key in parsed:
+                    return parsed
+                return {output_key: parsed}
+        text_obj = result.get("text")
+        if isinstance(text_obj, str):
+            parsed = _extract_json_object(text_obj)
+            if parsed is not None:
+                if output_key in parsed:
+                    return parsed
+                return {output_key: parsed}
+        return None
+    if isinstance(result, str):
+        parsed = _extract_json_object(result)
+        if parsed is not None:
+            if output_key in parsed:
+                return parsed
+            return {output_key: parsed}
+    return None
+
+
+def _normalize_skill_execution_result(result: object, request: dict[str, object]) -> dict[str, object] | None:
+    step = request.get("step") if isinstance(request.get("step"), dict) else {}
+    step_kind = step.get("kind") if isinstance(step, dict) else "unknown"
+    step_updates = _normalize_skill_step_updates(result, request)
+    if step_updates is None:
+        return None
+    return {
+        "status": "succeeded",
+        "summary": f"Executed {step_kind} via skill profile",
+        "messages": [f"Executed {step_kind} via skill profile"],
+        "artifacts": [],
+        "resource_usage": {"gpu_hours": 0.0, "api_cost_usd": 0.0, "wall_clock_hours": 0.0},
+        "step_updates": step_updates,
+        "error": None,
+    }
+
+
 def _invoke_candidate(target: object, method_name: str, kwargs: dict[str, object]) -> object | None:
     method = getattr(target, method_name, None)
     if not callable(method):
@@ -534,10 +738,22 @@ def _invoke_with_sdk(request: dict[str, object]) -> dict[str, object] | None:
         step = request.get("step")
         step_kind = step.get("kind") if isinstance(step, dict) else None
         mode1_priority = isinstance(step_kind, str) and step_kind in _MODE1_PRIORITY_STEP_KINDS
-        kwargs = {
-            "step": request.get("step", {}),
-            "context": request.get("context", {}),
-        }
+        skill_prompt = _build_skill_prompt(request)
+        kwargs_variants = []
+        if skill_prompt is not None:
+            kwargs_variants.append(
+                {
+                    "step": request.get("step", {}),
+                    "context": request.get("context", {}),
+                    "prompt": skill_prompt,
+                }
+            )
+        kwargs_variants.append(
+            {
+                "step": request.get("step", {}),
+                "context": request.get("context", {}),
+            }
+        )
         candidates = (
             (claude_code_sdk, "execute_step"),
             (claude_code_sdk, "execute"),
@@ -551,16 +767,21 @@ def _invoke_with_sdk(request: dict[str, object]) -> dict[str, object] | None:
                 (client_instance, "execute"),
                 (client_instance, "run_step"),
             )
-        for target, method_name in candidates:
-            try:
-                result = _invoke_candidate(target, method_name, kwargs)
-                normalized = _normalize_execution_result(result)
-                if normalized is not None:
-                    if mode1_priority:
-                        normalized["sdk_path"] = "mode1_priority"
-                    return normalized
-            except Exception:
-                continue
+        for kwargs in kwargs_variants:
+            for target, method_name in candidates:
+                try:
+                    result = _invoke_candidate(target, method_name, kwargs)
+                    normalized = _normalize_execution_result(result)
+                    if normalized is None:
+                        normalized = _normalize_skill_execution_result(result, request)
+                    if normalized is not None:
+                        if mode1_priority:
+                            normalized["sdk_path"] = "mode1_priority"
+                        if skill_prompt is not None:
+                            normalized["sdk_path"] = str(normalized.get("sdk_path", "sdk")) + "+skill_profile"
+                        return normalized
+                except Exception:
+                    continue
         return None
 
     return _unknown_action_response(action)
