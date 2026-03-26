@@ -124,7 +124,13 @@ class JsonProjectStore:
             profiles[name] = ContainerProfileRecord.model_validate(profile_payload)
         return dict(sorted(profiles.items(), key=lambda item: item[0].lower()))
 
-    def save_container_profile(self, name: str, profile: ContainerProfileRecord) -> None:
+    def save_container_profile(
+        self,
+        name: str,
+        profile: ContainerProfileRecord,
+        *,
+        set_default: bool = False,
+    ) -> None:
         normalized_name = name.strip()
         if not normalized_name:
             raise ValueError("Container profile name is required.")
@@ -135,10 +141,19 @@ class JsonProjectStore:
             payload["container_profiles"] = container_profiles
         typed_profiles = cast(dict[str, object], container_profiles)
         typed_profiles[normalized_name] = profile.model_dump(mode="json")
+        if set_default:
+            payload["default_container_profile"] = normalized_name
         self._write_json(self.config_path, payload)
 
     def load_container_profile(self, name: str) -> ContainerProfileRecord | None:
         return self.list_container_profiles().get(name)
+
+    def default_container_profile_name(self) -> str | None:
+        payload = self._read_config_payload()
+        value = payload.get("default_container_profile")
+        if isinstance(value, str) and value.strip():
+            return value
+        return None
 
     def _read_config_payload(self) -> dict[str, object]:
         if not self.config_path.exists():

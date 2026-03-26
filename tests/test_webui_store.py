@@ -78,3 +78,21 @@ def test_project_store_round_trips_container_profile(tmp_path: Path) -> None:
     assert loaded.host == "gpu-01"
     assert loaded.user == "researcher"
     assert "gpu-main" in profiles
+
+
+def test_project_store_sets_default_container_profile(tmp_path: Path) -> None:
+    store = JsonProjectStore(tmp_path)
+    store.save_container_profile(
+        "gpu-main",
+        ContainerProfileRecord(
+            host="gpu-01",
+            port=22,
+            user="researcher",
+            ssh_key_path="",
+            ssh_password="",
+            project_dir="/workspace/projects/vision-stack",
+        ),
+        set_default=True,
+    )
+
+    assert store.default_container_profile_name() == "gpu-main"

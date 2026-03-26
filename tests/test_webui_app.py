@@ -445,6 +445,7 @@ def test_save_container_profile_and_apply_to_forms(tmp_path: Path) -> None:
         ssh_key_path="/tmp/id_rsa",
         ssh_password="secret",
         project_dir="/workspace/projects/vision-stack",
+        set_default=True,
     )
     selected = select_container_profile_and_render(store, "gpu-main")
     applied = apply_container_profile_and_render(
@@ -463,6 +464,7 @@ def test_save_container_profile_and_apply_to_forms(tmp_path: Path) -> None:
     )
 
     assert "Saved container profile" in save_feedback
+    assert store.default_container_profile_name() == "gpu-main"
     assert selected[0] == "gpu-main"
     assert selected[1] == "gpu-01"
     assert selected[5] == "secret"
@@ -470,6 +472,71 @@ def test_save_container_profile_and_apply_to_forms(tmp_path: Path) -> None:
     assert applied[1] == 2222
     assert applied[5] == "gpu-01"
     assert "Applied container profile" in applied[-1]
+
+
+def test_save_container_profile_validates_required_fields(tmp_path: Path) -> None:
+    store = JsonProjectStore(tmp_path)
+
+    _, missing_name_feedback = save_container_profile_and_render(
+        store,
+        profile_name="",
+        host="gpu-01",
+        port=22,
+        user="researcher",
+        ssh_key_path="",
+        ssh_password="",
+        project_dir="/workspace/projects/vision-stack",
+        set_default=False,
+    )
+    _, missing_host_feedback = save_container_profile_and_render(
+        store,
+        profile_name="gpu-main",
+        host="",
+        port=22,
+        user="researcher",
+        ssh_key_path="",
+        ssh_password="",
+        project_dir="/workspace/projects/vision-stack",
+        set_default=False,
+    )
+    _, missing_user_feedback = save_container_profile_and_render(
+        store,
+        profile_name="gpu-main",
+        host="gpu-01",
+        port=22,
+        user="",
+        ssh_key_path="",
+        ssh_password="",
+        project_dir="/workspace/projects/vision-stack",
+        set_default=False,
+    )
+
+    assert missing_name_feedback == "Container profile name is required."
+    assert missing_host_feedback == "Container host is required."
+    assert missing_user_feedback == "Container user is required."
+
+
+def test_apply_container_profile_requires_selection(tmp_path: Path) -> None:
+    store = JsonProjectStore(tmp_path)
+
+    result = apply_container_profile_and_render(
+        store,
+        profile_name=None,
+        current_project_host="gpu-old",
+        current_project_port=22,
+        current_project_user="alice",
+        current_project_ssh_key_path="/tmp/key",
+        current_project_dir="/workspace/projects/old",
+        current_run_host="gpu-old",
+        current_run_port=22,
+        current_run_user="alice",
+        current_run_ssh_key_path="/tmp/key",
+        current_run_dir="/workspace/projects/old",
+    )
+
+    assert result[0] == "gpu-old"
+    assert result[5] == "gpu-old"
+    assert result[-1] == "Choose a container profile before applying."
 
 
 def test_submit_project_run_requires_authenticated_session(tmp_path: Path) -> None:

@@ -146,7 +146,7 @@ def create_webui(
                 container_profile_selector = gr.Dropdown(
                     label="Saved Container",
                     choices=container_profile_choices(store),
-                    value=None,
+                    value=store.default_container_profile_name(),
                     allow_custom_value=False,
                     scale=3,
                 )
@@ -160,6 +160,10 @@ def create_webui(
                 container_profile_ssh_key_path = gr.Textbox(label="SSH Key Path")
                 container_profile_ssh_password = gr.Textbox(label="SSH Password", type="password")
                 container_profile_project_dir = gr.Textbox(label="Container Project Dir")
+            container_profile_set_default = gr.Checkbox(
+                label="Set as default container profile",
+                value=False,
+            )
             save_container_profile_button = gr.Button("Save Container Profile", variant="secondary")
             gr.Markdown("### Shared Defaults")
             with gr.Row():
@@ -400,7 +404,7 @@ def create_webui(
         )
 
         save_container_profile_button.click(
-            fn=lambda profile_name, host_value, port_value, user_value, ssh_key_value, ssh_password_value, project_dir_value: (
+            fn=lambda profile_name, host_value, port_value, user_value, ssh_key_value, ssh_password_value, project_dir_value, set_default_value: (
                 save_container_profile_and_render(
                     store,
                     profile_name=profile_name,
@@ -410,6 +414,7 @@ def create_webui(
                     ssh_key_path=ssh_key_value,
                     ssh_password=ssh_password_value,
                     project_dir=project_dir_value,
+                    set_default=set_default_value,
                 )
             ),
             inputs=[
@@ -420,6 +425,7 @@ def create_webui(
                 container_profile_ssh_key_path,
                 container_profile_ssh_password,
                 container_profile_project_dir,
+                container_profile_set_default,
             ],
             outputs=[container_profile_selector, container_profile_feedback],
         )
@@ -1776,6 +1782,7 @@ def save_container_profile_and_render(
     ssh_key_path: str,
     ssh_password: str,
     project_dir: str,
+    set_default: bool,
 ) -> tuple[object, str]:
     normalized_name = profile_name.strip()
     if not normalized_name:
@@ -1800,10 +1807,11 @@ def save_container_profile_and_render(
         ssh_password=ssh_password.strip(),
         project_dir=project_dir.strip(),
     )
-    store.save_container_profile(normalized_name, profile)
+    store.save_container_profile(normalized_name, profile, set_default=set_default)
+    suffix = " and set as default" if set_default else ""
     return (
         gr.update(choices=container_profile_choices(store), value=normalized_name),
-        f"Saved container profile `{normalized_name}`.",
+        f"Saved container profile `{normalized_name}`{suffix}.",
     )
 
 
