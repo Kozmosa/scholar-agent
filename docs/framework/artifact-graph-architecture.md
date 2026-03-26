@@ -12,17 +12,17 @@ last_local_commit: workspace aggregate
 # 工件图谱架构：AI-Native Research Framework 的核心模型
 
 > [!abstract]
-> 如果没有统一工件模型，研究系统就会退化成"几个 skill + 一堆输出文件"。这份笔记定义框架中的一等对象、层间边界和状态转换，确保无论是 Mode 1 的文献递归探索还是 Mode 2 的从零深度复现，所有研究状态都在同一张图里。
+> 如果没有统一工件模型，研究系统就会退化成"几个 skill + 一堆输出文件"。这份笔记定义框架中的一等对象、层间边界和状态转换，确保无论是 Mode 1 的调研发现还是 Mode 2 的从零深度复现，所有研究状态都在同一张图里。
 
 ## 一等工件
 
 - `ResearchProject`：研究任务容器，聚合论文、代码仓库、实验 run、结论和决策记录。对应容器上的一个独立 git repo。
-- `PaperCard`：单篇论文的结构化阅读对象，记录问题定义、方法摘要、关键 claim、依赖资产和复现价值。
+- `PaperCard`：单篇论文的结构化阅读对象，记录问题定义、方法摘要、关键 claim、依赖资产和研究价值。
 - `ReproductionTask`：对某篇论文或某个方法发起的复现任务，包含目标、入口、依赖、成功标准和停止条件。区分两种策略：`reproduce-from-source`（有开源代码，复现已有实现）和 `implement-from-paper`（无开源代码，从论文描述从零实现，Mode 2 主路径）。
 - `ExperimentRun`：一次实际执行，包含配置、日志、指标、产物、资源消耗和失败原因。
 - `EvidenceRecord`：从论文、代码、实验和人工评注中抽出的可引用证据单元。
 - `Claim`：系统或研究者接受的判断，必须能回溯到一个或多个 `EvidenceRecord`。
-- `ExplorationGraph`：Mode 1 专属工件，跟踪文献探索的前沿状态——哪些 PaperCard 已访问、哪些排队中、哪些触发了复现、哪些被剪枝、当前递归深度和预算消耗。没有它，递归探索在工件模型中没有显式表示。
+- `ExplorationGraph`：Mode 1 专属工件，跟踪调研发现过程中的前沿状态——哪些 PaperCard 已访问、哪些排队中、哪些产生了新发现或 idea 候选、哪些被剪枝、当前递归深度和预算消耗。没有它，递归调研在工件模型中没有显式表示。
 - `QualityAssessment`：Mode 2 专属工件，将多个 Claim 汇聚为对目标论文的结构化评估——含金量（方法是否有实质贡献）、可复现性（结果是否可重现）、方法科学性（实验设计是否严谨）。比泛化的 `Claim` 更结构化，适合作为最终可交付评估报告。
 - `WorkspaceManifest`：容器工作区状态——目录布局、环境配置、已安装依赖、GPU 可用性、资源消耗。使执行环境成为可审计工件而非隐式上下文。详见 [[framework/container-workspace-protocol]]。
 - `HumanGate`：人工审批节点，用来显式表达"此处不能让 agent 自行决定"。V1 保留两个显式关卡：纳入关卡和计划关卡。预算和归档在计划阶段预授权后，agent 在合同内自治。
@@ -50,7 +50,7 @@ flowchart LR
     G --> H[Claim]
 ```
 
-### Mode 1 — 文献探索与复现
+### Mode 1 — 调研发现
 
 ```mermaid
 flowchart TD
@@ -58,15 +58,14 @@ flowchart TD
     PC1 --> EG[ExplorationGraph: initialized]
     EG --> REF[Extract & prioritize references]
     REF --> PC2[New PaperCards: captured]
-    PC2 --> DECIDE{Worth reproducing?}
-    DECIDE -->|Yes| RT[ReproductionTask: proposed]
-    RT --> RUN[ExperimentRun]
-    RUN --> ER[EvidenceRecord]
+    PC2 --> ANALYZE[Summarize methods & update graph]
+    ANALYZE --> DECIDE{New finding or idea candidate?}
+    DECIDE -->|Yes| ER[EvidenceRecord]
     DECIDE -->|No| PRUNE[Mark as explored/pruned]
     ER --> EG2[ExplorationGraph: updated]
     PRUNE --> EG2
     EG2 --> TERM{Termination check}
-    TERM -->|Depth/budget/diminishing returns| REPORT[Generate exploration report]
+    TERM -->|Depth/budget/diminishing returns| REPORT[Generate discovery report]
     TERM -->|Continue| REF
 ```
 

@@ -19,12 +19,12 @@ last_local_commit: workspace aggregate
 - `everything-claude-code` 主要贡献平台层思路，不应被误当成研究流程本身。
 - `AI-Research-SKILLs` 证明“研究能力应该模块化”，但它把太多编排责任留给宿主，因此不能直接当框架主体。
 - `Claude Code Deep Research` 最适合贡献阅读、综合和 citation discipline。
-- `ARIS` 最适合贡献长链路编排、实验执行和跨模型审查。其 nightly loop 和探索循环直接启发了 Mode 1 的递归探索，区别在于我们附加了终止合同（深度/预算/递减收益）而非开放式自治。
+- `ARIS` 最适合贡献长链路编排、探索循环和跨模型审查。其 nightly loop 与研究扩展节奏直接启发了 Mode 1 的递归调研发现，区别在于我们附加了终止合同（深度/预算/递减收益）而非开放式自治。
 - `academic-research-skills` 最适合贡献 integrity 和 review gate 思维，而不是整套投稿工厂。
 - `ArgusBot` 最适合贡献监督回路、planner/reviewer 双关卡和可恢复控制面，而不是研究内容能力。
 - `claude-scholar` 最适合贡献多宿主工作台和长期研究环境视角。
 - `EvoScientist` 最适合贡献统一运行面思路：多渠道共享 session、持久记忆、技能/MCP 扩展面和 human-on-the-loop 式审批/追问机制。
-- `autoresearch` 最适合贡献"固定预算实验原语 + 单标量评估 + git-native 追踪"思路，作为 Mode 1 递归探索中最轻量的实验执行参考。
+- `autoresearch` 最适合贡献"固定预算实验原语 + 单标量评估 + git-native 追踪"思路，作为 Mode 1 递归调研中轻量验证与研究节奏控制的参考。
 
 ## 框架映射矩阵
 
@@ -45,7 +45,7 @@ last_local_commit: workspace aggregate
 - 平台层优先借鉴 [[projects/everything-claude-code]] 和 [[projects/claude-scholar]] 的宿主兼容与长期治理观；运行时交互面则补借鉴 [[projects/evoscientist]] 的统一 session、memory 与扩展面设计。
 - 控制层优先借鉴 [[projects/argusbot]] 的监督回路、计划快照与可恢复运行面。
 - 能力层优先借鉴 [[projects/ai-research-skills]] 的技能颗粒度，再用 [[projects/claude-code-deep-research]] 补阅读与证据纪律。
-- 编排层优先借鉴 [[projects/auto-claude-code-research-in-sleep]] 的执行链条和探索循环，用终止合同（深度/预算/递减收益）替代其无约束自治默认。还可借鉴 [[projects/autoresearch]] 的固定预算 + 单标量评估 + git-native 追踪模式，作为实验执行原语的最轻量参考。
+- 编排层优先借鉴 [[projects/auto-claude-code-research-in-sleep]] 的执行链条和探索循环，用终止合同（深度/预算/递减收益）替代其无约束自治默认。还可借鉴 [[projects/autoresearch]] 的固定预算 + 单标量评估 + git-native 追踪模式，作为调研节奏控制与轻量验证原语的参考。
 - 质量层优先借鉴 [[projects/academic-research-skills]] 的 integrity 观，而不是直接移植其重写作管线。
 
 ## 关键取舍

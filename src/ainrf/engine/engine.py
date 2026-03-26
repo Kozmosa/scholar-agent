@@ -46,6 +46,8 @@ class EngineContext:
 
 
 class TaskEngine:
+    _DEFAULT_MAX_STEP_RETRIES = 3
+
     def __init__(self, context: EngineContext) -> None:
         self._context = context
 
@@ -118,6 +120,53 @@ class TaskEngine:
                 context={"task_id": task.task_id, "config": task.config},
             )
         except AgentExecutionError as exc:
+            if exc.retryable:
+                retry_count_raw = raw_step.details.get("retry_count", 0)
+                retry_count = int(retry_count_raw) if isinstance(retry_count_raw, int | float) else 0
+                max_retries_raw = raw_step.details.get("max_retries", self._DEFAULT_MAX_STEP_RETRIES)
+                max_retries = (
+                    int(max_retries_raw)
+                    if isinstance(max_retries_raw, int | float)
+                    else self._DEFAULT_MAX_STEP_RETRIES
+                )
+                next_retry_count = retry_count + 1
+                if next_retry_count > max_retries:
+                    self._fail_task(
+                        task,
+                        reason="agent_execution_retry_exhausted",
+                        detail=f"{step.kind}: {exc}",
+                    )
+                    return
+                retried_step = raw_step.model_copy(
+                    update={
+                        "details": {
+                            **raw_step.details,
+                            "retry_count": next_retry_count,
+                            "max_retries": max_retries,
+                            "last_error": str(exc),
+                        }
+                    }
+                )
+                pending_queue = [*task.checkpoint.pending_queue[1:], retried_step]
+                updated = task.model_copy(
+                    update={
+                        "updated_at": utc_now(),
+                        "checkpoint": task.checkpoint.model_copy(update={"pending_queue": pending_queue}),
+                    }
+                )
+                self._context.state_store.save_task(updated)
+                self._publish_task_event(
+                    updated.task_id,
+                    "task.progress",
+                    {
+                        "stage": updated.status.value,
+                        "step": step.kind,
+                        "detail": f"Retryable agent error: {exc}",
+                        "remaining_steps": len(updated.checkpoint.pending_queue),
+                        "retry_count": next_retry_count,
+                    },
+                )
+                return
             self._fail_task(task, reason="agent_execution_failed", detail=str(exc))
             return
         updated = task.model_copy(

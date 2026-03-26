@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 import json
+import shlex
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, cast
 
 from ainrf.agents.base import AgentAdapter, AgentExecutionError
 from ainrf.engine.models import AtomicTaskSpec, StepArtifactRef, TaskExecutionResult, TaskPlanResult
-from ainrf.execution import ContainerConfig, SSHExecutor
+from ainrf.execution import (
+    CommandTimeoutError,
+    ContainerConfig,
+    SSHConnectionError,
+    SSHExecutor,
+    TransferError,
+)
 
 _REMOTE_RUNNER_PATH = ".ainrf-runtime/claude_code_runner.py"
 
@@ -15,6 +22,8 @@ _REMOTE_RUNNER_SOURCE = """\
 from __future__ import annotations
 
 import json
+import asyncio
+import inspect
 import sys
 from pathlib import Path
 
@@ -22,12 +31,15 @@ from pathlib import Path
 def _fallback_response(request: dict[str, object]) -> dict[str, object]:
     action = request.get("action")
     if action == "plan_reproduction":
+        context = request.get("context")
+        paper_card = context.get("paper_card") if isinstance(context, dict) else {}
+        artifact_id = paper_card.get("artifact_id") if isinstance(paper_card, dict) else "unknown"
         return {
             "summary": "Fallback plan generated without claude_code_sdk runtime.",
             "milestones": ["implement core module", "run validation", "summarize execution"],
             "estimated_steps": 3,
             "strategy": "implement-from-paper",
-            "target_paper_id": request["context"]["paper_card"]["artifact_id"],
+            "target_paper_id": artifact_id,
             "success_criteria": ["Produce runnable implementation", "Generate validation notes"],
             "steps": [
                 {"step_id": "step-1", "kind": "implement_module", "title": "Implement core module", "payload": {"module": "core"}},
@@ -35,11 +47,13 @@ def _fallback_response(request: dict[str, object]) -> dict[str, object]:
                 {"step_id": "step-3", "kind": "summarize_execution", "title": "Summarize execution", "payload": {"report": "reports/reproduction/summary.md"}},
             ],
         }
-    step = request["step"]
+    step = request.get("step")
+    step_kind = step.get("kind") if isinstance(step, dict) else "unknown"
+    step_title = step.get("title") if isinstance(step, dict) else "unknown"
     return {
         "status": "succeeded",
-        "summary": f"Executed {step['kind']}",
-        "messages": [f"Executed {step['title']}"],
+        "summary": f"Executed {step_kind}",
+        "messages": [f"Executed {step_title}"],
         "artifacts": [],
         "resource_usage": {"gpu_hours": 0.0, "api_cost_usd": 0.0, "wall_clock_hours": 0.0},
         "step_updates": {},
@@ -47,15 +61,135 @@ def _fallback_response(request: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _unknown_action_response(action: object) -> dict[str, object]:
+    return {
+        "status": "failed",
+        "summary": "Unsupported action",
+        "messages": [f"Unsupported action: {action}"],
+        "artifacts": [],
+        "resource_usage": {"gpu_hours": 0.0, "api_cost_usd": 0.0, "wall_clock_hours": 0.0},
+        "step_updates": {},
+        "error": f"Unsupported action: {action}",
+    }
+
+
+def _invoke_candidate(target: object, method_name: str, kwargs: dict[str, object]) -> object | None:
+    method = getattr(target, method_name, None)
+    if not callable(method):
+        return None
+    result = method(**kwargs)
+    if inspect.isawaitable(result):
+        return asyncio.run(result)
+    return result
+
+
+def _normalize_plan_result(result: object) -> dict[str, object] | None:
+    if not isinstance(result, dict):
+        return None
+    required = {
+        "summary",
+        "milestones",
+        "estimated_steps",
+        "strategy",
+        "target_paper_id",
+        "success_criteria",
+        "steps",
+    }
+    if not required.issubset(result.keys()):
+        return None
+    return result
+
+
+def _normalize_execution_result(result: object) -> dict[str, object] | None:
+    if not isinstance(result, dict):
+        return None
+    required = {
+        "status",
+        "summary",
+        "messages",
+        "artifacts",
+        "resource_usage",
+        "step_updates",
+    }
+    if not required.issubset(result.keys()):
+        return None
+    if "error" not in result:
+        result["error"] = None
+    return result
+
+
+def _invoke_with_sdk(request: dict[str, object]) -> dict[str, object] | None:
+    try:
+        import claude_code_sdk
+    except Exception:
+        return None
+
+    action = request.get("action")
+    if action == "plan_reproduction":
+        kwargs = {
+            "prompt": request.get("prompt", ""),
+            "context": request.get("context", {}),
+        }
+        candidates = (
+            (claude_code_sdk, "plan_reproduction"),
+            (claude_code_sdk, "plan"),
+            (claude_code_sdk, "create_plan"),
+        )
+        client = getattr(claude_code_sdk, "Client", None)
+        if callable(client):
+            client_instance = client()
+            candidates += (
+                (client_instance, "plan_reproduction"),
+                (client_instance, "plan"),
+                (client_instance, "create_plan"),
+            )
+        for target, method_name in candidates:
+            try:
+                result = _invoke_candidate(target, method_name, kwargs)
+                normalized = _normalize_plan_result(result)
+                if normalized is not None:
+                    return normalized
+            except Exception:
+                continue
+        return None
+
+    if action == "execute_step":
+        kwargs = {
+            "step": request.get("step", {}),
+            "context": request.get("context", {}),
+        }
+        candidates = (
+            (claude_code_sdk, "execute_step"),
+            (claude_code_sdk, "execute"),
+            (claude_code_sdk, "run_step"),
+        )
+        client = getattr(claude_code_sdk, "Client", None)
+        if callable(client):
+            client_instance = client()
+            candidates += (
+                (client_instance, "execute_step"),
+                (client_instance, "execute"),
+                (client_instance, "run_step"),
+            )
+        for target, method_name in candidates:
+            try:
+                result = _invoke_candidate(target, method_name, kwargs)
+                normalized = _normalize_execution_result(result)
+                if normalized is not None:
+                    return normalized
+            except Exception:
+                continue
+        return None
+
+    return _unknown_action_response(action)
+
+
 def main() -> int:
     request_path = Path(sys.argv[1])
     result_path = Path(sys.argv[2])
     request = json.loads(request_path.read_text(encoding="utf-8"))
-    try:
-        import claude_code_sdk  # noqa: F401
-    except Exception:
-        result = _fallback_response(request)
-    else:
+    result = _invoke_with_sdk(request)
+    if result is None:
         result = _fallback_response(request)
     result_path.parent.mkdir(parents=True, exist_ok=True)
     result_path.write_text(json.dumps(result), encoding="utf-8")
@@ -86,7 +220,6 @@ class ClaudeCodeAdapter(AgentAdapter):
     async def health_check(self, container: ContainerConfig) -> bool:
         async with self._executor_factory(container) as executor:
             try:
-                await executor.ensure_claude_code()
                 await executor.run_command("python3 -c 'import claude_code_sdk'", timeout=30)
             except Exception:
                 return False
@@ -164,24 +297,35 @@ class ClaudeCodeAdapter(AgentAdapter):
         container: ContainerConfig,
         payload: dict[str, object],
     ) -> dict[str, object]:
-        async with self._executor_factory(container) as executor:
-            await self._ensure_remote_runner(executor)
-            with TemporaryDirectory() as temp_dir_name:
-                temp_dir = Path(temp_dir_name)
-                request_path = temp_dir / "request.json"
-                result_path = temp_dir / "result.json"
-                request_path.write_text(json.dumps(payload), encoding="utf-8")
-                remote_request = f"{container.project_dir}/.ainrf-runtime/request.json"
-                remote_result = f"{container.project_dir}/.ainrf-runtime/result.json"
-                await executor.run_command(f"mkdir -p {container.project_dir}/.ainrf-runtime", timeout=30)
-                await executor.upload(request_path, remote_request)
-                command = (
-                    f"cd {container.project_dir} && "
-                    f"python3 {_REMOTE_RUNNER_PATH} {remote_request} {remote_result}"
-                )
-                await executor.run_command(command, cwd=container.project_dir, timeout=container.command_timeout)
-                await executor.download(remote_result, result_path)
-                response = json.loads(result_path.read_text(encoding="utf-8"))
+        try:
+            async with self._executor_factory(container) as executor:
+                await self._ensure_remote_runner(executor)
+                with TemporaryDirectory() as temp_dir_name:
+                    temp_dir = Path(temp_dir_name)
+                    request_path = temp_dir / "request.json"
+                    result_path = temp_dir / "result.json"
+                    request_path.write_text(json.dumps(payload), encoding="utf-8")
+                    remote_request = f"{container.project_dir}/.ainrf-runtime/request.json"
+                    remote_result = f"{container.project_dir}/.ainrf-runtime/result.json"
+                    quoted_runtime_dir = shlex.quote(f"{container.project_dir}/.ainrf-runtime")
+                    await executor.run_command(f"mkdir -p {quoted_runtime_dir}", timeout=30)
+                    await executor.upload(request_path, remote_request)
+                    command = (
+                        f"cd {shlex.quote(container.project_dir)} && "
+                        f"python3 {shlex.quote(_REMOTE_RUNNER_PATH)} "
+                        f"{shlex.quote(remote_request)} {shlex.quote(remote_result)}"
+                    )
+                    await executor.run_command(
+                        command,
+                        cwd=container.project_dir,
+                        timeout=container.command_timeout,
+                    )
+                    await executor.download(remote_result, result_path)
+                    response = json.loads(result_path.read_text(encoding="utf-8"))
+        except (CommandTimeoutError, TransferError, SSHConnectionError, json.JSONDecodeError) as exc:
+            raise AgentExecutionError(f"Agent invocation failed: {exc}", retryable=True) from exc
+        except Exception as exc:
+            raise AgentExecutionError(f"Agent invocation failed: {exc}", retryable=False) from exc
         if not isinstance(response, dict):
             raise AgentExecutionError("Agent response must be a JSON object", retryable=False)
         return cast(dict[str, object], response)
@@ -193,7 +337,7 @@ class ClaudeCodeAdapter(AgentAdapter):
             local_path.write_text(_REMOTE_RUNNER_SOURCE, encoding="utf-8")
             remote_dir = f"{container.project_dir}/.ainrf-runtime"
             remote_path = f"{container.project_dir}/{_REMOTE_RUNNER_PATH}"
-            await executor.run_command(f"mkdir -p {remote_dir}", timeout=30)
+            await executor.run_command(f"mkdir -p {shlex.quote(remote_dir)}", timeout=30)
             await executor.upload(local_path, remote_path)
 
     def _scalar_list_payload(self, payload: dict[str, object], key: str) -> list[object]:

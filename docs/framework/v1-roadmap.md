@@ -46,7 +46,7 @@ gantt
 
     section 模式集成
     P8 Mode 2 Deep Repro       :p8, after p7 p2 p5 p6, 7d
-    P9 Mode 1 Lit Exploration  :p9, after p8, 7d
+    P9 Mode 1 Research Discovery  :p9, after p8, 7d
 ```
 
 ## P0: Project Scaffold
@@ -365,33 +365,34 @@ gantt
 | GPU 资源不足或训练时间过长 | 预算耗尽 | 计划阶段预估资源需求；TaskEngine 持续监控预算；支持 `core-only` 范围缩减 |
 | 数据集不可获取 | 实验无法运行 | 计划阶段明确数据来源；数据不可用时记录为 `env_failure` 而非系统错误 |
 
-## P9: Mode 1 — Literature Exploration Pipeline
+## P9: Mode 1 — Research Discovery Pipeline
 
 > [!info]
-> Mode 1 是更开放的模式——从种子论文出发递归探索文献网络。本阶段在 Mode 2 复现能力之上叠加探索、排序和终止控制。详见 [[framework/v1-dual-mode-research-engine]] 中 Mode 1 工作流定义。
+> Mode 1 是更开放的模式——从种子论文、文章材料或文字叙述出发递归开展调研发现。本阶段聚焦需求澄清、文献扩展、图谱更新、idea 机会发现和终止控制；不再把复现作为该模式的默认主路径。详见 [[framework/v1-dual-mode-research-engine]] 中 Mode 1 工作流定义。
 
 **交付物：**
 
-- ExplorationGraph 管理：初始化、更新前沿状态、记录已访问/排队/剪枝的 PaperCard
-- 参考文献提取与排序：从 PaperCard 中提取引用 → 按相关性和复现价值排序
-  - 排序信号：被引次数（如可获取）、与种子论文的方法相关性、agent 评估的复现价值
-- 选择性复现：对高价值论文触发 ReproductionTask（复用 P8 的 Mode 2 能力）
+- ExplorationGraph 管理：初始化、更新前沿状态、记录已访问/排队/剪枝的 PaperCard、发现卡片与 idea 候选
+- 需求澄清与问题画像：把种子材料和用户文字叙述整理为研究目标、关注方向、忽略方向和潜在创新假设
+- 参考文献提取与排序：从 PaperCard 中提取引用 → 按相关性、方法差异性和创新潜力排序
+  - 排序信号：被引次数（如可获取）、与问题画像的方法相关性、agent 评估的新颖性与研究价值
+- 方法脉络与知识图更新：沉淀子方向结构、代表路线、常见实验范式和证据链
+- idea 发现与评估：对用户自带 idea 生成可行性分析，同时主动提出潜在 idea 方向
 - 终止控制器：三重终止条件——
   - 递归深度达到上限（如 3 跳）
   - 预算耗尽（GPU 小时、API 费用、总时长）
   - agent 自评递减收益（连续 N 篇论文未产出新的高价值 claim）
-- 探索报告生成：汇总 ExplorationGraph → 产出核心发现、文献地图、下一步建议
+- 调研发现报告生成：汇总 ExplorationGraph → 产出核心发现、文献地图、方法总结、idea 方向、下一步建议
 **可测试标准：**
 
-- 提交种子论文 → 系统自主探索 → 在深度上限（如 2 跳）内终止 → 产出 ExplorationGraph
-- ExplorationGraph 包含：已访问 PaperCard 列表、排队论文、剪枝论文及原因、当前深度
-- 至少一篇高价值论文触发 ReproductionTask → 产出复现结果
+- 提交种子材料或文字叙述 → 系统自主调研 → 在深度上限（如 2 跳）内终止 → 产出 ExplorationGraph
+- ExplorationGraph 包含：已访问 PaperCard 列表、排队论文、剪枝论文及原因、当前深度、发现卡片与 idea 候选
 - 递减收益检测：连续 3 篇论文无新 claim → 自动终止 → 终止原因记录在 ExplorationGraph
 - 预算耗尽 → 探索终止 → 报告中说明已探索范围和未探索前沿
-- 探索报告包含：核心发现摘要、文献关系图、复现结果汇总、下一步建议
+- 调研发现报告包含：核心发现摘要、文献关系图、方法脉络、idea 方向、下一步建议
 - 解析失败的论文 → 记录为 `EvidenceRecord(type=parse_failure)` → 不阻塞探索继续
 
-**依赖：** P1-P7 全部 + P8（复现能力复用）
+**依赖：** P1-P7 全部
 
 **风险：**
 
@@ -418,7 +419,7 @@ flowchart TD
     P6[P6: SSE Streaming]
     P7[P7: Agent Adapter & Engine]
     P8[P8: Mode 2 Deep Repro]
-    P9[P9: Mode 1 Lit Exploration]
+    P9[P9: Mode 1 Research Discovery]
 
     P0 --> P1
     P0 --> P2

@@ -31,7 +31,7 @@ project-root/
 ├── papers/              # MinerU 解析后的 Markdown 论文
 │   ├── seed/            # 种子论文（用户提供的 PDF 经 MinerU 转换）
 │   └── explored/        # Mode 1 递归探索中发现并解析的论文
-├── src/                 # 实现代码（Mode 2 从零实现；Mode 1 复现脚本）
+├── src/                 # 实现代码（Mode 2 从零实现；Mode 1 可选的小型分析脚本或图谱构建脚本）
 ├── experiments/         # ExperimentRun 产物
 │   └── run-YYYYMMDD-HHMMSS/
 │       ├── config.json  # 运行配置
@@ -40,7 +40,7 @@ project-root/
 │       ├── checkpoints/ # 模型检查点（可选，大文件不同步）
 │       └── result.json  # 运行结果摘要
 ├── reports/             # 生成的报告
-│   ├── reproduction/    # 文献复现报告
+│   ├── discovery/       # 调研发现报告、领域图景与 idea 机会分析
 │   ├── quality/         # 论文质量评估报告（Mode 2）
 │   └── exploration/     # 探索报告与下一步建议（Mode 1）
 ├── artifacts/           # 序列化的一等工件
@@ -68,7 +68,7 @@ project-root/
 - **同步频率**：agent 在以下时机触发 git commit + push：
   - 每个 ExperimentRun 完成或失败后
   - 每个 PaperCard 完成结构化阅读后
-  - Mode 1 每轮探索迭代结束时
+- Mode 1 每轮调研迭代结束时
   - Mode 2 每个主要实现里程碑后
 - **冲突处理**：容器是唯一写入方，本地只读取，因此不存在合并冲突。
 

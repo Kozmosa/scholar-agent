@@ -88,6 +88,9 @@ gantt
 
 ## W2: Project & Run Forms
 
+> [!note]
+> 具体实施规划见 [[LLM-Working/w2-project-run-forms-implementation-plan]]。
+
 **交付物：**
 
 - Project List 与 Project Detail 两级视图
@@ -104,6 +107,9 @@ gantt
 **依赖：** W1、P4、P5
 
 ## W3: Run Detail, Gates & Event Timeline
+
+> [!note]
+> 具体实施规划见 [[LLM-Working/w3-run-detail-gates-events-implementation-plan]]。
 
 **交付物：**
 
@@ -125,7 +131,7 @@ gantt
 
 **交付物：**
 
-- Mode 1 mock 面板：探索阶段、候选论文、占位图谱、发现卡片
+- Mode 1 mock 面板：需求澄清、候选论文池、方法脉络、占位图谱、发现卡片与 idea 方向
 - Mode 2 mock 面板：实现阶段、baseline、目标表格、偏差分析、质量评估
 - mock data adapter，与真实 API client 分层隔离
 - mock / real 数据源的显式标识

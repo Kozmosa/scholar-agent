@@ -13,7 +13,7 @@ last_local_commit: workspace aggregate
 # AI-Native Research Framework 索引
 
 > [!abstract]
-> 这一组笔记把现有参考项目抽象成我们自己的 AI-Native Research Framework——一个有界自治研究系统，支持两种核心操作模式：文献探索与复现（Mode 1）和深度复现（Mode 2）。V1 在隔离容器上自主运行，人在纳入和计划阶段定义合同边界。
+> 这一组笔记把现有参考项目抽象成我们自己的 AI-Native Research Framework——一个有界自治研究系统，支持两种核心操作模式：调研发现（Mode 1）和深度复现（Mode 2）。V1 在隔离容器上自主运行，人在纳入和计划阶段定义合同边界。
 
 ## 阅读方式
 
@@ -23,6 +23,7 @@ last_local_commit: workspace aggregate
 - 如果要落近期版本，接着读 [[framework/v1-dual-mode-research-engine]]。
 - 如果要看实现规格（API、组件、状态机），读 [[framework/v1-rfc]]。
 - 如果要看分阶段实现计划和里程碑，读 [[framework/v1-roadmap]]。
+- 如果要看 agent 能力基座与角色分工，读 [[framework/agent-capability-base]]、[[framework/vsa-rfc]] 和 [[framework/pia-rfc]]。
 - 如果要看基于 Gradio 的项目工作台设计，读 [[framework/webui-v1-rfc]] 和 [[framework/webui-v1-roadmap]]。
 - 如果要追溯设计来源，最后读 [[framework/reference-mapping]] 和各项目研究报告。
 
@@ -34,6 +35,9 @@ last_local_commit: workspace aggregate
 - [[framework/v1-dual-mode-research-engine]]
 - [[framework/v1-rfc]]
 - [[framework/v1-roadmap]]
+- [[framework/agent-capability-base]]
+- [[framework/vsa-rfc]]
+- [[framework/pia-rfc]]
 - [[framework/webui-v1-rfc]]
 - [[framework/webui-v1-roadmap]]
 - [[framework/reference-mapping]]
@@ -46,6 +50,9 @@ last_local_commit: workspace aggregate
 - 双模式 V1 的工作流、人工关卡与终止合同：[[framework/v1-dual-mode-research-engine]]
 - V1 实现规格（API、组件、状态机）：[[framework/v1-rfc]]
 - V1 分阶段实现路线图：[[framework/v1-roadmap]]
+- Agent 能力基座总纲与三层角色分工：[[framework/agent-capability-base]]
+- 容器内研究员预设 VSA：[[framework/vsa-rfc]]
+- 面向用户的 PI 角色 PIA：[[framework/pia-rfc]]
 - WebUI-v1 的项目工作台规格与路线图：[[framework/webui-v1-rfc]]、[[framework/webui-v1-roadmap]]
 - 参考项目如何被吸收到框架中：[[framework/reference-mapping]]
 

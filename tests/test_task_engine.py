@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import cast
 
 from ainrf.agents import AgentAdapter
+from ainrf.agents.base import AgentExecutionError
 from ainrf.artifacts import ArtifactType
 from ainrf.engine.engine import EngineContext, TaskEngine
 from ainrf.engine.models import AtomicTaskSpec, TaskExecutionResult, TaskPlanResult
@@ -241,3 +242,101 @@ def test_run_once_completes_when_budget_exhausted(tmp_path: Path) -> None:
     assert completed is not None
     assert completed.status is TaskStage.COMPLETED
     assert completed.termination_reason == "budget_exhausted"
+
+
+def test_run_once_retryable_execution_error_rotates_pending_queue(tmp_path: Path) -> None:
+    class RetryOnceAdapter(FakeAdapter):
+        def __init__(self) -> None:
+            super().__init__()
+            self.failed_steps: set[str] = set()
+
+        async def execute_step(
+            self,
+            *,
+            container: object,
+            step: AtomicTaskSpec,
+            context: dict[str, object],
+        ) -> TaskExecutionResult:
+            _ = container, context
+            if step.kind == "implement_module" and step.step_id not in self.failed_steps:
+                self.failed_steps.add(step.step_id)
+                raise AgentExecutionError("temporary timeout", retryable=True)
+            return await super().execute_step(container=container, step=step, context=context)
+
+    adapter = RetryOnceAdapter()
+    engine, store, _gate_manager = make_engine(tmp_path, adapter=adapter)
+    task = make_task(tmp_path, yolo=True)
+    store.save_task(task)
+
+    asyncio.run(engine.run_once())
+    queued = store.load_task("t-001")
+    assert queued is not None
+    assert queued.status is TaskStage.EXECUTING
+
+    asyncio.run(engine.run_once())
+    retried = store.load_task("t-001")
+    assert retried is not None
+    assert retried.status is TaskStage.EXECUTING
+    assert len(retried.checkpoint.pending_queue) == 2
+    assert retried.checkpoint.pending_queue[0].step == "summarize_execution"
+    assert retried.checkpoint.pending_queue[1].step == "implement_module"
+    assert retried.checkpoint.pending_queue[1].details.get("retry_count") == 1
+
+    asyncio.run(engine.run_once())
+    asyncio.run(engine.run_once())
+
+    completed = store.load_task("t-001")
+    assert completed is not None
+    assert completed.status is TaskStage.COMPLETED
+
+
+def test_run_once_retryable_execution_error_exhaustion_fails(tmp_path: Path) -> None:
+    class AlwaysRetryableErrorAdapter(FakeAdapter):
+        async def plan_reproduction(
+            self,
+            *,
+            container: object,
+            prompt: str,
+            context: dict[str, object],
+        ) -> TaskPlanResult:
+            _ = container, prompt, context
+            return TaskPlanResult(
+                summary="Single-step plan",
+                milestones=["Implement"],
+                estimated_steps=1,
+                strategy="implement-from-paper",
+                target_paper_id="pc-001",
+                success_criteria=["step done"],
+                steps=[
+                    AtomicTaskSpec(
+                        step_id="step-1",
+                        kind="implement_module",
+                        title="Implement core",
+                        payload={"module": "core"},
+                    )
+                ],
+            )
+
+        async def execute_step(
+            self,
+            *,
+            container: object,
+            step: AtomicTaskSpec,
+            context: dict[str, object],
+        ) -> TaskExecutionResult:
+            _ = container, step, context
+            raise AgentExecutionError("still flaky", retryable=True)
+
+    adapter = AlwaysRetryableErrorAdapter()
+    engine, store, _gate_manager = make_engine(tmp_path, adapter=adapter)
+    task = make_task(tmp_path, yolo=True)
+    store.save_task(task)
+
+    asyncio.run(engine.run_once())
+    for _ in range(4):
+        asyncio.run(engine.run_once())
+
+    failed = store.load_task("t-001")
+    assert failed is not None
+    assert failed.status is TaskStage.FAILED
+    assert failed.termination_reason == "agent_execution_retry_exhausted"

@@ -19,3 +19,6 @@ ref-repos/
 /site/
 __pycache__/
 *.pyc
+
+# ignore test-time envs
+*.env

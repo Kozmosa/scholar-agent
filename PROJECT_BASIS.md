@@ -6,6 +6,7 @@
 
 - 项目名称：`scholar-agent`
 - 当前主要目标：沉淀面向学术研究 Agent 的调研笔记与框架设计，同时维护一个可扩展的 `ainrf`。
+- `vsa` 在本项目中指工作在容器内的 vibe scientist agent 研究员预设。
 
 ## 约束优先级
 

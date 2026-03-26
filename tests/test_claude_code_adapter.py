@@ -5,14 +5,17 @@ import json
 from pathlib import Path
 
 from ainrf.agents import ClaudeCodeAdapter
+from ainrf.agents.base import AgentExecutionError
+from ainrf.agents.claude_code import _REMOTE_RUNNER_SOURCE
 from ainrf.engine.models import AtomicTaskSpec
-from ainrf.execution import CommandResult, ContainerConfig
+from ainrf.execution import CommandResult, CommandTimeoutError, ContainerConfig
 
 
 class FakeSSHExecutor:
     latest_request: dict[str, object] | None = None
     all_commands: list[str] = []
     all_uploads: list[str] = []
+    ensure_calls: int = 0
 
     def __init__(self, container: ContainerConfig) -> None:
         self.container = container
@@ -28,6 +31,7 @@ class FakeSSHExecutor:
         return None
 
     async def ensure_claude_code(self) -> str:
+        FakeSSHExecutor.ensure_calls += 1
         return "2.0.0"
 
     async def run_command(
@@ -93,6 +97,7 @@ def _container() -> ContainerConfig:
 def test_bootstrap_installs_sdk_and_uploads_runner() -> None:
     FakeSSHExecutor.all_commands = []
     FakeSSHExecutor.all_uploads = []
+    FakeSSHExecutor.ensure_calls = 0
     adapter = ClaudeCodeAdapter(executor_factory=FakeSSHExecutor)
 
     asyncio.run(adapter.bootstrap(_container()))
@@ -102,6 +107,7 @@ def test_bootstrap_installs_sdk_and_uploads_runner() -> None:
 
 
 def test_plan_reproduction_parses_remote_runner_response() -> None:
+    FakeSSHExecutor.ensure_calls = 0
     adapter = ClaudeCodeAdapter(executor_factory=FakeSSHExecutor)
 
     result = asyncio.run(
@@ -117,6 +123,7 @@ def test_plan_reproduction_parses_remote_runner_response() -> None:
 
 
 def test_execute_step_parses_remote_runner_response() -> None:
+    FakeSSHExecutor.ensure_calls = 0
     adapter = ClaudeCodeAdapter(executor_factory=FakeSSHExecutor)
     step = AtomicTaskSpec(step_id="s1", kind="run_validation", title="Validate")
 
@@ -130,3 +137,124 @@ def test_execute_step_parses_remote_runner_response() -> None:
 
     assert result.status == "succeeded"
     assert result.resource_usage["gpu_hours"] == 1.0
+
+
+def test_remote_runner_uses_sdk_dispatch_instead_of_unconditional_fallback() -> None:
+    legacy_snippet = """try:
+        import claude_code_sdk  # noqa: F401
+    except Exception:
+        result = _fallback_response(request)
+    else:
+        result = _fallback_response(request)"""
+
+    assert "def _invoke_with_sdk" in _REMOTE_RUNNER_SOURCE
+    assert legacy_snippet not in _REMOTE_RUNNER_SOURCE
+
+
+def test_execute_step_propagates_error_field_from_runner_response() -> None:
+    class FakeSSHExecutorError(FakeSSHExecutor):
+        async def download(self, remote: str, local: str | Path) -> None:
+            _ = remote
+            response = {
+                "status": "failed",
+                "summary": "Execution failed",
+                "messages": ["Unsupported action"],
+                "artifacts": [],
+                "resource_usage": {"gpu_hours": 0.0},
+                "step_updates": {},
+                "error": "Unsupported action: unknown_action",
+            }
+            Path(local).write_text(json.dumps(response), encoding="utf-8")
+
+    adapter = ClaudeCodeAdapter(executor_factory=FakeSSHExecutorError)
+    step = AtomicTaskSpec(step_id="s1", kind="unknown_action", title="Unknown")
+
+    result = asyncio.run(
+        adapter.execute_step(
+            container=_container(),
+            step=step,
+            context={"task_id": "t-001"},
+        )
+    )
+
+    assert result.status == "failed"
+    assert result.error == "Unsupported action: unknown_action"
+
+
+def test_health_check_returns_false_when_sdk_missing() -> None:
+    FakeSSHExecutor.ensure_calls = 0
+    adapter = ClaudeCodeAdapter(executor_factory=FakeSSHExecutor)
+
+    result = asyncio.run(adapter.health_check(_container()))
+
+    assert result is False
+    assert FakeSSHExecutor.ensure_calls == 0
+
+
+def test_health_check_returns_true_when_sdk_available() -> None:
+    class FakeSSHExecutorHealthy(FakeSSHExecutor):
+        def __init__(self, container: ContainerConfig) -> None:
+            super().__init__(container)
+            self._first_import = False
+
+    FakeSSHExecutor.ensure_calls = 0
+    adapter = ClaudeCodeAdapter(executor_factory=FakeSSHExecutorHealthy)
+
+    result = asyncio.run(adapter.health_check(_container()))
+
+    assert result is True
+    assert FakeSSHExecutor.ensure_calls == 0
+
+
+def test_execute_step_raises_retryable_error_on_timeout() -> None:
+    class FakeSSHExecutorTimeout(FakeSSHExecutor):
+        async def run_command(
+            self,
+            cmd: str,
+            timeout: int | None = None,
+            cwd: str | None = None,
+            env: dict[str, str] | None = None,
+        ) -> CommandResult:
+            _ = timeout, cwd, env
+            if cmd.startswith("cd ") and "claude_code_runner.py" in cmd:
+                raise CommandTimeoutError("runner timeout")
+            return await super().run_command(cmd, timeout=timeout, cwd=cwd, env=env)
+
+    adapter = ClaudeCodeAdapter(executor_factory=FakeSSHExecutorTimeout)
+    step = AtomicTaskSpec(step_id="s1", kind="run_validation", title="Validate")
+
+    try:
+        asyncio.run(
+            adapter.execute_step(
+                container=_container(),
+                step=step,
+                context={"task_id": "t-001"},
+            )
+        )
+    except AgentExecutionError as exc:
+        assert exc.retryable is True
+    else:
+        raise AssertionError("Expected AgentExecutionError")
+
+
+def test_execute_step_raises_non_retryable_error_on_non_object_response() -> None:
+    class FakeSSHExecutorBadResponse(FakeSSHExecutor):
+        async def download(self, remote: str, local: str | Path) -> None:
+            _ = remote
+            Path(local).write_text(json.dumps(["not", "object"]), encoding="utf-8")
+
+    adapter = ClaudeCodeAdapter(executor_factory=FakeSSHExecutorBadResponse)
+    step = AtomicTaskSpec(step_id="s1", kind="run_validation", title="Validate")
+
+    try:
+        asyncio.run(
+            adapter.execute_step(
+                container=_container(),
+                step=step,
+                context={"task_id": "t-001"},
+            )
+        )
+    except AgentExecutionError as exc:
+        assert exc.retryable is False
+    else:
+        raise AssertionError("Expected AgentExecutionError")
