@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ainrf.api.schemas import ApiStatus, ModeTwoScope, TaskDetailResponse
+from ainrf.api.schemas import ApiStatus, ArtifactItemResponse, ModeTwoScope, TaskDetailResponse
 from ainrf.events import TaskEventCategory
 from ainrf.state import TaskMode, TaskStage
 
@@ -54,6 +54,7 @@ class ConnectionSession:
     selected_project_slug: str | None = None
     selected_run_task_id: str | None = None
     selected_run_detail: TaskDetailResponse | None = None
+    selected_run_artifacts: tuple[ArtifactItemResponse, ...] = ()
     run_timeline_items: tuple[RunTimelineItem, ...] = ()
     last_event_id_by_task: dict[str, int] = field(default_factory=dict)
     run_event_mode: str | None = None

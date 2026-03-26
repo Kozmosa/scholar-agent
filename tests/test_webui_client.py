@@ -126,6 +126,61 @@ def test_get_task_parses_detail_payload() -> None:
     assert detail.status is TaskStage.GATE_WAITING
 
 
+def test_list_task_artifacts_parses_response() -> None:
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            200,
+            json={
+                "task_id": "t-001",
+                "items": [
+                    {
+                        "artifact_id": "eg-001",
+                        "artifact_type": "ExplorationGraph",
+                        "source_task_id": "t-001",
+                        "summary": "graph",
+                        "status": None,
+                        "payload": {
+                            "artifact_id": "eg-001",
+                            "artifact_type": "ExplorationGraph",
+                            "seed_paper_ids": ["pc-001"],
+                            "visited_paper_ids": ["pc-001"],
+                            "queued_paper_ids": ["pc-002"],
+                            "pruned_paper_ids": [],
+                            "reproduction_task_ids": [],
+                            "current_depth": 1,
+                            "max_depth": 3,
+                            "max_breadth": 3,
+                            "max_no_claim_rounds": 3,
+                            "no_new_claim_rounds": 0,
+                            "ranked_reference_ids": ["pc-002"],
+                            "reference_scores": {"pc-002": 0.82},
+                            "prune_reasons": {},
+                            "budget_snapshot": {
+                                "gpu_hours": 0.0,
+                                "api_cost_usd": 0.0,
+                                "wall_clock_hours": 0.0,
+                            },
+                            "termination_reason": None,
+                            "created_at": "2026-03-16T00:00:00Z",
+                            "updated_at": "2026-03-16T00:00:00Z",
+                            "schema_version": 1,
+                            "source_task_id": "t-001",
+                            "related_artifacts": [],
+                            "summary": "graph",
+                        },
+                    }
+                ],
+            },
+        )
+    )
+    client = AinrfApiClient("http://ainrf.local", api_key="secret", transport=transport)
+
+    response = client.list_task_artifacts("t-001")
+
+    assert response.task_id == "t-001"
+    assert response.items[0].artifact_id == "eg-001"
+
+
 def test_create_task_posts_validated_payload() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         payload = request.read().decode("utf-8")

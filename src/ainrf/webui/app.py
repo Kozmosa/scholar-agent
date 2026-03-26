@@ -10,6 +10,7 @@ import gradio as gr
 
 from ainrf.api.schemas import (
     ApiStatus,
+    ArtifactItemResponse,
     ModeTwoScope,
     TaskCreateRequest,
     TaskDetailResponse,
@@ -184,7 +185,7 @@ def create_webui(
                     label="Run Mode",
                     choices=[
                         ("Mode 2", TaskMode.DEEP_REPRODUCTION.value),
-                        ("Mode 1", TaskMode.LITERATURE_EXPLORATION.value),
+                        ("Mode 1", TaskMode.RESEARCH_DISCOVERY.value),
                     ],
                     value=TaskMode.DEEP_REPRODUCTION.value,
                 )
@@ -629,6 +630,7 @@ def connect_and_render(
 
 def clear_run_observation(session: ConnectionSession) -> ConnectionSession:
     session.selected_run_detail = None
+    session.selected_run_artifacts = ()
     session.run_timeline_items = ()
     session.run_event_mode = None
     session.run_refresh_error = None
@@ -655,10 +657,17 @@ def refresh_selected_run(
         detail = client.get_task(task_id)
     except ApiClientError as exc:
         session.selected_run_detail = None
+        session.selected_run_artifacts = ()
         session.run_refresh_error = f"Failed to load run detail: {exc}"
         return session
 
     session.selected_run_detail = detail
+    try:
+        artifacts = client.list_task_artifacts(task_id)
+        session.selected_run_artifacts = tuple(artifacts.items)
+    except ApiClientError:
+        # Keep detail visible even if artifact detail fetch fails.
+        session.selected_run_artifacts = ()
     store.update_project_run_status(
         task_id,
         status=detail.status,
@@ -1210,7 +1219,7 @@ def build_task_create_request(
     if webhook_secret:
         payload["webhook_secret"] = webhook_secret
 
-    if resolved_mode is TaskMode.LITERATURE_EXPLORATION:
+    if resolved_mode is TaskMode.RESEARCH_DISCOVERY:
         papers = build_mode_one_papers(mode_one_seed_rows or [])
         payload["papers"] = papers
         payload["config"] = {
@@ -1507,7 +1516,7 @@ def render_run_detail(session: ConnectionSession, store: JsonProjectStore) -> st
             "- Live task detail not loaded yet. Use Refresh Run Detail after connecting to the API."
         )
     gate_section = render_active_gate(detail)
-    artifact_section = render_artifact_summary(detail)
+    artifact_section = render_artifact_summary(detail, session.selected_run_artifacts)
     timeline_section = render_timeline(session.run_timeline_items)
     observation_mode = session.run_event_mode or "snapshot"
     return (
@@ -1615,14 +1624,56 @@ def render_active_gate(detail: TaskDetailResponse) -> str:
     )
 
 
-def render_artifact_summary(detail: TaskDetailResponse) -> str:
+def render_artifact_summary(
+    detail: TaskDetailResponse,
+    artifacts: tuple[ArtifactItemResponse, ...],
+) -> str:
     if not detail.artifact_summary.counts:
         return "### Artifact Summary\n- No artifacts recorded yet."
     rows = [
         f"- `{artifact_type}`: `{count}`"
         for artifact_type, count in sorted(detail.artifact_summary.counts.items())
     ]
+    mode_one_rows = render_mode_one_artifacts(artifacts)
+    if mode_one_rows:
+        return "### Artifact Summary\n" + "\n".join(rows) + "\n" + mode_one_rows
     return "### Artifact Summary\n" + "\n".join(rows)
+
+
+def render_mode_one_artifacts(artifacts: tuple[ArtifactItemResponse, ...]) -> str:
+    if not artifacts:
+        return ""
+    graph_rows: list[str] = []
+    claim_rows: list[str] = []
+    for artifact in artifacts:
+        payload = artifact.payload
+        if artifact.artifact_type.value == "ExplorationGraph":
+            seed_count = len(_string_list(payload.get("seed_paper_ids")))
+            visited_count = len(_string_list(payload.get("visited_paper_ids")))
+            queued_count = len(_string_list(payload.get("queued_paper_ids")))
+            graph_rows.append(
+                "- ExplorationGraph: "
+                f"seed={seed_count}, visited={visited_count}, queued={queued_count}, "
+                f"depth={payload.get('current_depth', 0)}, "
+                f"termination={payload.get('termination_reason') or 'N/A'}"
+            )
+        if artifact.artifact_type.value == "Claim":
+            statement = str(payload.get("statement") or "")
+            if not statement:
+                continue
+            confidence = payload.get("confidence")
+            confidence_str = "N/A" if confidence is None else f"{float(confidence):.2f}"
+            claim_rows.append(f"- Claim: {statement} (confidence={confidence_str})")
+    if not graph_rows and not claim_rows:
+        return ""
+    rows = ["### Mode 1 Outputs", *graph_rows, *claim_rows[:5]]
+    return "\n".join(rows)
+
+
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
 
 
 def render_timeline(items: tuple[RunTimelineItem, ...]) -> str:

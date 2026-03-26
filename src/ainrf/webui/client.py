@@ -8,6 +8,7 @@ import httpx
 
 from ainrf.api.schemas import (
     HealthResponse,
+    TaskArtifactsResponse,
     TaskCreateRequest,
     TaskCreateResponse,
     TaskActionResponse,
@@ -55,6 +56,10 @@ class AinrfApiClient:
     def get_task(self, task_id: str) -> TaskDetailResponse:
         response = self._request("GET", f"/tasks/{task_id}", expected_statuses={200})
         return self._validate_model(response, TaskDetailResponse)
+
+    def list_task_artifacts(self, task_id: str) -> TaskArtifactsResponse:
+        response = self._request("GET", f"/tasks/{task_id}/artifacts", expected_statuses={200})
+        return self._validate_model(response, TaskArtifactsResponse)
 
     def create_task(self, payload: TaskCreateRequest) -> TaskCreateResponse:
         response = self._request(

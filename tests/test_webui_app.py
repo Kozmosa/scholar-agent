@@ -7,8 +7,10 @@ import gradio as gr
 
 from ainrf.api.schemas import (
     ApiStatus,
+    ArtifactItemResponse,
     HealthResponse,
     TaskActionResponse,
+    TaskArtifactsResponse,
     TaskCreateResponse,
     TaskDetailResponse,
     TaskListResponse,
@@ -45,6 +47,7 @@ class FakeClient:
         task_detail: TaskDetailResponse | None = None,
         action_response: TaskActionResponse | None = None,
         events: list[TaskEvent] | None = None,
+        task_artifacts: list[ArtifactItemResponse] | None = None,
         error: Exception | None = None,
     ) -> None:
         self._health = health
@@ -53,6 +56,7 @@ class FakeClient:
         self._task_detail = task_detail
         self._action_response = action_response
         self._events = events or []
+        self._task_artifacts = task_artifacts or []
         self._error = error
 
     def get_health(self) -> HealthResponse:
@@ -101,6 +105,12 @@ class FakeClient:
         if self._error is not None:
             raise self._error
         return list(self._events)
+
+    def list_task_artifacts(self, task_id: str) -> TaskArtifactsResponse:
+        _ = task_id
+        if self._error is not None:
+            raise self._error
+        return TaskArtifactsResponse(task_id="t-001", items=list(self._task_artifacts))
 
 
 def build_task_summary(task_id: str, mode: TaskMode, status: TaskStage) -> TaskSummaryResponse:
@@ -283,7 +293,7 @@ def test_build_task_create_request_uses_project_defaults_and_mode_specific_input
 
     request = build_task_create_request(
         project=project,
-        mode=TaskMode.LITERATURE_EXPLORATION.value,
+        mode=TaskMode.RESEARCH_DISCOVERY.value,
         run_container_host="",
         run_container_port=None,
         run_container_user="",
@@ -493,6 +503,37 @@ def test_refresh_selected_run_loads_detail_and_timeline(tmp_path: Path) -> None:
         store,
         client_factory=lambda base_url, api_key: FakeClient(
             task_detail=build_task_detail("t-001", TaskStage.GATE_WAITING),
+            task_artifacts=[
+                ArtifactItemResponse.model_validate(
+                    {
+                        "artifact_id": "eg-001",
+                        "artifact_type": "ExplorationGraph",
+                        "source_task_id": "t-001",
+                        "summary": "graph",
+                        "status": None,
+                        "payload": {
+                            "seed_paper_ids": ["pc-001"],
+                            "visited_paper_ids": ["pc-001", "pc-002"],
+                            "queued_paper_ids": ["pc-003"],
+                            "current_depth": 1,
+                            "termination_reason": None,
+                        },
+                    }
+                ),
+                ArtifactItemResponse.model_validate(
+                    {
+                        "artifact_id": "cl-001",
+                        "artifact_type": "Claim",
+                        "source_task_id": "t-001",
+                        "summary": "claim",
+                        "status": None,
+                        "payload": {
+                            "statement": "Adapter families can be mixed.",
+                            "confidence": 0.73,
+                        },
+                    }
+                ),
+            ],
             events=[
                 TaskEvent.model_validate(
                     {
@@ -509,9 +550,11 @@ def test_refresh_selected_run_loads_detail_and_timeline(tmp_path: Path) -> None:
     )
 
     assert updated.selected_run_detail is not None
+    assert len(updated.selected_run_artifacts) == 2
     assert updated.selected_run_detail.active_gate is not None
     assert updated.run_event_mode == "sse"
     assert len(updated.run_timeline_items) == 1
+    assert "Mode 1 Outputs" in render_run_detail(updated, store)
     assert "Event Timeline" in render_run_detail(updated, store)
 
 
