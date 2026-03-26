@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from ainrf.agents import ClaudeCodeAdapter
+from ainrf.agents import ClaudeCodeAdapter, build_step_skill_payload, get_step_skill_profile
 from ainrf.agents.base import AgentExecutionError
 from ainrf.agents.claude_code import _REMOTE_RUNNER_SOURCE
 from ainrf.engine.models import AtomicTaskSpec
@@ -115,7 +115,9 @@ class FakeSSHExecutor:
 
 
 def _container() -> ContainerConfig:
-    return ContainerConfig(host="gpu-server-01", user="researcher", project_dir="/workspace/project")
+    return ContainerConfig(
+        host="gpu-server-01", user="researcher", project_dir="/workspace/project"
+    )
 
 
 def test_bootstrap_installs_sdk_and_uploads_runner() -> None:
@@ -127,7 +129,10 @@ def test_bootstrap_installs_sdk_and_uploads_runner() -> None:
     asyncio.run(adapter.bootstrap(_container()))
 
     assert "python3 -m pip install --user claude-code-sdk" in FakeSSHExecutor.all_commands
-    assert any(item.endswith("/.ainrf-runtime/claude_code_runner.py") for item in FakeSSHExecutor.all_uploads)
+    assert any(
+        item.endswith("/.ainrf-runtime/claude_code_runner.py")
+        for item in FakeSSHExecutor.all_uploads
+    )
 
 
 def test_plan_reproduction_parses_remote_runner_response() -> None:
@@ -161,6 +166,38 @@ def test_execute_step_parses_remote_runner_response() -> None:
 
     assert result.status == "succeeded"
     assert result.resource_usage["gpu_hours"] == 1.0
+
+
+def test_get_step_skill_profile_returns_mode2_profile() -> None:
+    profile = get_step_skill_profile("diagnose_deviation")
+
+    assert profile is not None
+    assert profile.skill_name == "analyze-results"
+    assert profile.output_key == "diagnosis"
+
+
+def test_build_step_skill_payload_returns_profile_guidance() -> None:
+    step = AtomicTaskSpec(
+        step_id="s-diagnose",
+        kind="diagnose_deviation",
+        title="Diagnose deviation",
+        payload={"max_loops": 3},
+    )
+
+    payload = build_step_skill_payload(step, {"task_id": "t-001"})
+
+    assert payload is not None
+    assert payload["skill_name"] == "analyze-results"
+    assert payload["output_key"] == "diagnosis"
+    assert payload["step_kind"] == "diagnose_deviation"
+    assert payload["task_context"] == {"task_id": "t-001"}
+    assert isinstance(payload["guidance"], list)
+
+
+def test_build_step_skill_payload_returns_none_for_unmapped_step() -> None:
+    step = AtomicTaskSpec(step_id="s-custom", kind="custom_step", title="Custom")
+
+    assert build_step_skill_payload(step, {"task_id": "t-001"}) is None
 
 
 def test_remote_runner_uses_sdk_dispatch_instead_of_unconditional_fallback() -> None:
@@ -211,6 +248,27 @@ def test_execute_step_propagates_error_field_from_runner_response() -> None:
 
     assert result.status == "failed"
     assert result.error == "Unsupported action: unknown_action"
+
+
+def test_execute_step_uploads_skill_payload_for_mapped_step() -> None:
+    FakeSSHExecutor.latest_request = None
+    adapter = ClaudeCodeAdapter(executor_factory=FakeSSHExecutor)
+    step = AtomicTaskSpec(step_id="s1", kind="diagnose_deviation", title="Diagnose deviation")
+
+    asyncio.run(
+        adapter.execute_step(
+            container=_container(),
+            step=step,
+            context={"task_id": "t-001", "config": {"mode_2": {"scope": "core-only"}}},
+        )
+    )
+
+    request = FakeSSHExecutor.latest_request
+    assert request is not None
+    skill = request.get("skill")
+    assert isinstance(skill, dict)
+    assert skill["skill_name"] == "analyze-results"
+    assert skill["output_key"] == "diagnosis"
 
 
 def test_health_check_returns_false_when_sdk_missing() -> None:

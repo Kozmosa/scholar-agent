@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
 import shlex
+from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, cast
 
 from ainrf.agents.base import AgentAdapter, AgentExecutionError
+from ainrf.agents.skill_profiles import build_step_skill_payload
 from ainrf.engine.models import AtomicTaskSpec, StepArtifactRef, TaskExecutionResult, TaskPlanResult
 from ainrf.execution import (
     CommandTimeoutError,
@@ -18,6 +21,56 @@ from ainrf.execution import (
 
 _REMOTE_RUNNER_PATH = ".ainrf-runtime/claude_code_runner.py"
 
+
+_STEP_SKILL_MAPPING: dict[str, str] = {
+    "prioritize_references": "research-lit",
+    "update_knowledge_graph": "idea-discovery",
+    "check_termination": "auto-review-loop",
+    "diagnose_deviation": "analyze-results",
+    "generate_quality_assessment": "research-review",
+}
+
+
+@dataclass(slots=True)
+class SkillRuntimeConfig:
+    skills_root: Path
+    enabled_skills: frozenset[str]
+    step_timeout_seconds: int
+    strict_mode: bool
+
+    @classmethod
+    def from_env(cls, state_root: Path | None = None) -> "SkillRuntimeConfig":
+        resolved_state_root = state_root or Path(".ainrf")
+        raw_skills_root = os.environ.get("AINRF_SKILLS_ROOT")
+        skills_root = Path(raw_skills_root) if raw_skills_root else resolved_state_root / "skills"
+        raw_enabled = os.environ.get("AINRF_ENABLED_SKILLS", "")
+        enabled_skills = frozenset(item.strip() for item in raw_enabled.split(",") if item.strip())
+        step_timeout_seconds = int(os.environ.get("AINRF_STEP_TIMEOUT_SECONDS", "300"))
+        strict_mode = os.environ.get("AINRF_STRICT_MODE", "false").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        return cls(
+            skills_root=skills_root,
+            enabled_skills=enabled_skills,
+            step_timeout_seconds=step_timeout_seconds,
+            strict_mode=strict_mode,
+        )
+
+
+def _skill_for_step(step_kind: str) -> str | None:
+    return _STEP_SKILL_MAPPING.get(step_kind)
+
+
+def _skill_payload_for_step(
+    step: AtomicTaskSpec,
+    context: dict[str, object],
+) -> dict[str, object] | None:
+    return build_step_skill_payload(step, context)
+
+
 _REMOTE_RUNNER_SOURCE = """\
 from __future__ import annotations
 
@@ -25,6 +78,7 @@ import json
 import asyncio
 import inspect
 import sys
+import time
 from pathlib import Path
 
 
@@ -595,10 +649,12 @@ class ClaudeCodeAdapter(AgentAdapter):
         step: AtomicTaskSpec,
         context: dict[str, object],
     ) -> TaskExecutionResult:
+        skill_payload = _skill_payload_for_step(step, context)
         payload = {
             "action": "execute_step",
             "step": step.model_dump(mode="json"),
             "context": context,
+            "skill": skill_payload,
         }
         response = await self._invoke(container=container, payload=payload)
         artifacts_payload = self._mapping_list_payload(response, "artifacts")
@@ -650,7 +706,12 @@ class ClaudeCodeAdapter(AgentAdapter):
                     )
                     await executor.download(remote_result, result_path)
                     response = json.loads(result_path.read_text(encoding="utf-8"))
-        except (CommandTimeoutError, TransferError, SSHConnectionError, json.JSONDecodeError) as exc:
+        except (
+            CommandTimeoutError,
+            TransferError,
+            SSHConnectionError,
+            json.JSONDecodeError,
+        ) as exc:
             raise AgentExecutionError(f"Agent invocation failed: {exc}", retryable=True) from exc
         except Exception as exc:
             raise AgentExecutionError(f"Agent invocation failed: {exc}", retryable=False) from exc
@@ -674,7 +735,9 @@ class ClaudeCodeAdapter(AgentAdapter):
             raise AgentExecutionError(f"Agent payload field {key} must be a list", retryable=False)
         return cast(list[object], value)
 
-    def _mapping_list_payload(self, payload: dict[str, object], key: str) -> list[dict[str, object]]:
+    def _mapping_list_payload(
+        self, payload: dict[str, object], key: str
+    ) -> list[dict[str, object]]:
         value = payload.get(key, [])
         if not isinstance(value, list):
             raise AgentExecutionError(f"Agent payload field {key} must be a list", retryable=False)
@@ -683,10 +746,14 @@ class ClaudeCodeAdapter(AgentAdapter):
     def _mapping_payload(self, payload: dict[str, object], key: str) -> dict[str, object]:
         value = payload.get(key, {})
         if not isinstance(value, dict):
-            raise AgentExecutionError(f"Agent payload field {key} must be an object", retryable=False)
+            raise AgentExecutionError(
+                f"Agent payload field {key} must be an object", retryable=False
+            )
         return cast(dict[str, object], value)
 
-    def _float_mapping_payload(self, payload: dict[str, object], key: str) -> dict[str, float | None]:
+    def _float_mapping_payload(
+        self, payload: dict[str, object], key: str
+    ) -> dict[str, float | None]:
         raw_mapping = self._mapping_payload(payload, key)
         normalized: dict[str, float | None] = {}
         for item_key, item_value in raw_mapping.items():
