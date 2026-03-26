@@ -6,7 +6,7 @@ from typing import cast
 
 from ainrf.agents import AgentAdapter
 from ainrf.agents.base import AgentExecutionError
-from ainrf.artifacts import ArtifactType
+from ainrf.artifacts import ArtifactType, ExperimentRun, QualityAssessment
 from ainrf.engine.engine import EngineContext, TaskEngine
 from ainrf.engine.models import AtomicTaskSpec, TaskExecutionResult, TaskPlanResult
 from ainrf.events import JsonlTaskEventStore, TaskEventService
@@ -340,3 +340,75 @@ def test_run_once_retryable_execution_error_exhaustion_fails(tmp_path: Path) -> 
     assert failed is not None
     assert failed.status is TaskStage.FAILED
     assert failed.termination_reason == "agent_execution_retry_exhausted"
+
+
+def test_run_once_produces_experiment_runs_and_quality_assessment(tmp_path: Path) -> None:
+    class P8StyleAdapter(FakeAdapter):
+        async def plan_reproduction(
+            self,
+            *,
+            container: object,
+            prompt: str,
+            context: dict[str, object],
+        ) -> TaskPlanResult:
+            _ = container, prompt, context
+            return TaskPlanResult(
+                summary="P8 style plan",
+                milestones=["Baseline", "Full"],
+                estimated_steps=2,
+                strategy="implement-from-paper",
+                target_paper_id="pc-001",
+                success_criteria=["baseline done", "full done"],
+                steps=[
+                    AtomicTaskSpec(
+                        step_id="step-baseline",
+                        kind="run_baseline",
+                        title="Run baseline",
+                    ),
+                    AtomicTaskSpec(
+                        step_id="step-full",
+                        kind="run_full_experiment",
+                        title="Run full experiment",
+                    ),
+                ],
+            )
+
+        async def execute_step(
+            self,
+            *,
+            container: object,
+            step: AtomicTaskSpec,
+            context: dict[str, object],
+        ) -> TaskExecutionResult:
+            _ = container, context
+            return TaskExecutionResult(
+                status="succeeded",
+                summary=f"Finished {step.kind}",
+                step_updates={"metrics": {"accuracy": 0.9}},
+                resource_usage={"gpu_hours": 0.2, "api_cost_usd": 1.0, "wall_clock_hours": 0.1},
+            )
+
+    adapter = P8StyleAdapter()
+    engine, store, _gate_manager = make_engine(tmp_path, adapter=adapter)
+    store.save_task(make_task(tmp_path, yolo=True))
+
+    asyncio.run(engine.run_once())
+    asyncio.run(engine.run_once())
+    asyncio.run(engine.run_once())
+
+    completed = store.load_task("t-001")
+    assert completed is not None
+    assert completed.status is TaskStage.COMPLETED
+
+    runs = store.query_artifacts(ArtifactType.EXPERIMENT_RUN)
+    assert len(runs) == 2
+    assert all(isinstance(item, ExperimentRun) for item in runs)
+    assert {run.run_type for run in runs if isinstance(run, ExperimentRun)} == {
+        "baseline",
+        "full_reproduction",
+    }
+
+    assessments = store.query_artifacts(ArtifactType.QUALITY_ASSESSMENT)
+    assert len(assessments) == 1
+    assert isinstance(assessments[0], QualityAssessment)
+    assert assessments[0].source_task_id == "t-001"

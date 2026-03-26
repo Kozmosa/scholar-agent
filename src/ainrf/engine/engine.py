@@ -10,13 +10,17 @@ from uuid import uuid4
 
 from ainrf.agents import AgentAdapter, AgentExecutionError
 from ainrf.artifacts import (
+    AssessmentDimension,
     ArtifactRef,
     ArtifactType,
     EvidenceRecord,
     EvidenceType,
+    ExperimentRun,
+    ExperimentRunStatus,
     GateType,
     PaperCard,
     PaperCardStatus,
+    QualityAssessment,
     ReproductionStrategy,
     ReproductionTask,
     ReproductionTaskStatus,
@@ -28,7 +32,7 @@ from ainrf.gates import HumanGateManager, PlanApprovalGatePayload
 from ainrf.parsing import PaperParser, ParseFailure, ParseRequest
 from ainrf.state import ArtifactQuery, AtomicTaskRecord, JsonStateStore, TaskRecord, TaskStage
 
-from ainrf.engine.models import AtomicTaskSpec
+from ainrf.engine.models import AtomicTaskSpec, TaskExecutionResult
 
 
 def utc_now() -> datetime:
@@ -111,6 +115,12 @@ class TaskEngine:
             if isinstance(raw_step.details.get("payload"), dict)
             else {},
         )
+        if self._is_experiment_step(step):
+            self._publish_task_event(
+                task.task_id,
+                "experiment.started",
+                {"step": step.kind, "step_id": step.step_id, "title": step.title},
+            )
         container = self._container_from_task(task)
         try:
             await self._context.agent_adapter.bootstrap(container)
@@ -169,6 +179,7 @@ class TaskEngine:
                 return
             self._fail_task(task, reason="agent_execution_failed", detail=str(exc))
             return
+        experiment_ref = self._record_experiment_run(task, step, result)
         updated = task.model_copy(
             update={
                 "updated_at": utc_now(),
@@ -188,6 +199,10 @@ class TaskEngine:
                             ),
                         ],
                         "pending_queue": task.checkpoint.pending_queue[1:],
+                        "artifact_refs": self._upsert_artifact_ref_if_needed(
+                            task.checkpoint.artifact_refs,
+                            experiment_ref,
+                        ),
                     }
                 ),
                 "budget_used": self._merge_budget(task.budget_used, result.resource_usage),
@@ -464,6 +479,20 @@ class TaskEngine:
                 "checkpoint": task.checkpoint.model_copy(update={"current_stage": TaskStage.COMPLETED}),
             }
         )
+        quality_ref = self._upsert_quality_assessment(updated)
+        if quality_ref is not None:
+            updated = updated.model_copy(
+                update={
+                    "checkpoint": updated.checkpoint.model_copy(
+                        update={
+                            "artifact_refs": self._upsert_artifact_ref(
+                                updated.checkpoint.artifact_refs,
+                                quality_ref,
+                            )
+                        }
+                    )
+                }
+            )
         self._context.state_store.save_task(updated)
         self._publish_task_event(
             updated.task_id,
@@ -516,6 +545,152 @@ class TaskEngine:
     ) -> list[ArtifactRef]:
         remaining = [item for item in refs if item.artifact_id != incoming.artifact_id]
         return [*remaining, incoming]
+
+    def _upsert_artifact_ref_if_needed(
+        self,
+        refs: list[ArtifactRef],
+        incoming: ArtifactRef | None,
+    ) -> list[ArtifactRef]:
+        if incoming is None:
+            return refs
+        return self._upsert_artifact_ref(refs, incoming)
+
+    def _is_experiment_step(self, step: AtomicTaskSpec) -> bool:
+        return step.kind in {"run_baseline", "run_full_experiment"}
+
+    def _run_type_from_step(self, step: AtomicTaskSpec) -> str:
+        if step.kind == "run_baseline":
+            return "baseline"
+        if step.kind == "run_full_experiment":
+            return "full_reproduction"
+        return "task_step"
+
+    def _record_experiment_run(
+        self,
+        task: TaskRecord,
+        step: AtomicTaskSpec,
+        result: TaskExecutionResult,
+    ) -> ArtifactRef | None:
+        if not self._is_experiment_step(step):
+            return None
+        reproduction_task = self._existing_reproduction_task(task.task_id)
+        reproduction_task_id = (
+            reproduction_task.artifact_id if reproduction_task is not None else "rt-unknown"
+        )
+        raw_metrics = result.step_updates.get("metrics")
+        metrics: dict[str, float] = {}
+        if isinstance(raw_metrics, dict):
+            for key, value in raw_metrics.items():
+                if isinstance(key, str) and isinstance(value, int | float):
+                    metrics[key] = float(value)
+        status = (
+            ExperimentRunStatus.COMPLETED
+            if result.status in {"completed", "succeeded", "success"}
+            else ExperimentRunStatus.FAILED
+        )
+        run = ExperimentRun(
+            artifact_id=f"run-{uuid4().hex[:8]}",
+            source_task_id=task.task_id,
+            status=status,
+            reproduction_task_id=reproduction_task_id,
+            run_type=self._run_type_from_step(step),
+            metrics=metrics,
+            resource_usage=ResourceUsage(**result.resource_usage),
+            summary=result.summary,
+            failure_reason=result.error,
+            related_artifacts=[
+                ArtifactRef(
+                    artifact_type=ArtifactType.REPRODUCTION_TASK,
+                    artifact_id=reproduction_task_id,
+                )
+            ]
+            if reproduction_task is not None
+            else [],
+        )
+        self._context.state_store.save_artifact(run)
+        self._publish_artifact_event("artifact.created", run)
+        self._publish_task_event(
+            task.task_id,
+            "experiment.completed",
+            {
+                "step": step.kind,
+                "step_id": step.step_id,
+                "run_id": run.artifact_id,
+                "run_type": run.run_type,
+                "status": run.status.value,
+            },
+        )
+        return ArtifactRef(
+            artifact_type=ArtifactType.EXPERIMENT_RUN,
+            artifact_id=run.artifact_id,
+        )
+
+    def _existing_quality_assessment(self, task_id: str) -> QualityAssessment | None:
+        for artifact in self._context.state_store.query_artifacts(
+            ArtifactType.QUALITY_ASSESSMENT,
+            ArtifactQuery(source_task_id=task_id),
+        ):
+            if isinstance(artifact, QualityAssessment) and artifact.source_task_id == task_id:
+                return artifact
+        return None
+
+    def _upsert_quality_assessment(self, task: TaskRecord) -> ArtifactRef | None:
+        if task.mode.value != "deep_reproduction":
+            return None
+        experiment_runs = [
+            artifact
+            for artifact in self._context.state_store.query_artifacts(
+                ArtifactType.EXPERIMENT_RUN,
+                ArtifactQuery(source_task_id=task.task_id),
+            )
+            if isinstance(artifact, ExperimentRun)
+        ]
+        total_runs = len(experiment_runs)
+        successful_runs = len(
+            [run for run in experiment_runs if run.status is ExperimentRunStatus.COMPLETED]
+        )
+        completed_steps = len(task.checkpoint.completed_steps)
+        reproducibility_score = 5.0 if total_runs == 0 else 5.0 * (successful_runs / total_runs)
+        existing = self._existing_quality_assessment(task.task_id)
+        quality_assessment = QualityAssessment(
+            artifact_id=existing.artifact_id if existing is not None else f"qa-{uuid4().hex[:8]}",
+            source_task_id=task.task_id,
+            summary="Automated quality assessment generated after task completion.",
+            gold_nugget=AssessmentDimension(
+                score=min(5.0, 1.0 + (completed_steps * 0.5)),
+                summary="Scored from completed atomic steps.",
+                evidence_ids=[step.step for step in task.checkpoint.completed_steps],
+            ),
+            reproducibility=AssessmentDimension(
+                score=round(reproducibility_score, 2),
+                summary="Scored from completed vs failed experiment runs.",
+                evidence_ids=[run.artifact_id for run in experiment_runs],
+            ),
+            scientific_rigor=AssessmentDimension(
+                score=min(5.0, 2.0 + (total_runs * 0.5)),
+                summary="Scored from experiment coverage and execution evidence.",
+                evidence_ids=[run.artifact_id for run in experiment_runs],
+            ),
+            overall_summary=(
+                f"Completed {completed_steps} steps with {successful_runs}/{total_runs} successful runs."
+            ),
+            related_artifacts=[
+                ArtifactRef(
+                    artifact_type=ArtifactType.EXPERIMENT_RUN,
+                    artifact_id=run.artifact_id,
+                )
+                for run in experiment_runs
+            ],
+        )
+        self._context.state_store.save_artifact(quality_assessment)
+        self._publish_artifact_event(
+            "artifact.updated" if existing is not None else "artifact.created",
+            quality_assessment,
+        )
+        return ArtifactRef(
+            artifact_type=ArtifactType.QUALITY_ASSESSMENT,
+            artifact_id=quality_assessment.artifact_id,
+        )
 
     def _required_str(self, payload: dict[str, object], key: str) -> str:
         value = payload.get(key)
