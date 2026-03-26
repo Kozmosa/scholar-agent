@@ -5,6 +5,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 import re
 from typing import Any, TypeAlias
+from typing import cast
 
 import gradio as gr
 
@@ -1651,10 +1652,38 @@ def render_mode_one_artifacts(artifacts: tuple[ArtifactItemResponse, ...]) -> st
             seed_count = len(_string_list(payload.get("seed_paper_ids")))
             visited_count = len(_string_list(payload.get("visited_paper_ids")))
             queued_count = len(_string_list(payload.get("queued_paper_ids")))
+            no_new_claim_rounds = _coerce_int(payload.get("no_new_claim_rounds"), default=0)
+            reference_scores = _dict_payload(payload.get("reference_scores"))
+            prune_reasons = _dict_payload(payload.get("prune_reasons"))
+            score_pairs = [
+                (paper_id, score)
+                for paper_id, score in reference_scores.items()
+                if isinstance(paper_id, str) and isinstance(score, int | float)
+            ]
+            score_pairs.sort(key=lambda item: item[0])
+            score_summary = (
+                ", ".join([f"{paper_id}:{float(score):.2f}" for paper_id, score in score_pairs[:6]])
+                if score_pairs
+                else "none"
+            )
+            prune_pairs = [
+                (paper_id, reason)
+                for paper_id, reason in prune_reasons.items()
+                if isinstance(paper_id, str) and isinstance(reason, str)
+            ]
+            prune_pairs.sort(key=lambda item: item[0])
+            prune_summary = (
+                "; ".join([f"{paper_id}:{reason}" for paper_id, reason in prune_pairs[:6]])
+                if prune_pairs
+                else "none"
+            )
             graph_rows.append(
                 "- ExplorationGraph: "
                 f"seed={seed_count}, visited={visited_count}, queued={queued_count}, "
                 f"depth={payload.get('current_depth', 0)}, "
+                f"no_new_rounds={no_new_claim_rounds}, "
+                f"ref_scores=[{score_summary}], "
+                f"prune_reasons=[{prune_summary}], "
                 f"termination={payload.get('termination_reason') or 'N/A'}"
             )
         if artifact.artifact_type.value == "Claim":
@@ -1674,6 +1703,20 @@ def _string_list(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
     return [item for item in value if isinstance(item, str)]
+
+
+def _dict_payload(value: object) -> dict[object, object]:
+    if not isinstance(value, dict):
+        return {}
+    return cast(dict[object, object], value)
+
+
+def _coerce_int(value: object, *, default: int) -> int:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return default
 
 
 def render_timeline(items: tuple[RunTimelineItem, ...]) -> str:

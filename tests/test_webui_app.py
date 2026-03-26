@@ -516,6 +516,14 @@ def test_refresh_selected_run_loads_detail_and_timeline(tmp_path: Path) -> None:
                             "visited_paper_ids": ["pc-001", "pc-002"],
                             "queued_paper_ids": ["pc-003"],
                             "current_depth": 1,
+                            "no_new_claim_rounds": 2,
+                            "reference_scores": {
+                                "pc-002": 0.82,
+                                "pc-003": 0.75,
+                            },
+                            "prune_reasons": {
+                                "pc-004": "below_top_k",
+                            },
                             "termination_reason": None,
                         },
                     }
@@ -554,8 +562,12 @@ def test_refresh_selected_run_loads_detail_and_timeline(tmp_path: Path) -> None:
     assert updated.selected_run_detail.active_gate is not None
     assert updated.run_event_mode == "sse"
     assert len(updated.run_timeline_items) == 1
-    assert "Mode 1 Outputs" in render_run_detail(updated, store)
-    assert "Event Timeline" in render_run_detail(updated, store)
+    rendered = render_run_detail(updated, store)
+    assert "Mode 1 Outputs" in rendered
+    assert "no_new_rounds=2" in rendered
+    assert "pc-002:0.82" in rendered
+    assert "pc-004:below_top_k" in rendered
+    assert "Event Timeline" in rendered
 
 
 def test_approve_run_and_render_updates_run_status(tmp_path: Path) -> None:
