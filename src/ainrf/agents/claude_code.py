@@ -139,6 +139,59 @@ def _normalize_skill_step_updates(
     return None
 
 
+def _coerce_mode1_skill_payload(
+    step_updates: dict[str, object],
+    request: dict[str, object],
+) -> dict[str, object]:
+    step_obj = request.get("step")
+    step = cast(dict[str, object], step_obj) if isinstance(step_obj, dict) else {}
+    step_kind = step.get("kind") if isinstance(step.get("kind"), str) else "unknown"
+    if step_kind == "clarify_research_goal":
+        profile = step_updates.get("problem_profile")
+        if isinstance(profile, dict):
+            profile_mapping = cast(dict[str, object], profile)
+            focus = profile_mapping.get("focus_directions")
+            if isinstance(focus, str):
+                profile_mapping["focus_directions"] = [focus]
+            ignore = profile_mapping.get("ignore_directions")
+            if isinstance(ignore, str):
+                profile_mapping["ignore_directions"] = [ignore]
+        return step_updates
+    if step_kind in {"extract_references", "prioritize_references", "propose_idea_directions"}:
+        skill = request.get("skill")
+        skill_mapping = cast(dict[str, object], skill) if isinstance(skill, dict) else {}
+        output_key = (
+            skill_mapping.get("output_key")
+            if isinstance(skill_mapping.get("output_key"), str)
+            else None
+        )
+        if isinstance(output_key, str):
+            entries = step_updates.get(output_key)
+            if isinstance(entries, dict):
+                return {output_key: [cast(dict[str, object], entries)]}
+        return step_updates
+    if step_kind == "evaluate_user_idea":
+        evaluation = step_updates.get("idea_evaluation")
+        if isinstance(evaluation, dict):
+            evaluation_mapping = cast(dict[str, object], evaluation)
+            risks = evaluation_mapping.get("risks")
+            if isinstance(risks, str):
+                evaluation_mapping["risks"] = [risks]
+        return step_updates
+    if step_kind == "explore_paper":
+        exploration = step_updates.get("exploration")
+        if isinstance(exploration, dict):
+            exploration_mapping = cast(dict[str, object], exploration)
+            for field_name in ("visited_paper_ids", "queued_paper_ids", "new_claims"):
+                field = exploration_mapping.get(field_name)
+                if isinstance(field, dict):
+                    exploration_mapping[field_name] = [field]
+                elif isinstance(field, str):
+                    exploration_mapping[field_name] = [field]
+        return step_updates
+    return step_updates
+
+
 def _normalize_skill_execution_result(
     result: object,
     request: dict[str, object],
@@ -149,6 +202,7 @@ def _normalize_skill_execution_result(
     step_updates = _normalize_skill_step_updates(result, request)
     if step_updates is None:
         return None
+    step_updates = _coerce_mode1_skill_payload(step_updates, request)
     return {
         "status": "succeeded",
         "summary": f"Executed {step_kind} via skill profile",

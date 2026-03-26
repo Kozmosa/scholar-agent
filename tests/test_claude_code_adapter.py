@@ -350,6 +350,57 @@ def test_normalize_skill_execution_result_wraps_plain_text_under_output_key() ->
     }
 
 
+def test_normalize_skill_execution_result_coerces_mode1_reference_dict_to_list() -> None:
+    request = cast(
+        dict[str, object],
+        {
+            "step": {"kind": "extract_references", "title": "Extract candidate references"},
+            "skill": {
+                "output_key": "reference_candidates",
+                "skill_name": "research-lit",
+                "objective": "Return reference candidates.",
+            },
+        },
+    )
+
+    result = _normalize_skill_execution_result(
+        {"paper_id": "pc-123", "title": "Adapter Tuning", "score": 0.88},
+        request,
+    )
+
+    assert isinstance(result, dict)
+    assert result["step_updates"] == {
+        "reference_candidates": [{"paper_id": "pc-123", "title": "Adapter Tuning", "score": 0.88}]
+    }
+
+
+def test_normalize_skill_execution_result_coerces_mode1_risks_to_list() -> None:
+    request = cast(
+        dict[str, object],
+        {
+            "step": {"kind": "evaluate_user_idea", "title": "Evaluate user idea"},
+            "skill": {
+                "output_key": "idea_evaluation",
+                "skill_name": "research-review",
+                "objective": "Evaluate feasibility and risks.",
+            },
+        },
+    )
+
+    result = _normalize_skill_execution_result(
+        {"feasibility": "medium", "risks": "evaluation leakage"},
+        request,
+    )
+
+    assert isinstance(result, dict)
+    assert result["step_updates"] == {
+        "idea_evaluation": {
+            "feasibility": "medium",
+            "risks": ["evaluation leakage"],
+        }
+    }
+
+
 def test_health_check_returns_false_when_sdk_missing() -> None:
     FakeSSHExecutor.ensure_calls = 0
     adapter = ClaudeCodeAdapter(executor_factory=FakeSSHExecutor)
