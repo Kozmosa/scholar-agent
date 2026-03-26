@@ -7,7 +7,14 @@ from starlette.responses import JSONResponse, Response
 
 from ainrf.api.config import ApiConfig
 
-_EXEMPT_PATHS = {"/health", "/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
+_EXEMPT_PATHS = {
+    "/health",
+    "/v1/health",
+    "/openapi.json",
+    "/docs",
+    "/docs/oauth2-redirect",
+    "/redoc",
+}
 
 
 def build_api_key_middleware(

@@ -51,6 +51,9 @@ def create_app(config: ApiConfig | None = None) -> FastAPI:
         gate_timeout_seconds=api_config.gate_timeout_seconds,
     )
     app.middleware("http")(build_api_key_middleware(api_config))
+    # Keep existing paths stable while exposing versioned aliases.
     app.include_router(health_router)
     app.include_router(tasks_router)
+    app.include_router(health_router, prefix="/v1")
+    app.include_router(tasks_router, prefix="/v1")
     return app
