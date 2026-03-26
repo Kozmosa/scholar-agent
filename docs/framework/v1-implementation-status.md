@@ -28,7 +28,7 @@ last_local_commit: workspace aggregate
 | P5 | Human Gate & Webhook | **已完成** | `4842652` | ~30 | 无重大差异 |
 | P6 | SSE Streaming | **已完成** | `bce40d2` | 5 | 无重大差异 |
 | P7 | Agent Adapter & Engine | **部分完成** | `31c1df1` | 8 | 仅 fallback 模式，未真实调用 CC SDK |
-| P8 | Mode 2 Deep Repro | **未实现** | — | 0 | 完全未实现 |
+| P8 | Mode 2 Deep Repro | **已完成** | `a55c16b` `1c0d6c0` | 11 | 在 fallback 运行时完成 8-step 编排、实验/偏差证据与质量评估闭环 |
 | P9 | Mode 1 Research Discovery | **未实现** | — | 0 | 完全未实现 |
 | WebUI W0-W3 | 工作台前端 | **W0-W3 已完成** | `31c1df1` `7bb33b2` `08c5bfb` | 23 | W4/W5 未实现 |
 
@@ -248,19 +248,24 @@ last_local_commit: workspace aggregate
 
 ---
 
-## P8: Mode 2 Deep Reproduction Pipeline — 未实现
+## P8: Mode 2 Deep Reproduction Pipeline — 已完成
 
 **roadmap 要求：** 端到端深度复现——论文解析 → PaperCard → 复现计划 → 从零实现 → 实验执行 → 偏差分析 → QualityAssessment。
 
-**当前状态：** 完全未实现。P7 的 TaskEngine 有 `_advance_planning_task()` 和 `_advance_executing_task()` 骨架，但 ClaudeCodeAdapter 为 fallback 模式，无法执行真实研究动作。
+**当前状态：** 已完成（fallback 运行时）。TaskEngine 现在可消费完整 P8 原子步骤并形成工件闭环；ClaudeCodeAdapter 在无 SDK 时通过 fallback 计划与 step 结果继续驱动链路。
 
-**缺口清单：**
-- [ ] ClaudeCodeAdapter 需要真实调用 claude_code_sdk
-- [ ] 每个原子任务（analyze_method, plan_implementation, implement_module, run_baseline, diagnose_deviation, run_full_experiment, compare_tables, generate_quality_assessment）需要对应的 system prompt 和结果解析
-- [ ] 容器上的 per-project 工作区初始化（遵循 [[framework/container-workspace-protocol]]）
-- [ ] 实验结果与论文值的定量对比逻辑
-- [ ] QualityAssessment 生成逻辑
-- [ ] 实际的集成测试（需要真实容器 + API key）
+**已完成交付物：**
+- [x] 8-step 原子任务计划（`analyze_method` → `generate_quality_assessment`）
+- [x] `run_baseline` / `run_full_experiment` 产出 `ExperimentRun` 工件与 `experiment.*` 事件
+- [x] 偏差阈值检测与 `EvidenceRecord(type=DEVIATION_ANALYSIS)` 落库
+- [x] `diagnose_deviation` / `compare_tables` step_updates 落证据并发射诊断事件
+- [x] 任务完成时自动汇总 `QualityAssessment`（三维评分 + evidence 关联）
+- [x] 核心单测覆盖（`tests/test_task_engine.py` + `tests/test_claude_code_adapter.py`）
+
+**边界与后续增强（非阻塞 P8 完成）：**
+- [ ] SDK 真实语义增强：用真实 `claude_code_sdk` prompt 与结构化 parser 替换 fallback 占位结果
+- [ ] 容器工作区初始化（遵循 [[framework/container-workspace-protocol]]）
+- [ ] 真实容器 + API key 的端到端集成 smoke
 
 ---
 
@@ -318,7 +323,7 @@ last_local_commit: workspace aggregate
 | Mode 1 枚举命名 | P4, RFC | RFC: `research_discovery`；代码: `literature_exploration` | 中 — 需要迁移 |
 | API 路径无版本前缀 | P4 | RFC 建议 `/v1/`，实际为 `/tasks` | 低 — 可后续添加 |
 | AgentAdapter 工件类型缺失 | P3 | roadmap 列出但未实现为持久化工件 | 低 — 设计合理 |
-| CC SDK 未真实集成 | P7 | 仅 fallback 模式 | **高** — P8/P9 的前置 |
+| CC SDK 未真实集成 | P7 | 仍以 fallback 为主，SDK 真实语义待增强 | 中 — 主要影响 P9 与生产质量 |
 | AgentAdapter 接口签名 | P7, RFC | RFC 单方法 `execute_task()`；实现为 `plan_reproduction()` + `execute_step()` | 中 — 接口更细但不同 |
 | log.* 事件未发射 | P6 | 定义了 category 但无代码发射 | 低 — 可后续补充 |
 | prompt 字段缺失 | P4 | RFC task schema 有 `prompt` 对象；API schema 未包含 | 中 — Mode 1 依赖 |

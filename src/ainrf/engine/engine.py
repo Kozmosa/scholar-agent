@@ -183,6 +183,7 @@ class TaskEngine:
             return
         experiment_ref = self._record_experiment_run(task, step, result)
         deviation_ref = self._record_deviation_evidence(task, step, result)
+        analysis_ref = self._record_analysis_evidence(task, step, result)
         updated = task.model_copy(
             update={
                 "updated_at": utc_now(),
@@ -218,6 +219,18 @@ class TaskEngine:
                         "artifact_refs": self._upsert_artifact_ref_if_needed(
                             updated.checkpoint.artifact_refs,
                             deviation_ref,
+                        )
+                    }
+                )
+            }
+        )
+        updated = updated.model_copy(
+            update={
+                "checkpoint": updated.checkpoint.model_copy(
+                    update={
+                        "artifact_refs": self._upsert_artifact_ref_if_needed(
+                            updated.checkpoint.artifact_refs,
+                            analysis_ref,
                         )
                     }
                 )
@@ -653,7 +666,8 @@ class TaskEngine:
         if not expected_metrics or not actual_metrics:
             return None
         threshold_percent = self._extract_threshold_percent(step.payload)
-        deviations: list[dict[str, object]] = []
+        deviations: list[dict[str, float | str]] = []
+        exceeded_count = 0
         for metric, expected_value in expected_metrics.items():
             actual_value = actual_metrics.get(metric)
             if actual_value is None:
@@ -667,19 +681,18 @@ class TaskEngine:
                     "deviation_percent": round(deviation_percent, 4),
                 }
             )
+            if deviation_percent > threshold_percent:
+                exceeded_count += 1
         if not deviations:
             return None
-        exceeded = [
-            item for item in deviations if float(item["deviation_percent"]) > threshold_percent
-        ]
-        if not exceeded:
+        if exceeded_count == 0:
             return None
         evidence = EvidenceRecord(
             artifact_id=f"ev-{uuid4().hex[:8]}",
             source_task_id=task.task_id,
             evidence_type=EvidenceType.DEVIATION_ANALYSIS,
             statement=(
-                f"Detected {len(exceeded)} metric deviations above {threshold_percent:.2f}% "
+                f"Detected {exceeded_count} metric deviations above {threshold_percent:.2f}% "
                 f"during {step.kind}."
             ),
             content=json.dumps(
@@ -701,7 +714,7 @@ class TaskEngine:
                 "step": step.kind,
                 "step_id": step.step_id,
                 "threshold_percent": threshold_percent,
-                "count": len(exceeded),
+                "count": exceeded_count,
             },
         )
         self._publish_artifact_event("artifact.created", evidence)
@@ -711,6 +724,51 @@ class TaskEngine:
             {
                 "evidence_id": evidence.artifact_id,
                 "evidence_type": evidence.evidence_type.value,
+            },
+        )
+        return ArtifactRef(
+            artifact_type=ArtifactType.EVIDENCE_RECORD,
+            artifact_id=evidence.artifact_id,
+        )
+
+    def _record_analysis_evidence(
+        self,
+        task: TaskRecord,
+        step: AtomicTaskSpec,
+        result: TaskExecutionResult,
+    ) -> ArtifactRef | None:
+        if step.kind not in {"diagnose_deviation", "compare_tables"}:
+            return None
+        if step.kind == "diagnose_deviation":
+            payload_obj = result.step_updates.get("diagnosis")
+            if not isinstance(payload_obj, dict):
+                return None
+            payload = cast(dict[str, object], payload_obj)
+            summary_obj = payload.get("summary")
+            summary = summary_obj if isinstance(summary_obj, str) and summary_obj else "Deviation diagnosis generated."
+        else:
+            payload_obj = result.step_updates.get("table_comparisons")
+            if not isinstance(payload_obj, list):
+                return None
+            payload = payload_obj
+            summary = "Table comparisons generated."
+        evidence = EvidenceRecord(
+            artifact_id=f"ev-{uuid4().hex[:8]}",
+            source_task_id=task.task_id,
+            evidence_type=EvidenceType.DEVIATION_ANALYSIS,
+            statement=summary,
+            content=json.dumps(payload, ensure_ascii=False),
+            summary=f"{step.kind} output",
+        )
+        self._context.state_store.save_artifact(evidence)
+        self._publish_artifact_event("artifact.created", evidence)
+        self._publish_task_event(
+            task.task_id,
+            "diagnosis.completed",
+            {
+                "step": step.kind,
+                "step_id": step.step_id,
+                "evidence_id": evidence.artifact_id,
             },
         )
         return ArtifactRef(

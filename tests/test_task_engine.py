@@ -477,3 +477,84 @@ def test_run_once_records_deviation_evidence_when_threshold_exceeded(tmp_path: P
     event_names = [item.event for item in events]
     assert "deviation.detected" in event_names
     assert "diagnosis.completed" in event_names
+
+
+def test_run_once_records_analysis_evidence_from_diagnose_and_compare_steps(tmp_path: Path) -> None:
+    class AnalysisAdapter(FakeAdapter):
+        async def plan_reproduction(
+            self,
+            *,
+            container: object,
+            prompt: str,
+            context: dict[str, object],
+        ) -> TaskPlanResult:
+            _ = container, prompt, context
+            return TaskPlanResult(
+                summary="Analysis plan",
+                milestones=["Diagnose", "Compare"],
+                estimated_steps=2,
+                strategy="implement-from-paper",
+                target_paper_id="pc-001",
+                success_criteria=["analysis done"],
+                steps=[
+                    AtomicTaskSpec(
+                        step_id="step-diagnose",
+                        kind="diagnose_deviation",
+                        title="Diagnose deviation",
+                    ),
+                    AtomicTaskSpec(
+                        step_id="step-compare",
+                        kind="compare_tables",
+                        title="Compare tables",
+                    ),
+                ],
+            )
+
+        async def execute_step(
+            self,
+            *,
+            container: object,
+            step: AtomicTaskSpec,
+            context: dict[str, object],
+        ) -> TaskExecutionResult:
+            _ = container, context
+            if step.kind == "diagnose_deviation":
+                return TaskExecutionResult(
+                    status="succeeded",
+                    summary="Diagnosis completed",
+                    step_updates={"diagnosis": {"summary": "Tokenizer mismatch"}},
+                )
+            return TaskExecutionResult(
+                status="succeeded",
+                summary="Comparison completed",
+                step_updates={
+                    "table_comparisons": [
+                        {
+                            "table_id": "table-1",
+                            "metric": "accuracy",
+                            "paper_value": 0.9,
+                            "reproduced_value": 0.89,
+                        }
+                    ]
+                },
+            )
+
+    adapter = AnalysisAdapter()
+    engine, store, _gate_manager = make_engine(tmp_path, adapter=adapter)
+    store.save_task(make_task(tmp_path, yolo=True))
+
+    asyncio.run(engine.run_once())
+    asyncio.run(engine.run_once())
+    asyncio.run(engine.run_once())
+
+    completed = store.load_task("t-001")
+    assert completed is not None
+    assert completed.status is TaskStage.COMPLETED
+
+    evidence_items = [
+        item
+        for item in store.query_artifacts(ArtifactType.EVIDENCE_RECORD)
+        if isinstance(item, EvidenceRecord)
+    ]
+    assert len(evidence_items) == 2
+    assert all(item.evidence_type is EvidenceType.DEVIATION_ANALYSIS for item in evidence_items)

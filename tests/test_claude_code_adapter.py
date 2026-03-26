@@ -258,3 +258,52 @@ def test_execute_step_raises_non_retryable_error_on_non_object_response() -> Non
         assert exc.retryable is False
     else:
         raise AssertionError("Expected AgentExecutionError")
+
+
+def test_remote_runner_fallback_plan_contains_p8_atomic_steps() -> None:
+    for step_kind in [
+        "analyze_method",
+        "plan_implementation",
+        "implement_module",
+        "run_baseline",
+        "diagnose_deviation",
+        "run_full_experiment",
+        "compare_tables",
+        "generate_quality_assessment",
+    ]:
+        assert f'"kind": "{step_kind}"' in _REMOTE_RUNNER_SOURCE
+
+
+def test_execute_step_parses_compare_tables_step_updates() -> None:
+    class FakeSSHExecutorCompare(FakeSSHExecutor):
+        async def download(self, remote: str, local: str | Path) -> None:
+            _ = remote
+            response = {
+                "status": "succeeded",
+                "summary": "Compared tables",
+                "messages": ["done"],
+                "artifacts": [],
+                "resource_usage": {"gpu_hours": 0.0, "api_cost_usd": 0.0, "wall_clock_hours": 0.0},
+                "step_updates": {
+                    "table_comparisons": [
+                        {
+                            "table_id": "table-1",
+                            "metric": "accuracy",
+                            "paper_value": 0.9,
+                            "reproduced_value": 0.88,
+                        }
+                    ]
+                },
+                "error": None,
+            }
+            Path(local).write_text(json.dumps(response), encoding="utf-8")
+
+    adapter = ClaudeCodeAdapter(executor_factory=FakeSSHExecutorCompare)
+    step = AtomicTaskSpec(step_id="s-compare", kind="compare_tables", title="Compare tables")
+
+    result = asyncio.run(
+        adapter.execute_step(container=_container(), step=step, context={"task_id": "t-001"})
+    )
+
+    assert result.status == "succeeded"
+    assert "table_comparisons" in result.step_updates

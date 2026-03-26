@@ -34,29 +34,131 @@ def _fallback_response(request: dict[str, object]) -> dict[str, object]:
         context = request.get("context")
         paper_card = context.get("paper_card") if isinstance(context, dict) else {}
         artifact_id = paper_card.get("artifact_id") if isinstance(paper_card, dict) else "unknown"
+        task_config = context.get("task_config") if isinstance(context, dict) else {}
+        mode_two = task_config.get("config", {}).get("mode_2", {}) if isinstance(task_config, dict) else {}
+        expected_metrics = mode_two.get("expected_metrics") if isinstance(mode_two, dict) else None
+        if not isinstance(expected_metrics, dict):
+            expected_metrics = {"accuracy": 0.9}
         return {
-            "summary": "Fallback plan generated without claude_code_sdk runtime.",
-            "milestones": ["implement core module", "run validation", "summarize execution"],
-            "estimated_steps": 3,
+            "summary": "Fallback P8 plan generated without claude_code_sdk runtime.",
+            "milestones": [
+                "analyze method",
+                "plan implementation",
+                "implement modules",
+                "run baseline",
+                "diagnose deviations",
+                "run full experiment",
+                "compare tables",
+                "generate quality assessment",
+            ],
+            "estimated_steps": 8,
             "strategy": "implement-from-paper",
             "target_paper_id": artifact_id,
-            "success_criteria": ["Produce runnable implementation", "Generate validation notes"],
+            "success_criteria": [
+                "Produce runnable implementation",
+                "Complete baseline and full reproduction",
+                "Output quality assessment with evidence",
+            ],
             "steps": [
-                {"step_id": "step-1", "kind": "implement_module", "title": "Implement core module", "payload": {"module": "core"}},
-                {"step_id": "step-2", "kind": "run_validation", "title": "Run validation", "payload": {"target": "baseline"}},
-                {"step_id": "step-3", "kind": "summarize_execution", "title": "Summarize execution", "payload": {"report": "reports/reproduction/summary.md"}},
+                {
+                    "step_id": "step-1",
+                    "kind": "analyze_method",
+                    "title": "Analyze paper method",
+                    "payload": {"focus": "method_summary"},
+                },
+                {
+                    "step_id": "step-2",
+                    "kind": "plan_implementation",
+                    "title": "Plan implementation",
+                    "payload": {"scope": "core-only"},
+                },
+                {
+                    "step_id": "step-3",
+                    "kind": "implement_module",
+                    "title": "Implement core module",
+                    "payload": {"module": "core"},
+                },
+                {
+                    "step_id": "step-4",
+                    "kind": "run_baseline",
+                    "title": "Run baseline",
+                    "payload": {
+                        "expected_metrics": expected_metrics,
+                        "deviation_threshold_percent": 5.0,
+                    },
+                },
+                {
+                    "step_id": "step-5",
+                    "kind": "diagnose_deviation",
+                    "title": "Diagnose deviation",
+                    "payload": {"max_loops": 3},
+                },
+                {
+                    "step_id": "step-6",
+                    "kind": "run_full_experiment",
+                    "title": "Run full experiment",
+                    "payload": {
+                        "expected_metrics": expected_metrics,
+                        "deviation_threshold_percent": 5.0,
+                    },
+                },
+                {
+                    "step_id": "step-7",
+                    "kind": "compare_tables",
+                    "title": "Compare target tables",
+                    "payload": {"target_tables": mode_two.get("target_tables", []) if isinstance(mode_two, dict) else []},
+                },
+                {
+                    "step_id": "step-8",
+                    "kind": "generate_quality_assessment",
+                    "title": "Generate quality assessment",
+                    "payload": {"dimensions": ["gold_nugget", "reproducibility", "scientific_rigor"]},
+                },
             ],
         }
     step = request.get("step")
     step_kind = step.get("kind") if isinstance(step, dict) else "unknown"
     step_title = step.get("title") if isinstance(step, dict) else "unknown"
+    if step_kind == "run_baseline":
+        step_updates = {"metrics": {"accuracy": 0.86, "f1": 0.83}}
+    elif step_kind == "run_full_experiment":
+        step_updates = {"metrics": {"accuracy": 0.9, "f1": 0.88}}
+    elif step_kind == "diagnose_deviation":
+        step_updates = {
+            "diagnosis": {
+                "summary": "Deviation likely caused by preprocessing mismatch.",
+                "actions": ["align tokenization", "retune learning rate"],
+            }
+        }
+    elif step_kind == "compare_tables":
+        step_updates = {
+            "table_comparisons": [
+                {
+                    "table_id": "table-1",
+                    "metric": "accuracy",
+                    "paper_value": 0.91,
+                    "reproduced_value": 0.9,
+                    "deviation_percent": 1.0989,
+                }
+            ]
+        }
+    elif step_kind == "generate_quality_assessment":
+        step_updates = {
+            "quality_assessment": {
+                "gold_nugget": 4.2,
+                "reproducibility": 4.0,
+                "scientific_rigor": 3.8,
+            }
+        }
+    else:
+        step_updates = {}
     return {
         "status": "succeeded",
         "summary": f"Executed {step_kind}",
         "messages": [f"Executed {step_title}"],
         "artifacts": [],
         "resource_usage": {"gpu_hours": 0.0, "api_cost_usd": 0.0, "wall_clock_hours": 0.0},
-        "step_updates": {},
+        "step_updates": step_updates,
         "error": None,
     }
 
