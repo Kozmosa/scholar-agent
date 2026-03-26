@@ -15,6 +15,26 @@ from ainrf.execution import CommandResult, CommandTimeoutError, ContainerConfig
 from ainrf.execution import SSHExecutor
 
 
+def _missing_e2e_env_vars() -> list[str]:
+    required = ["AINRF_CONTAINER_HOST"]
+    return [name for name in required if not os.environ.get(name)]
+
+
+def _classify_health_warnings(warnings: list[str]) -> str:
+    mapping = {
+        "claude_unavailable": "claude_unavailable",
+        "anthropic_api_key_missing": "anthropic_api_key_missing",
+        "project_dir_not_writable": "project_dir_not_writable",
+        "gpu_unavailable": "gpu_unavailable",
+        "cuda_unavailable": "cuda_unavailable",
+        "disk_probe_failed": "disk_probe_failed",
+    }
+    labels = [mapping[item] for item in warnings if item in mapping]
+    if not labels:
+        return "ok"
+    return ",".join(labels)
+
+
 class FakeSSHExecutor:
     latest_request: dict[str, object] | None = None
     all_commands: list[str] = []
@@ -153,6 +173,14 @@ def test_remote_runner_uses_sdk_dispatch_instead_of_unconditional_fallback() -> 
 
     assert "def _invoke_with_sdk" in _REMOTE_RUNNER_SOURCE
     assert legacy_snippet not in _REMOTE_RUNNER_SOURCE
+
+
+def test_remote_runner_contains_mode1_priority_sdk_dispatch() -> None:
+    assert "_MODE1_PRIORITY_STEP_KINDS" in _REMOTE_RUNNER_SOURCE
+    assert '"clarify_research_goal"' in _REMOTE_RUNNER_SOURCE
+    assert '"prioritize_references"' in _REMOTE_RUNNER_SOURCE
+    assert '"explore_paper"' in _REMOTE_RUNNER_SOURCE
+    assert '"check_termination"' in _REMOTE_RUNNER_SOURCE
 
 
 def test_execute_step_propagates_error_field_from_runner_response() -> None:
@@ -330,12 +358,29 @@ def test_execute_step_parses_compare_tables_step_updates() -> None:
 
 
 @pytest.mark.skipif(
-    not os.environ.get("AINRF_CONTAINER_HOST"),
+    bool(_missing_e2e_env_vars()),
     reason="AINRF_CONTAINER_HOST not set; real adapter smoke test requires container access",
 )
 def test_claude_code_adapter_e2e_smoke_with_real_runtime() -> None:
     adapter = ClaudeCodeAdapter(executor_factory=SSHExecutor)
     container = ContainerConfig.from_env()
+
+    async def preflight() -> tuple[bool, str]:
+        async with SSHExecutor(container) as executor:
+            health = await executor.ping()
+        if not health.ssh_ok:
+            return False, "ssh_unreachable"
+        if not health.claude_ok:
+            return False, "claude_unavailable"
+        if not health.anthropic_api_key_ok:
+            return False, "anthropic_api_key_missing"
+        if not health.project_dir_writable:
+            return False, "project_dir_not_writable"
+        return True, _classify_health_warnings(health.warnings)
+
+    preflight_ok, warning_label = asyncio.run(preflight())
+    if not preflight_ok:
+        pytest.fail(f"e2e preflight failed: {warning_label}")
 
     asyncio.run(adapter.bootstrap(container))
     assert asyncio.run(adapter.health_check(container)) is True
@@ -362,3 +407,4 @@ def test_claude_code_adapter_e2e_smoke_with_real_runtime() -> None:
         )
     )
     assert result.status in {"succeeded", "failed"}
+    assert warning_label in {"ok", "gpu_unavailable", "gpu_unavailable,cuda_unavailable"}

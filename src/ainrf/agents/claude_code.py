@@ -433,6 +433,14 @@ def _normalize_execution_result(result: object) -> dict[str, object] | None:
     return result
 
 
+_MODE1_PRIORITY_STEP_KINDS = {
+    "clarify_research_goal",
+    "prioritize_references",
+    "explore_paper",
+    "check_termination",
+}
+
+
 def _invoke_with_sdk(request: dict[str, object]) -> dict[str, object] | None:
     try:
         import claude_code_sdk
@@ -469,6 +477,9 @@ def _invoke_with_sdk(request: dict[str, object]) -> dict[str, object] | None:
         return None
 
     if action == "execute_step":
+        step = request.get("step")
+        step_kind = step.get("kind") if isinstance(step, dict) else None
+        mode1_priority = isinstance(step_kind, str) and step_kind in _MODE1_PRIORITY_STEP_KINDS
         kwargs = {
             "step": request.get("step", {}),
             "context": request.get("context", {}),
@@ -491,6 +502,8 @@ def _invoke_with_sdk(request: dict[str, object]) -> dict[str, object] | None:
                 result = _invoke_candidate(target, method_name, kwargs)
                 normalized = _normalize_execution_result(result)
                 if normalized is not None:
+                    if mode1_priority:
+                        normalized["sdk_path"] = "mode1_priority"
                     return normalized
             except Exception:
                 continue
