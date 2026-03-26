@@ -311,6 +311,8 @@ class SSHExecutor:
             connect_kwargs["config"] = [str(ssh_config_path)]
         if self._container.ssh_key_path is not None:
             connect_kwargs["client_keys"] = [self._container.ssh_key_path]
+        if self._container.ssh_password is not None:
+            connect_kwargs["password"] = self._container.ssh_password
         return await asyncssh.connect(**connect_kwargs)
 
     async def _invalidate_connection(self) -> None:

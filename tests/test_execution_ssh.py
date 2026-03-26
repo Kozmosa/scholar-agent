@@ -109,6 +109,7 @@ def test_container_config_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AINRF_CONTAINER_PORT", "2200")
     monkeypatch.setenv("AINRF_CONTAINER_USER", "researcher")
     monkeypatch.setenv("AINRF_CONTAINER_SSH_KEY_PATH", "/tmp/id_ed25519")
+    monkeypatch.setenv("AINRF_CONTAINER_PASSWORD", "secret-pass")
     monkeypatch.setenv("AINRF_CONTAINER_PROJECT_DIR", "/workspace/project-a")
     monkeypatch.setenv("AINRF_CONTAINER_CONNECT_TIMEOUT", "15")
     monkeypatch.setenv("AINRF_CONTAINER_COMMAND_TIMEOUT", "120")
@@ -119,6 +120,7 @@ def test_container_config_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert config.port == 2200
     assert config.user == "researcher"
     assert config.ssh_key_path == "/tmp/id_ed25519"
+    assert config.ssh_password == "secret-pass"
     assert config.project_dir == "/workspace/project-a"
     assert config.connect_timeout == 15
     assert config.command_timeout == 120
@@ -145,6 +147,22 @@ def test_run_command_wraps_bash_cwd_and_env(monkeypatch: pytest.MonkeyPatch) -> 
     assert "export A=1 B=" in remote_command
     assert "two words" in remote_command
     assert "echo hello" in remote_command
+
+
+def test_open_connection_passes_password_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_connect(**kwargs: object) -> FakeConnection:
+        captured.update(kwargs)
+        return FakeConnection(lambda _command: FakeProcess())
+
+    monkeypatch.setattr(ssh_module.asyncssh, "connect", fake_connect)
+    executor = SSHExecutor(ContainerConfig(host="gpu-server-01", ssh_password="secret-pass"))
+
+    connection = asyncio.run(executor._open_connection())
+
+    assert connection is not None
+    assert captured["password"] == "secret-pass"
 
 
 def test_run_command_reconnects_after_connection_loss(monkeypatch: pytest.MonkeyPatch) -> None:

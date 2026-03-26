@@ -43,6 +43,12 @@ class ApiConfig:
             if config_path.exists():
                 payload = json.loads(config_path.read_text(encoding="utf-8"))
                 api_key_hashes = cls._parse_config_hashes(payload)
+        else:
+            payload = None
+
+        if "payload" not in locals():
+            config_path = resolved_state_root / "config.json"
+            payload = json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else None
 
         if not api_key_hashes:
             raise ValueError("AINRF API key hashes are not configured")
@@ -50,7 +56,7 @@ class ApiConfig:
         try:
             container_config = ContainerConfig.from_env()
         except ValueError:
-            container_config = None
+            container_config = cls._parse_container_config(payload)
 
         gate_timeout_seconds = int(os.environ.get("AINRF_GATE_TIMEOUT_SECONDS", "3600"))
         gate_sweep_interval_seconds = int(os.environ.get("AINRF_GATE_SWEEP_INTERVAL_SECONDS", "30"))
@@ -79,6 +85,49 @@ class ApiConfig:
             return frozenset()
         normalized = {item for item in raw_hashes if isinstance(item, str) and item}
         return frozenset(normalized)
+
+    @staticmethod
+    def _parse_container_config(payload: object) -> ContainerConfig | None:
+        if not isinstance(payload, dict):
+            return None
+        normalized_payload = cast(dict[str, object], payload)
+        raw_profiles = normalized_payload.get("container_profiles")
+        if not isinstance(raw_profiles, dict):
+            return None
+        profiles = cast(dict[str, object], raw_profiles)
+        default_profile = normalized_payload.get("default_container_profile")
+        if not isinstance(default_profile, str) or not default_profile:
+            return None
+        raw_profile = profiles.get(default_profile)
+        if not isinstance(raw_profile, dict):
+            return None
+        profile = cast(dict[str, object], raw_profile)
+        host = profile.get("host")
+        user = profile.get("user")
+        if not isinstance(host, str) or not host or not isinstance(user, str) or not user:
+            return None
+        port = profile.get("port", 22)
+        if not isinstance(port, int):
+            return None
+        ssh_key_path = profile.get("ssh_key_path")
+        ssh_password = profile.get("ssh_password")
+        project_dir = profile.get("project_dir", "/workspace/projects")
+        connect_timeout = profile.get("connect_timeout", 30)
+        command_timeout = profile.get("command_timeout", 3600)
+        if not isinstance(project_dir, str):
+            return None
+        if not isinstance(connect_timeout, int) or not isinstance(command_timeout, int):
+            return None
+        return ContainerConfig(
+            host=host,
+            port=port,
+            user=user,
+            ssh_key_path=ssh_key_path if isinstance(ssh_key_path, str) else None,
+            ssh_password=ssh_password if isinstance(ssh_password, str) and ssh_password else None,
+            connect_timeout=connect_timeout,
+            command_timeout=command_timeout,
+            project_dir=project_dir,
+        )
 
     def verify_api_key(self, value: str | None) -> bool:
         if value is None:

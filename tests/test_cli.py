@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -9,7 +10,7 @@ import pytest
 from typer.testing import CliRunner
 
 from ainrf import __version__
-from ainrf.cli import app
+from ainrf.cli import _parse_ssh_command, app
 
 
 runner = CliRunner()
@@ -22,6 +23,7 @@ def test_help_shows_commands() -> None:
     assert "serve" in result.stdout
     assert "run" in result.stdout
     assert "webui" in result.stdout
+    assert "container" in result.stdout
 
 
 def test_version_outputs_package_version() -> None:
@@ -208,3 +210,32 @@ def test_webui_launches_with_custom_options(monkeypatch: pytest.MonkeyPatch) -> 
     assert getattr(config, "port") == 9900
     assert getattr(config, "api_base_url") == "http://ainrf.local:8000"
     assert getattr(config, "state_root") == Path("/tmp/webui-state")
+
+
+def test_container_add_interactive_persists_profile(tmp_path: Path) -> None:
+    state_root = tmp_path / "state"
+    result = runner.invoke(
+        app,
+        ["container", "add", "--state-root", str(state_root)],
+        input="gpu-main\nssh -p 2222 researcher@gpu-server-01 -i /tmp/id_ed25519\n/workspace/project-a\nsecret-pass\n",
+    )
+
+    assert result.exit_code == 0
+    config_path = state_root / "config.json"
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    profile = payload["container_profiles"]["gpu-main"]
+    assert payload["default_container_profile"] == "gpu-main"
+    assert profile["host"] == "gpu-server-01"
+    assert profile["port"] == 2222
+    assert profile["user"] == "researcher"
+    assert profile["ssh_key_path"] == "/tmp/id_ed25519"
+    assert profile["ssh_password"] == "secret-pass"
+    assert profile["project_dir"] == "/workspace/project-a"
+
+
+def test_parse_ssh_command_supports_user_flag_and_inline_port() -> None:
+    parsed = _parse_ssh_command("ssh -p2200 -l worker gpu-server-02")
+
+    assert parsed.host == "gpu-server-02"
+    assert parsed.user == "worker"
+    assert parsed.port == 2200

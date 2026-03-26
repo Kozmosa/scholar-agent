@@ -10,6 +10,7 @@ class ContainerConfig:
     port: int = 22
     user: str = "root"
     ssh_key_path: str | None = None
+    ssh_password: str | None = None
     connect_timeout: int = 30
     command_timeout: int = 3600
     project_dir: str = "/workspace/projects"
@@ -23,6 +24,7 @@ class ContainerConfig:
         port = int(environ.get(f"{prefix}PORT", "22"))
         user = environ.get(f"{prefix}USER", "root")
         ssh_key_path = environ.get(f"{prefix}SSH_KEY_PATH")
+        ssh_password = environ.get(f"{prefix}PASSWORD")
         connect_timeout = int(environ.get(f"{prefix}CONNECT_TIMEOUT", "30"))
         command_timeout = int(environ.get(f"{prefix}COMMAND_TIMEOUT", "3600"))
         project_dir = environ.get(f"{prefix}PROJECT_DIR", "/workspace/projects")
@@ -32,6 +34,7 @@ class ContainerConfig:
             port=port,
             user=user,
             ssh_key_path=ssh_key_path,
+            ssh_password=ssh_password,
             connect_timeout=connect_timeout,
             command_timeout=command_timeout,
             project_dir=project_dir,
