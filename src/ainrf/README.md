@@ -62,6 +62,10 @@ UV_CACHE_DIR=/tmp/uv-cache uv run python -c "from ainrf.api.config import hash_a
 export AINRF_API_KEY_HASHES=<hash1>,<hash2>
 ```
 
+首次启动时，如果既没有设置 `AINRF_API_KEY_HASHES`，也没有 `.ainrf/config.json` 中的
+`api_key_hashes`，`ainrf serve` 会自动进入交互式引导，要求输入 API key 并把其哈希
+写入 `.ainrf/config.json`。
+
 ### 3.3 MinerU 配置（Worker 解析 PDF 必需）
 
 `MinerUClient` 从以下环境变量读取配置：
@@ -123,6 +127,12 @@ daemon 模式：
 
 ```bash
 UV_CACHE_DIR=/tmp/uv-cache uv run ainrf serve --daemon --host 127.0.0.1 --port 8000
+```
+
+首次无配置示例（会触发交互式 API key 初始化）：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run ainrf serve --host 127.0.0.1 --port 8000
 ```
 
 ### 4.2 启动 Worker
