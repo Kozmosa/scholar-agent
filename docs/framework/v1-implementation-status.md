@@ -29,7 +29,7 @@ last_local_commit: workspace aggregate
 | P6 | SSE Streaming | **已完成** | `bce40d2` | 5 | 无重大差异 |
 | P7 | Agent Adapter & Engine | **部分完成** | `31c1df1` | 8 | 仅 fallback 模式，未真实调用 CC SDK |
 | P8 | Mode 2 Deep Repro | **已完成** | `a55c16b` `1c0d6c0` | 11 | 在 fallback 运行时完成 8-step 编排、实验/偏差证据与质量评估闭环 |
-| P9 | Mode 1 Research Discovery | **未实现** | — | 0 | 完全未实现 |
+| P9 | Mode 1 Research Discovery | **已完成** | workspace aggregate | 2 | 在 fallback 运行时完成 discovery 计划、图谱/claim 落库与终止+报告闭环 |
 | WebUI W0-W3 | 工作台前端 | **W0-W3 已完成** | `31c1df1` `7bb33b2` `08c5bfb` | 23 | W4/W5 未实现 |
 
 **代码统计：** `src/ainrf/` 包含 54 个 Python 文件；测试 111 个用例（17 个测试文件）。
@@ -269,21 +269,23 @@ last_local_commit: workspace aggregate
 
 ---
 
-## P9: Mode 1 Research Discovery Pipeline — 未实现
+## P9: Mode 1 Research Discovery Pipeline — 已完成
 
 **roadmap 要求：** 从种子材料出发的递归调研发现——需求澄清 → 文献扩展 → 图谱更新 → idea 发现 → 终止控制 → 调研报告。
 
-**当前状态：** 完全未实现。TaskEngine 对 Mode 1 直接返回 `mode_not_implemented` 错误。
+**当前状态：** 已实现 Mode 1 最小闭环：
+- [x] TaskEngine 对 `literature_exploration` 不再 fail-fast，进入 planning/executing 正常路径
+- [x] planning 阶段创建/更新 `ExplorationGraph` 并走计划关卡
+- [x] 执行阶段消费 discovery 原子步骤并更新图谱（visited/queued/pruned/depth）
+- [x] 消费 `knowledge_graph_update`/`exploration.new_claims` 落库 `Claim`
+- [x] 消费 `check_termination` 的 `should_terminate/reason`，收敛到报告步骤并完成任务
+- [x] fallback runner 提供 Mode 1 原子步骤与结构化 `step_updates`
+- [x] 单测覆盖：`tests/test_task_engine.py::test_run_once_executes_literature_exploration_mode`、`tests/test_claude_code_adapter.py::test_remote_runner_fallback_plan_contains_p9_atomic_steps`
 
-**缺口清单：**
-- [ ] ExplorationGraph 管理逻辑
-- [ ] 需求澄清与问题画像的原子任务
-- [ ] 参考文献提取与排序
-- [ ] 方法脉络与知识图更新
-- [ ] idea 发现与评估
-- [ ] 三重终止控制器（深度/预算/递减收益）
-- [ ] 调研发现报告生成
-- [ ] Mode 1 专属 gate payload 和 webhook 内容
+**边界与后续增强（非阻塞 P9 完成）：**
+- [ ] 使用真实 `claude_code_sdk` 语义替换 Mode 1 fallback 结果
+- [ ] 引入更细粒度的引用打分信号（被引统计/方法差异/创新潜力）
+- [ ] 增加 Mode 1 专属 webhook payload 字段与端到端容器 smoke
 
 ---
 
@@ -323,7 +325,7 @@ last_local_commit: workspace aggregate
 | Mode 1 枚举命名 | P4, RFC | RFC: `research_discovery`；代码: `literature_exploration` | 中 — 需要迁移 |
 | API 路径无版本前缀 | P4 | RFC 建议 `/v1/`，实际为 `/tasks` | 低 — 可后续添加 |
 | AgentAdapter 工件类型缺失 | P3 | roadmap 列出但未实现为持久化工件 | 低 — 设计合理 |
-| CC SDK 未真实集成 | P7 | 仍以 fallback 为主，SDK 真实语义待增强 | 中 — 主要影响 P9 与生产质量 |
+| CC SDK 未真实集成 | P7, P9 | 仍以 fallback 为主，SDK 真实语义待增强 | 中 — 主要影响生产质量与策略效果 |
 | AgentAdapter 接口签名 | P7, RFC | RFC 单方法 `execute_task()`；实现为 `plan_reproduction()` + `execute_step()` | 中 — 接口更细但不同 |
 | log.* 事件未发射 | P6 | 定义了 category 但无代码发射 | 低 — 可后续补充 |
 | prompt 字段缺失 | P4 | RFC task schema 有 `prompt` 对象；API schema 未包含 | 中 — Mode 1 依赖 |

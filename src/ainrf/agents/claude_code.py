@@ -35,10 +35,101 @@ def _fallback_response(request: dict[str, object]) -> dict[str, object]:
         paper_card = context.get("paper_card") if isinstance(context, dict) else {}
         artifact_id = paper_card.get("artifact_id") if isinstance(paper_card, dict) else "unknown"
         task_config = context.get("task_config") if isinstance(context, dict) else {}
+        task_mode = context.get("task_mode") if isinstance(context, dict) else "deep_reproduction"
+        mode_one = task_config.get("config", {}).get("mode_1", {}) if isinstance(task_config, dict) else {}
         mode_two = task_config.get("config", {}).get("mode_2", {}) if isinstance(task_config, dict) else {}
         expected_metrics = mode_two.get("expected_metrics") if isinstance(mode_two, dict) else None
         if not isinstance(expected_metrics, dict):
             expected_metrics = {"accuracy": 0.9}
+        if task_mode == "literature_exploration":
+            focus_directions = (
+                mode_one.get("focus_directions") if isinstance(mode_one, dict) else []
+            )
+            if not isinstance(focus_directions, list):
+                focus_directions = []
+            return {
+                "summary": "Fallback P9 discovery plan generated without claude_code_sdk runtime.",
+                "milestones": [
+                    "clarify research goal",
+                    "expand and rank references",
+                    "update discovery graph",
+                    "evaluate opportunities",
+                    "check termination and report",
+                ],
+                "estimated_steps": 10,
+                "strategy": "research-discovery",
+                "target_paper_id": artifact_id,
+                "success_criteria": [
+                    "Produce exploration graph with visited and queued papers",
+                    "Generate candidate claims and idea directions",
+                    "Emit discovery report with termination reason",
+                ],
+                "steps": [
+                    {
+                        "step_id": "step-1",
+                        "kind": "clarify_research_goal",
+                        "title": "Clarify research goal",
+                        "payload": {
+                            "domain_context": mode_one.get("domain_context", ""),
+                            "focus_directions": focus_directions,
+                        },
+                    },
+                    {
+                        "step_id": "step-2",
+                        "kind": "extract_references",
+                        "title": "Extract candidate references",
+                        "payload": {"max_candidates": 5},
+                    },
+                    {
+                        "step_id": "step-3",
+                        "kind": "prioritize_references",
+                        "title": "Rank references",
+                        "payload": {"top_k": 2},
+                    },
+                    {
+                        "step_id": "step-4",
+                        "kind": "explore_paper",
+                        "title": "Explore top paper",
+                        "payload": {"paper_id": "pc-ref-001", "depth": 1},
+                    },
+                    {
+                        "step_id": "step-5",
+                        "kind": "update_knowledge_graph",
+                        "title": "Update knowledge graph",
+                        "payload": {"cluster": "core-methods"},
+                    },
+                    {
+                        "step_id": "step-6",
+                        "kind": "summarize_method_cluster",
+                        "title": "Summarize method cluster",
+                        "payload": {"cluster": "core-methods"},
+                    },
+                    {
+                        "step_id": "step-7",
+                        "kind": "evaluate_user_idea",
+                        "title": "Evaluate user idea",
+                        "payload": {"idea": "parameter-efficient adaptation"},
+                    },
+                    {
+                        "step_id": "step-8",
+                        "kind": "propose_idea_directions",
+                        "title": "Propose idea directions",
+                        "payload": {},
+                    },
+                    {
+                        "step_id": "step-9",
+                        "kind": "check_termination",
+                        "title": "Check discovery termination",
+                        "payload": {"max_no_claim_rounds": 3},
+                    },
+                    {
+                        "step_id": "step-10",
+                        "kind": "generate_discovery_report",
+                        "title": "Generate discovery report",
+                        "payload": {"output_path": "reports/discovery/discovery-report.md"},
+                    },
+                ],
+            }
         return {
             "summary": "Fallback P8 plan generated without claude_code_sdk runtime.",
             "milestones": [
@@ -148,6 +239,92 @@ def _fallback_response(request: dict[str, object]) -> dict[str, object]:
                 "gold_nugget": 4.2,
                 "reproducibility": 4.0,
                 "scientific_rigor": 3.8,
+            }
+        }
+    elif step_kind == "clarify_research_goal":
+        step_updates = {
+            "problem_profile": {
+                "research_goal": "Map high-leverage adaptation directions",
+                "focus_directions": ["efficient finetuning", "evaluation robustness"],
+                "ignore_directions": ["infrastructure-only"],
+            }
+        }
+    elif step_kind == "extract_references":
+        step_updates = {
+            "reference_candidates": [
+                {"paper_id": "pc-ref-001", "title": "Adapter Tuning", "score": 0.86},
+                {"paper_id": "pc-ref-002", "title": "LoRA", "score": 0.82},
+            ]
+        }
+    elif step_kind == "prioritize_references":
+        step_updates = {
+            "ranked_references": [
+                {"paper_id": "pc-ref-001", "rank": 1, "novelty": 0.72},
+                {"paper_id": "pc-ref-002", "rank": 2, "novelty": 0.65},
+            ]
+        }
+    elif step_kind == "explore_paper":
+        step_updates = {
+            "exploration": {
+                "paper_id": "pc-ref-001",
+                "visited_paper_ids": ["pc-ref-001"],
+                "queued_paper_ids": ["pc-ref-003"],
+                "current_depth": 1,
+                "new_claims": [
+                    {
+                        "statement": "Low-rank adaptation preserves baseline quality with lower cost.",
+                        "confidence": 0.74,
+                    }
+                ],
+            }
+        }
+    elif step_kind == "update_knowledge_graph":
+        step_updates = {
+            "knowledge_graph_update": {
+                "claims": [
+                    {
+                        "statement": "Combining adapter families improves cross-domain transfer.",
+                        "confidence": 0.68,
+                    }
+                ]
+            }
+        }
+    elif step_kind == "summarize_method_cluster":
+        step_updates = {
+            "method_cluster": {
+                "cluster": "core-methods",
+                "summary": "Most methods trade tiny quality loss for major compute savings.",
+            }
+        }
+    elif step_kind == "evaluate_user_idea":
+        step_updates = {
+            "idea_evaluation": {
+                "feasibility": "medium",
+                "risks": ["dataset mismatch", "evaluation leakage"],
+            }
+        }
+    elif step_kind == "propose_idea_directions":
+        step_updates = {
+            "idea_candidates": [
+                {
+                    "title": "Hybrid adapter routing",
+                    "rationale": "Combine orthogonal adapter mechanisms based on task families.",
+                }
+            ]
+        }
+    elif step_kind == "check_termination":
+        step_updates = {
+            "termination": {
+                "should_terminate": True,
+                "reason": "diminishing_returns",
+                "new_claims_count": 0,
+            }
+        }
+    elif step_kind == "generate_discovery_report":
+        step_updates = {
+            "report": {
+                "path": "reports/discovery/discovery-report.md",
+                "summary": "Generated discovery report with idea directions and method map.",
             }
         }
     else:

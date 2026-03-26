@@ -62,6 +62,42 @@ class FakeAdapter(AgentAdapter):
     ) -> TaskPlanResult:
         _ = container, prompt
         self.plan_contexts.append(context)
+        if context.get("task_mode") == TaskMode.LITERATURE_EXPLORATION.value:
+            paper_card = cast(dict[str, object], context["paper_card"])
+            return TaskPlanResult(
+                summary="Planned literature exploration",
+                milestones=["Clarify", "Explore", "Report"],
+                estimated_steps=4,
+                strategy="research-discovery",
+                target_paper_id=str(paper_card["artifact_id"]),
+                success_criteria=["graph and claims generated"],
+                steps=[
+                    AtomicTaskSpec(
+                        step_id="m1-step-1",
+                        kind="clarify_research_goal",
+                        title="Clarify goal",
+                        payload={"domain_context": "llm systems"},
+                    ),
+                    AtomicTaskSpec(
+                        step_id="m1-step-2",
+                        kind="update_knowledge_graph",
+                        title="Update graph",
+                        payload={},
+                    ),
+                    AtomicTaskSpec(
+                        step_id="m1-step-3",
+                        kind="check_termination",
+                        title="Check termination",
+                        payload={},
+                    ),
+                    AtomicTaskSpec(
+                        step_id="m1-step-4",
+                        kind="generate_discovery_report",
+                        title="Generate report",
+                        payload={"output_path": "reports/discovery/discovery-report.md"},
+                    ),
+                ],
+            )
         paper_card = cast(dict[str, object], context["paper_card"])
         return TaskPlanResult(
             summary="Planned deep reproduction",
@@ -94,6 +130,34 @@ class FakeAdapter(AgentAdapter):
         context: dict[str, object],
     ) -> TaskExecutionResult:
         _ = container, context
+        if step.kind == "update_knowledge_graph":
+            return TaskExecutionResult(
+                status="succeeded",
+                summary="Updated discovery graph",
+                resource_usage={"gpu_hours": self.budget_gpu, "api_cost_usd": 1.0, "wall_clock_hours": 0.1},
+                step_updates={
+                    "knowledge_graph_update": {
+                        "claims": [
+                            {
+                                "statement": "Adapter-based transfer remains stable under low budget.",
+                                "confidence": 0.73,
+                            }
+                        ]
+                    }
+                },
+            )
+        if step.kind == "check_termination":
+            return TaskExecutionResult(
+                status="succeeded",
+                summary="Termination condition reached",
+                resource_usage={"gpu_hours": 0.0, "api_cost_usd": 0.0, "wall_clock_hours": 0.0},
+                step_updates={
+                    "termination": {
+                        "should_terminate": True,
+                        "reason": "diminishing_returns",
+                    }
+                },
+            )
         return TaskExecutionResult(
             status="succeeded",
             summary=f"Executed {step.kind}",
@@ -208,17 +272,28 @@ def test_run_once_replans_with_reject_feedback(tmp_path: Path) -> None:
     assert adapter.plan_contexts[-1]["latest_feedback"] == "tighten scope"
 
 
-def test_run_once_marks_mode_not_implemented(tmp_path: Path) -> None:
+def test_run_once_executes_literature_exploration_mode(tmp_path: Path) -> None:
     engine, store, _gate_manager = make_engine(tmp_path)
-    store.save_task(make_task(tmp_path, mode=TaskMode.LITERATURE_EXPLORATION))
+    store.save_task(make_task(tmp_path, mode=TaskMode.LITERATURE_EXPLORATION, yolo=True))
 
-    ran = asyncio.run(engine.run_once())
+    asyncio.run(engine.run_once())
+    for _ in range(5):
+        task = store.load_task("t-001")
+        assert task is not None
+        if task.status is TaskStage.COMPLETED:
+            break
+        asyncio.run(engine.run_once())
 
     task = store.load_task("t-001")
-    assert ran is True
     assert task is not None
-    assert task.status is TaskStage.FAILED
-    assert task.termination_reason == "mode_not_implemented"
+    assert task.status is TaskStage.COMPLETED
+    assert task.termination_reason == "diminishing_returns"
+
+    exploration_graphs = store.query_artifacts(ArtifactType.EXPLORATION_GRAPH)
+    assert len(exploration_graphs) == 1
+
+    claims = store.query_artifacts(ArtifactType.CLAIM)
+    assert claims
 
 
 def test_run_once_completes_when_budget_exhausted(tmp_path: Path) -> None:

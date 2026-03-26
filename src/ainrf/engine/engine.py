@@ -14,10 +14,12 @@ from ainrf.artifacts import (
     AssessmentDimension,
     ArtifactRef,
     ArtifactType,
+    Claim,
     EvidenceRecord,
     EvidenceType,
     ExperimentRun,
     ExperimentRunStatus,
+    ExplorationGraph,
     GateType,
     PaperCard,
     PaperCardStatus,
@@ -33,7 +35,7 @@ from ainrf.gates import HumanGateManager, PlanApprovalGatePayload
 from ainrf.parsing import PaperParser, ParseFailure, ParseRequest
 from ainrf.state import ArtifactQuery, AtomicTaskRecord, JsonStateStore, TaskRecord, TaskStage
 
-from ainrf.engine.models import AtomicTaskSpec, TaskExecutionResult
+from ainrf.engine.models import AtomicTaskSpec, TaskExecutionResult, TaskPlanResult
 
 
 def utc_now() -> datetime:
@@ -61,9 +63,6 @@ class TaskEngine:
         task = self._next_task()
         if task is None:
             return False
-        if task.mode.value != "deep_reproduction":
-            self._fail_task(task, reason="mode_not_implemented", detail="Mode is not implemented in P7")
-            return True
         if task.status is TaskStage.PLANNING:
             await self._advance_planning_task(task)
             return True
@@ -184,9 +183,18 @@ class TaskEngine:
         experiment_ref = self._record_experiment_run(task, step, result)
         deviation_ref = self._record_deviation_evidence(task, step, result)
         analysis_ref = self._record_analysis_evidence(task, step, result)
+        exploration_ref = self._upsert_exploration_graph(task, step, result)
+        claim_refs = self._record_mode1_claims(task, step, result)
+        pending_queue, mode_termination_reason = self._apply_mode1_termination(
+            task,
+            task.checkpoint.pending_queue[1:],
+            step,
+            result,
+        )
         updated = task.model_copy(
             update={
                 "updated_at": utc_now(),
+                "termination_reason": mode_termination_reason,
                 "checkpoint": task.checkpoint.model_copy(
                     update={
                         "completed_steps": [
@@ -202,7 +210,7 @@ class TaskEngine:
                                 },
                             ),
                         ],
-                        "pending_queue": task.checkpoint.pending_queue[1:],
+                        "pending_queue": pending_queue,
                         "artifact_refs": self._upsert_artifact_ref_if_needed(
                             task.checkpoint.artifact_refs,
                             experiment_ref,
@@ -236,6 +244,31 @@ class TaskEngine:
                 )
             }
         )
+        updated = updated.model_copy(
+            update={
+                "checkpoint": updated.checkpoint.model_copy(
+                    update={
+                        "artifact_refs": self._upsert_artifact_ref_if_needed(
+                            updated.checkpoint.artifact_refs,
+                            exploration_ref,
+                        )
+                    }
+                )
+            }
+        )
+        for claim_ref in claim_refs:
+            updated = updated.model_copy(
+                update={
+                    "checkpoint": updated.checkpoint.model_copy(
+                        update={
+                            "artifact_refs": self._upsert_artifact_ref(
+                                updated.checkpoint.artifact_refs,
+                                claim_ref,
+                            )
+                        }
+                    )
+                }
+            )
         if self._budget_exhausted(updated):
             updated = updated.model_copy(update={"termination_reason": "budget_exhausted"})
         self._context.state_store.save_task(updated)
@@ -253,7 +286,7 @@ class TaskEngine:
             self._complete_task(updated, termination_reason="budget_exhausted")
             return
         if not updated.checkpoint.pending_queue:
-            self._complete_task(updated, termination_reason=None)
+            self._complete_task(updated, termination_reason=updated.termination_reason)
 
     async def _ingest_task(self, task: TaskRecord) -> None:
         papers = task.config.get("papers")
@@ -323,9 +356,12 @@ class TaskEngine:
         container = self._container_from_task(task)
         await self._context.agent_adapter.bootstrap(container)
         prompt = "Generate a deep reproduction plan."
+        if task.mode.value == "literature_exploration":
+            prompt = "Generate a research discovery plan."
         latest_feedback = self._latest_plan_feedback(task)
         context = {
             "task_id": task.task_id,
+            "task_mode": task.mode.value,
             "paper_card": paper_card.model_dump(mode="json"),
             "task_config": task.config,
             "latest_feedback": latest_feedback,
@@ -335,6 +371,9 @@ class TaskEngine:
             prompt=prompt,
             context=context,
         )
+        if task.mode.value == "literature_exploration":
+            await self._plan_discovery_task(task=task, paper_card=paper_card, plan=plan)
+            return
         reproduction_task = self._existing_reproduction_task(task.task_id)
         if reproduction_task is None:
             reproduction_task = ReproductionTask(
@@ -390,6 +429,90 @@ class TaskEngine:
                             ArtifactRef(
                                 artifact_type=ArtifactType.REPRODUCTION_TASK,
                                 artifact_id=reproduction_task.artifact_id,
+                            ),
+                        ),
+                    }
+                ),
+            }
+        )
+        self._context.state_store.save_task(updated)
+        gate_payload = PlanApprovalGatePayload(
+            mode=task.mode.value,
+            summary=plan.summary,
+            milestones=plan.milestones,
+            estimated_steps=plan.estimated_steps,
+            strategy=plan.strategy,
+            target_paper_id=plan.target_paper_id,
+            success_criteria=plan.success_criteria,
+        )
+        next_task, gate = await self._context.gate_manager.trigger_gate(
+            task=updated,
+            gate_type=GateType.PLAN_APPROVAL,
+            summary=plan.summary,
+            payload=gate_payload.model_dump(mode="json"),
+            yolo=bool(task.config.get("yolo", False)),
+        )
+        if not bool(task.config.get("yolo", False)):
+            await self._context.gate_manager.send_waiting_webhook(task=next_task, gate=gate)
+
+    async def _plan_discovery_task(
+        self,
+        *,
+        task: TaskRecord,
+        paper_card: PaperCard,
+        plan: TaskPlanResult,
+    ) -> None:
+        existing_graph = self._existing_exploration_graph(task.task_id)
+        if existing_graph is None:
+            exploration_graph = ExplorationGraph(
+                artifact_id=f"eg-{uuid4().hex[:8]}",
+                source_task_id=task.task_id,
+                summary="Mode 1 exploration graph initialized.",
+                seed_paper_ids=[paper_card.artifact_id],
+                visited_paper_ids=[paper_card.artifact_id],
+                budget_snapshot=task.budget_used,
+            )
+            graph_event = "artifact.created"
+        else:
+            exploration_graph = existing_graph.model_copy(
+                update={
+                    "updated_at": utc_now(),
+                    "summary": "Mode 1 exploration graph refreshed with latest plan.",
+                    "seed_paper_ids": self._merge_unique_ids(
+                        existing_graph.seed_paper_ids,
+                        [paper_card.artifact_id],
+                    ),
+                    "visited_paper_ids": self._merge_unique_ids(
+                        existing_graph.visited_paper_ids,
+                        [paper_card.artifact_id],
+                    ),
+                    "budget_snapshot": task.budget_used,
+                }
+            )
+            graph_event = "artifact.updated"
+        self._context.state_store.save_artifact(exploration_graph)
+        self._publish_artifact_event(graph_event, exploration_graph)
+        updated = task.model_copy(
+            update={
+                "updated_at": utc_now(),
+                "checkpoint": task.checkpoint.model_copy(
+                    update={
+                        "pending_queue": [
+                            AtomicTaskRecord(
+                                step=item.kind,
+                                details={
+                                    "step_id": item.step_id,
+                                    "title": item.title,
+                                    "payload": item.payload,
+                                },
+                            )
+                            for item in plan.steps
+                        ],
+                        "artifact_refs": self._upsert_artifact_ref(
+                            task.checkpoint.artifact_refs,
+                            ArtifactRef(
+                                artifact_type=ArtifactType.EXPLORATION_GRAPH,
+                                artifact_id=exploration_graph.artifact_id,
                             ),
                         ),
                     }
@@ -888,6 +1011,164 @@ class TaskEngine:
             artifact_type=ArtifactType.QUALITY_ASSESSMENT,
             artifact_id=quality_assessment.artifact_id,
         )
+
+    def _existing_exploration_graph(self, task_id: str) -> ExplorationGraph | None:
+        for artifact in self._context.state_store.query_artifacts(
+            ArtifactType.EXPLORATION_GRAPH,
+            ArtifactQuery(source_task_id=task_id),
+        ):
+            if isinstance(artifact, ExplorationGraph) and artifact.source_task_id == task_id:
+                return artifact
+        return None
+
+    def _upsert_exploration_graph(
+        self,
+        task: TaskRecord,
+        step: AtomicTaskSpec,
+        result: TaskExecutionResult,
+    ) -> ArtifactRef | None:
+        if task.mode.value != "literature_exploration":
+            return None
+        graph = self._existing_exploration_graph(task.task_id)
+        if graph is None:
+            return None
+        exploration_payload = result.step_updates.get("exploration")
+        termination_payload = result.step_updates.get("termination")
+        updated_graph = graph
+        if isinstance(exploration_payload, dict):
+            payload = cast(dict[str, object], exploration_payload)
+            updated_graph = updated_graph.model_copy(
+                update={
+                    "updated_at": utc_now(),
+                    "visited_paper_ids": self._merge_unique_ids(
+                        updated_graph.visited_paper_ids,
+                        self._string_list(payload.get("visited_paper_ids")),
+                    ),
+                    "queued_paper_ids": self._merge_unique_ids(
+                        updated_graph.queued_paper_ids,
+                        self._string_list(payload.get("queued_paper_ids")),
+                    ),
+                    "pruned_paper_ids": self._merge_unique_ids(
+                        updated_graph.pruned_paper_ids,
+                        self._string_list(payload.get("pruned_paper_ids")),
+                    ),
+                    "current_depth": self._extract_depth(payload.get("current_depth"), updated_graph.current_depth),
+                    "budget_snapshot": task.budget_used,
+                }
+            )
+        if isinstance(termination_payload, dict):
+            payload = cast(dict[str, object], termination_payload)
+            reason = payload.get("reason")
+            if isinstance(reason, str) and reason:
+                updated_graph = updated_graph.model_copy(update={"termination_reason": reason, "updated_at": utc_now()})
+        if step.kind == "generate_discovery_report" and updated_graph.termination_reason is None:
+            updated_graph = updated_graph.model_copy(update={"termination_reason": "report_generated", "updated_at": utc_now()})
+        if updated_graph == graph:
+            return ArtifactRef(
+                artifact_type=ArtifactType.EXPLORATION_GRAPH,
+                artifact_id=graph.artifact_id,
+            )
+        self._context.state_store.save_artifact(updated_graph)
+        self._publish_artifact_event("artifact.updated", updated_graph)
+        return ArtifactRef(
+            artifact_type=ArtifactType.EXPLORATION_GRAPH,
+            artifact_id=updated_graph.artifact_id,
+        )
+
+    def _record_mode1_claims(
+        self,
+        task: TaskRecord,
+        step: AtomicTaskSpec,
+        result: TaskExecutionResult,
+    ) -> list[ArtifactRef]:
+        if task.mode.value != "literature_exploration":
+            return []
+        claim_candidates: list[dict[str, object]] = []
+        exploration_payload = result.step_updates.get("exploration")
+        if isinstance(exploration_payload, dict):
+            new_claims = cast(dict[str, object], exploration_payload).get("new_claims")
+            if isinstance(new_claims, list):
+                claim_candidates.extend(
+                    [cast(dict[str, object], item) for item in new_claims if isinstance(item, dict)]
+                )
+        graph_payload = result.step_updates.get("knowledge_graph_update")
+        if isinstance(graph_payload, dict):
+            raw_claims = cast(dict[str, object], graph_payload).get("claims")
+            if isinstance(raw_claims, list):
+                claim_candidates.extend(
+                    [cast(dict[str, object], item) for item in raw_claims if isinstance(item, dict)]
+                )
+        refs: list[ArtifactRef] = []
+        for candidate in claim_candidates:
+            statement = candidate.get("statement")
+            if not isinstance(statement, str) or not statement:
+                continue
+            confidence_value = candidate.get("confidence")
+            confidence = float(confidence_value) if isinstance(confidence_value, int | float) else None
+            claim = Claim(
+                artifact_id=f"cl-{uuid4().hex[:8]}",
+                source_task_id=task.task_id,
+                statement=statement,
+                confidence=confidence,
+                summary=f"Claim from {step.kind}",
+            )
+            self._context.state_store.save_artifact(claim)
+            self._publish_artifact_event("artifact.created", claim)
+            refs.append(
+                ArtifactRef(
+                    artifact_type=ArtifactType.CLAIM,
+                    artifact_id=claim.artifact_id,
+                )
+            )
+        return refs
+
+    def _apply_mode1_termination(
+        self,
+        task: TaskRecord,
+        pending_queue: list[AtomicTaskRecord],
+        step: AtomicTaskSpec,
+        result: TaskExecutionResult,
+    ) -> tuple[list[AtomicTaskRecord], str | None]:
+        if task.mode.value != "literature_exploration" or step.kind != "check_termination":
+            return pending_queue, task.termination_reason
+        termination_payload = result.step_updates.get("termination")
+        if not isinstance(termination_payload, dict):
+            return pending_queue, task.termination_reason
+        payload = cast(dict[str, object], termination_payload)
+        should_terminate = bool(payload.get("should_terminate", False))
+        reason = payload.get("reason")
+        termination_reason = reason if isinstance(reason, str) and reason else task.termination_reason
+        if not should_terminate:
+            return pending_queue, termination_reason
+        report_step = next(
+            (item for item in pending_queue if item.step == "generate_discovery_report"),
+            None,
+        )
+        if report_step is None:
+            return [], termination_reason
+        return [report_step], termination_reason
+
+    def _merge_unique_ids(self, base: list[str], extra: list[str]) -> list[str]:
+        seen = set(base)
+        merged = [*base]
+        for item in extra:
+            if item in seen:
+                continue
+            merged.append(item)
+            seen.add(item)
+        return merged
+
+    def _string_list(self, value: object) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return [item for item in value if isinstance(item, str)]
+
+    def _extract_depth(self, value: object, default: int) -> int:
+        if isinstance(value, int) and value >= 0:
+            return value
+        if isinstance(value, str) and value.isdigit():
+            return int(value)
+        return default
 
     def _required_str(self, payload: dict[str, object], key: str) -> str:
         value = payload.get(key)

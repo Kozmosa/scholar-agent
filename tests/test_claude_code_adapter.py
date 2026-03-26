@@ -274,6 +274,22 @@ def test_remote_runner_fallback_plan_contains_p8_atomic_steps() -> None:
         assert f'"kind": "{step_kind}"' in _REMOTE_RUNNER_SOURCE
 
 
+def test_remote_runner_fallback_plan_contains_p9_atomic_steps() -> None:
+    for step_kind in [
+        "clarify_research_goal",
+        "extract_references",
+        "prioritize_references",
+        "explore_paper",
+        "update_knowledge_graph",
+        "summarize_method_cluster",
+        "evaluate_user_idea",
+        "propose_idea_directions",
+        "check_termination",
+        "generate_discovery_report",
+    ]:
+        assert f'"kind": "{step_kind}"' in _REMOTE_RUNNER_SOURCE
+
+
 def test_execute_step_parses_compare_tables_step_updates() -> None:
     class FakeSSHExecutorCompare(FakeSSHExecutor):
         async def download(self, remote: str, local: str | Path) -> None:
