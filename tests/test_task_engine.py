@@ -6,7 +6,14 @@ from typing import cast
 
 from ainrf.agents import AgentAdapter
 from ainrf.agents.base import AgentExecutionError
-from ainrf.artifacts import ArtifactType, EvidenceRecord, EvidenceType, ExperimentRun, QualityAssessment
+from ainrf.artifacts import (
+    ArtifactType,
+    EvidenceRecord,
+    EvidenceType,
+    ExperimentRun,
+    ExplorationGraph,
+    QualityAssessment,
+)
 from ainrf.engine.engine import EngineContext, TaskEngine
 from ainrf.engine.models import AtomicTaskSpec, TaskExecutionResult, TaskPlanResult
 from ainrf.events import JsonlTaskEventStore, TaskEventService
@@ -62,7 +69,7 @@ class FakeAdapter(AgentAdapter):
     ) -> TaskPlanResult:
         _ = container, prompt
         self.plan_contexts.append(context)
-        if context.get("task_mode") == TaskMode.LITERATURE_EXPLORATION.value:
+        if context.get("task_mode") == TaskMode.RESEARCH_DISCOVERY.value:
             paper_card = cast(dict[str, object], context["paper_card"])
             return TaskPlanResult(
                 summary="Planned literature exploration",
@@ -272,9 +279,9 @@ def test_run_once_replans_with_reject_feedback(tmp_path: Path) -> None:
     assert adapter.plan_contexts[-1]["latest_feedback"] == "tighten scope"
 
 
-def test_run_once_executes_literature_exploration_mode(tmp_path: Path) -> None:
+def test_run_once_executes_research_discovery_mode(tmp_path: Path) -> None:
     engine, store, _gate_manager = make_engine(tmp_path)
-    store.save_task(make_task(tmp_path, mode=TaskMode.LITERATURE_EXPLORATION, yolo=True))
+    store.save_task(make_task(tmp_path, mode=TaskMode.RESEARCH_DISCOVERY, yolo=True))
 
     asyncio.run(engine.run_once())
     for _ in range(5):
@@ -291,6 +298,10 @@ def test_run_once_executes_literature_exploration_mode(tmp_path: Path) -> None:
 
     exploration_graphs = store.query_artifacts(ArtifactType.EXPLORATION_GRAPH)
     assert len(exploration_graphs) == 1
+    graph = exploration_graphs[0]
+    assert isinstance(graph, ExplorationGraph)
+    assert graph.max_depth == 3
+    assert graph.max_breadth == 3
 
     claims = store.query_artifacts(ArtifactType.CLAIM)
     assert claims

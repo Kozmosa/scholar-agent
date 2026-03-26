@@ -193,6 +193,13 @@ class ExplorationGraph(ArtifactModel):
     pruned_paper_ids: list[str] = Field(default_factory=list)
     reproduction_task_ids: list[str] = Field(default_factory=list)
     current_depth: int = 0
+    max_depth: int = 3
+    max_breadth: int = 3
+    max_no_claim_rounds: int = 3
+    no_new_claim_rounds: int = 0
+    ranked_reference_ids: list[str] = Field(default_factory=list)
+    reference_scores: dict[str, float] = Field(default_factory=dict)
+    prune_reasons: dict[str, str] = Field(default_factory=dict)
     budget_snapshot: ResourceUsage = Field(default_factory=ResourceUsage)
     termination_reason: str | None = None
 

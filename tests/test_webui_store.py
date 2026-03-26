@@ -40,7 +40,7 @@ def test_project_store_lists_runs_for_project_in_reverse_time_order(tmp_path: Pa
         ProjectRunRecord(
             task_id="t-002",
             project_slug="vision-stack",
-            mode=TaskMode.LITERATURE_EXPLORATION,
+            mode=TaskMode.RESEARCH_DISCOVERY,
             paper_titles=["Paper B"],
             last_known_status=TaskStage.GATE_WAITING,
             last_known_stage=TaskStage.GATE_WAITING,

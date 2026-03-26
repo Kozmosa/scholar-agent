@@ -33,7 +33,7 @@ from ainrf.events import TaskEventCategory, TaskEventService
 from ainrf.execution import ContainerConfig
 from ainrf.gates import HumanGateManager, PlanApprovalGatePayload
 from ainrf.parsing import PaperParser, ParseFailure, ParseRequest
-from ainrf.state import ArtifactQuery, AtomicTaskRecord, JsonStateStore, TaskRecord, TaskStage
+from ainrf.state import ArtifactQuery, AtomicTaskRecord, JsonStateStore, TaskMode, TaskRecord, TaskStage
 
 from ainrf.engine.models import AtomicTaskSpec, TaskExecutionResult, TaskPlanResult
 
@@ -356,7 +356,7 @@ class TaskEngine:
         container = self._container_from_task(task)
         await self._context.agent_adapter.bootstrap(container)
         prompt = "Generate a deep reproduction plan."
-        if task.mode.value == "literature_exploration":
+        if task.mode is TaskMode.RESEARCH_DISCOVERY:
             prompt = "Generate a research discovery plan."
         latest_feedback = self._latest_plan_feedback(task)
         context = {
@@ -371,7 +371,7 @@ class TaskEngine:
             prompt=prompt,
             context=context,
         )
-        if task.mode.value == "literature_exploration":
+        if task.mode is TaskMode.RESEARCH_DISCOVERY:
             await self._plan_discovery_task(task=task, paper_card=paper_card, plan=plan)
             return
         reproduction_task = self._existing_reproduction_task(task.task_id)
@@ -462,6 +462,13 @@ class TaskEngine:
         paper_card: PaperCard,
         plan: TaskPlanResult,
     ) -> None:
+        mode_config = self._mode_one_config(task)
+        max_depth = self._coerce_positive_int(mode_config.get("max_depth"), default=3)
+        max_breadth = self._coerce_positive_int(mode_config.get("max_breadth"), default=3)
+        max_no_claim_rounds = self._coerce_positive_int(
+            mode_config.get("max_no_claim_rounds"),
+            default=3,
+        )
         existing_graph = self._existing_exploration_graph(task.task_id)
         if existing_graph is None:
             exploration_graph = ExplorationGraph(
@@ -470,6 +477,9 @@ class TaskEngine:
                 summary="Mode 1 exploration graph initialized.",
                 seed_paper_ids=[paper_card.artifact_id],
                 visited_paper_ids=[paper_card.artifact_id],
+                max_depth=max_depth,
+                max_breadth=max_breadth,
+                max_no_claim_rounds=max_no_claim_rounds,
                 budget_snapshot=task.budget_used,
             )
             graph_event = "artifact.created"
@@ -486,6 +496,9 @@ class TaskEngine:
                         existing_graph.visited_paper_ids,
                         [paper_card.artifact_id],
                     ),
+                    "max_depth": max_depth,
+                    "max_breadth": max_breadth,
+                    "max_no_claim_rounds": max_no_claim_rounds,
                     "budget_snapshot": task.budget_used,
                 }
             )
@@ -1027,7 +1040,7 @@ class TaskEngine:
         step: AtomicTaskSpec,
         result: TaskExecutionResult,
     ) -> ArtifactRef | None:
-        if task.mode.value != "literature_exploration":
+        if task.mode is not TaskMode.RESEARCH_DISCOVERY:
             return None
         graph = self._existing_exploration_graph(task.task_id)
         if graph is None:
@@ -1037,6 +1050,7 @@ class TaskEngine:
         updated_graph = graph
         if isinstance(exploration_payload, dict):
             payload = cast(dict[str, object], exploration_payload)
+            new_claims_count = self._count_new_claims(payload)
             updated_graph = updated_graph.model_copy(
                 update={
                     "updated_at": utc_now(),
@@ -1053,7 +1067,46 @@ class TaskEngine:
                         self._string_list(payload.get("pruned_paper_ids")),
                     ),
                     "current_depth": self._extract_depth(payload.get("current_depth"), updated_graph.current_depth),
+                    "no_new_claim_rounds": (
+                        0 if new_claims_count > 0 else updated_graph.no_new_claim_rounds + 1
+                    ),
                     "budget_snapshot": task.budget_used,
+                }
+            )
+        ranked_references = self._extract_ranked_references(result.step_updates)
+        if ranked_references:
+            ranked_ids = [paper_id for paper_id, _score in ranked_references[: updated_graph.max_breadth]]
+            score_updates = {paper_id: score for paper_id, score in ranked_references}
+            queued_ids = self._merge_unique_ids(updated_graph.queued_paper_ids, ranked_ids)
+            updated_graph = updated_graph.model_copy(
+                update={
+                    "updated_at": utc_now(),
+                    "ranked_reference_ids": ranked_ids,
+                    "reference_scores": {**updated_graph.reference_scores, **score_updates},
+                    "queued_paper_ids": queued_ids,
+                }
+            )
+        reference_candidates = self._extract_reference_candidates(result.step_updates)
+        if reference_candidates:
+            scored = {
+                paper_id: self._candidate_score(candidate)
+                for paper_id, candidate in reference_candidates.items()
+            }
+            sorted_ids = sorted(scored.keys(), key=lambda paper_id: scored[paper_id], reverse=True)
+            keep_ids = sorted_ids[: updated_graph.max_breadth]
+            dropped_ids = sorted_ids[updated_graph.max_breadth :]
+            prune_reasons = {
+                **updated_graph.prune_reasons,
+                **{paper_id: "below_top_k" for paper_id in dropped_ids},
+            }
+            updated_graph = updated_graph.model_copy(
+                update={
+                    "updated_at": utc_now(),
+                    "ranked_reference_ids": keep_ids,
+                    "reference_scores": {**updated_graph.reference_scores, **scored},
+                    "queued_paper_ids": self._merge_unique_ids(updated_graph.queued_paper_ids, keep_ids),
+                    "pruned_paper_ids": self._merge_unique_ids(updated_graph.pruned_paper_ids, dropped_ids),
+                    "prune_reasons": prune_reasons,
                 }
             )
         if isinstance(termination_payload, dict):
@@ -1081,7 +1134,7 @@ class TaskEngine:
         step: AtomicTaskSpec,
         result: TaskExecutionResult,
     ) -> list[ArtifactRef]:
-        if task.mode.value != "literature_exploration":
+        if task.mode is not TaskMode.RESEARCH_DISCOVERY:
             return []
         claim_candidates: list[dict[str, object]] = []
         exploration_payload = result.step_updates.get("exploration")
@@ -1129,24 +1182,151 @@ class TaskEngine:
         step: AtomicTaskSpec,
         result: TaskExecutionResult,
     ) -> tuple[list[AtomicTaskRecord], str | None]:
-        if task.mode.value != "literature_exploration" or step.kind != "check_termination":
+        if task.mode is not TaskMode.RESEARCH_DISCOVERY:
             return pending_queue, task.termination_reason
+        graph = self._existing_exploration_graph(task.task_id)
+        if graph is not None:
+            if graph.current_depth >= graph.max_depth:
+                return self._retain_report_step(pending_queue), "max_depth_reached"
+            if graph.no_new_claim_rounds >= graph.max_no_claim_rounds:
+                return self._retain_report_step(pending_queue), "diminishing_returns"
+        if step.kind != "check_termination":
+            return self._maybe_expand_mode1_queue(task, pending_queue), task.termination_reason
         termination_payload = result.step_updates.get("termination")
         if not isinstance(termination_payload, dict):
-            return pending_queue, task.termination_reason
+            return self._maybe_expand_mode1_queue(task, pending_queue), task.termination_reason
         payload = cast(dict[str, object], termination_payload)
         should_terminate = bool(payload.get("should_terminate", False))
         reason = payload.get("reason")
         termination_reason = reason if isinstance(reason, str) and reason else task.termination_reason
         if not should_terminate:
-            return pending_queue, termination_reason
+            return self._maybe_expand_mode1_queue(task, pending_queue), termination_reason
+        return self._retain_report_step(pending_queue), termination_reason
+
+    def _retain_report_step(self, pending_queue: list[AtomicTaskRecord]) -> list[AtomicTaskRecord]:
         report_step = next(
             (item for item in pending_queue if item.step == "generate_discovery_report"),
             None,
         )
         if report_step is None:
-            return [], termination_reason
-        return [report_step], termination_reason
+            return []
+        return [report_step]
+
+    def _maybe_expand_mode1_queue(
+        self,
+        task: TaskRecord,
+        pending_queue: list[AtomicTaskRecord],
+    ) -> list[AtomicTaskRecord]:
+        graph = self._existing_exploration_graph(task.task_id)
+        if graph is None:
+            return pending_queue
+        if graph.current_depth >= graph.max_depth:
+            return pending_queue
+        existing_explore_ids = {
+            str(item.details.get("payload", {}).get("paper_id"))
+            for item in pending_queue
+            if item.step == "explore_paper" and isinstance(item.details.get("payload"), dict)
+        }
+        candidates = [
+            paper_id
+            for paper_id in graph.ranked_reference_ids or graph.queued_paper_ids
+            if paper_id not in graph.visited_paper_ids and paper_id not in existing_explore_ids
+        ]
+        if not candidates:
+            return pending_queue
+        explore_steps: list[AtomicTaskRecord] = []
+        for index, paper_id in enumerate(candidates[: graph.max_breadth], start=1):
+            explore_steps.append(
+                AtomicTaskRecord(
+                    step="explore_paper",
+                    details={
+                        "step_id": f"auto-explore-{graph.current_depth + 1}-{index}",
+                        "title": f"Explore paper {paper_id}",
+                        "payload": {"paper_id": paper_id, "depth": graph.current_depth + 1},
+                    },
+                )
+            )
+        report_step = [item for item in pending_queue if item.step == "generate_discovery_report"]
+        other_steps = [
+            item
+            for item in pending_queue
+            if item.step not in {"generate_discovery_report", "explore_paper"}
+        ]
+        return [*explore_steps, *other_steps, *report_step]
+
+    def _mode_one_config(self, task: TaskRecord) -> dict[str, object]:
+        config = task.config.get("config")
+        if not isinstance(config, dict):
+            return {}
+        typed_config = cast(dict[str, object], config)
+        mode_one = typed_config.get("mode_1")
+        if not isinstance(mode_one, dict):
+            return {}
+        return cast(dict[str, object], mode_one)
+
+    def _coerce_positive_int(self, value: object, *, default: int) -> int:
+        if isinstance(value, int) and value > 0:
+            return value
+        if isinstance(value, str) and value.isdigit() and int(value) > 0:
+            return int(value)
+        return default
+
+    def _count_new_claims(self, exploration_payload: dict[str, object]) -> int:
+        raw_claims = exploration_payload.get("new_claims")
+        if isinstance(raw_claims, list):
+            return len([item for item in raw_claims if isinstance(item, dict)])
+        raw_count = exploration_payload.get("new_claims_count")
+        if isinstance(raw_count, int) and raw_count >= 0:
+            return raw_count
+        return 0
+
+    def _extract_ranked_references(self, step_updates: dict[str, object]) -> list[tuple[str, float]]:
+        raw_ranked = step_updates.get("ranked_references")
+        if not isinstance(raw_ranked, list):
+            return []
+        ranked: list[tuple[str, float]] = []
+        for item in raw_ranked:
+            if not isinstance(item, dict):
+                continue
+            payload_item = cast(dict[str, object], item)
+            paper_id = payload_item.get("paper_id")
+            if not isinstance(paper_id, str) or not paper_id:
+                continue
+            score = self._candidate_score(payload_item)
+            ranked.append((paper_id, score))
+        ranked.sort(key=lambda pair: pair[1], reverse=True)
+        return ranked
+
+    def _extract_reference_candidates(
+        self,
+        step_updates: dict[str, object],
+    ) -> dict[str, dict[str, object]]:
+        raw_candidates = step_updates.get("reference_candidates")
+        if not isinstance(raw_candidates, list):
+            return {}
+        candidates: dict[str, dict[str, object]] = {}
+        for item in raw_candidates:
+            if not isinstance(item, dict):
+                continue
+            payload_item = cast(dict[str, object], item)
+            paper_id = payload_item.get("paper_id")
+            if not isinstance(paper_id, str) or not paper_id:
+                continue
+            candidates[paper_id] = payload_item
+        return candidates
+
+    def _candidate_score(self, payload: dict[str, object]) -> float:
+        relevance = self._score_value(payload.get("score"), default=0.5)
+        novelty = self._score_value(payload.get("novelty"), default=0.5)
+        method_diff = self._score_value(payload.get("method_diff"), default=0.5)
+        citations = self._score_value(payload.get("citation_count"), default=20.0) / 100.0
+        weighted = (0.4 * relevance) + (0.25 * novelty) + (0.25 * method_diff) + (0.1 * citations)
+        return round(weighted, 4)
+
+    def _score_value(self, value: object, *, default: float) -> float:
+        if isinstance(value, int | float):
+            return float(value)
+        return default
 
     def _merge_unique_ids(self, base: list[str], extra: list[str]) -> list[str]:
         seen = set(base)

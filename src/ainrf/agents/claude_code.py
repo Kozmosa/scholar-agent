@@ -41,7 +41,7 @@ def _fallback_response(request: dict[str, object]) -> dict[str, object]:
         expected_metrics = mode_two.get("expected_metrics") if isinstance(mode_two, dict) else None
         if not isinstance(expected_metrics, dict):
             expected_metrics = {"accuracy": 0.9}
-        if task_mode == "literature_exploration":
+        if task_mode in {"research_discovery", "literature_exploration"}:
             focus_directions = (
                 mode_one.get("focus_directions") if isinstance(mode_one, dict) else []
             )
@@ -252,15 +252,51 @@ def _fallback_response(request: dict[str, object]) -> dict[str, object]:
     elif step_kind == "extract_references":
         step_updates = {
             "reference_candidates": [
-                {"paper_id": "pc-ref-001", "title": "Adapter Tuning", "score": 0.86},
-                {"paper_id": "pc-ref-002", "title": "LoRA", "score": 0.82},
+                {
+                    "paper_id": "pc-ref-001",
+                    "title": "Adapter Tuning",
+                    "score": 0.86,
+                    "novelty": 0.71,
+                    "method_diff": 0.64,
+                    "citation_count": 124,
+                },
+                {
+                    "paper_id": "pc-ref-002",
+                    "title": "LoRA",
+                    "score": 0.82,
+                    "novelty": 0.66,
+                    "method_diff": 0.59,
+                    "citation_count": 98,
+                },
+                {
+                    "paper_id": "pc-ref-003",
+                    "title": "Prefix Tuning",
+                    "score": 0.77,
+                    "novelty": 0.6,
+                    "method_diff": 0.55,
+                    "citation_count": 73,
+                },
             ]
         }
     elif step_kind == "prioritize_references":
         step_updates = {
             "ranked_references": [
-                {"paper_id": "pc-ref-001", "rank": 1, "novelty": 0.72},
-                {"paper_id": "pc-ref-002", "rank": 2, "novelty": 0.65},
+                {
+                    "paper_id": "pc-ref-001",
+                    "rank": 1,
+                    "score": 0.86,
+                    "novelty": 0.72,
+                    "method_diff": 0.64,
+                    "citation_count": 124,
+                },
+                {
+                    "paper_id": "pc-ref-002",
+                    "rank": 2,
+                    "score": 0.82,
+                    "novelty": 0.65,
+                    "method_diff": 0.59,
+                    "citation_count": 98,
+                },
             ]
         }
     elif step_kind == "explore_paper":
@@ -268,7 +304,7 @@ def _fallback_response(request: dict[str, object]) -> dict[str, object]:
             "exploration": {
                 "paper_id": "pc-ref-001",
                 "visited_paper_ids": ["pc-ref-001"],
-                "queued_paper_ids": ["pc-ref-003"],
+                "queued_paper_ids": ["pc-ref-002", "pc-ref-003"],
                 "current_depth": 1,
                 "new_claims": [
                     {
@@ -315,8 +351,8 @@ def _fallback_response(request: dict[str, object]) -> dict[str, object]:
     elif step_kind == "check_termination":
         step_updates = {
             "termination": {
-                "should_terminate": True,
-                "reason": "diminishing_returns",
+                "should_terminate": False,
+                "reason": "continue_exploration",
                 "new_claims_count": 0,
             }
         }

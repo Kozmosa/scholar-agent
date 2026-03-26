@@ -195,7 +195,7 @@ def test_resume_task_rejects_terminal_status(tmp_path: Path) -> None:
     store = JsonStateStore(tmp_path)
     task = TaskRecord(
         task_id="t-001",
-        mode=TaskMode.LITERATURE_EXPLORATION,
+        mode=TaskMode.RESEARCH_DISCOVERY,
         status=TaskStage.COMPLETED,
         checkpoint=TaskCheckpoint(current_stage=TaskStage.COMPLETED),
         termination_reason="diminishing_returns",
@@ -216,7 +216,7 @@ def test_list_resumable_tasks_filters_terminal_records(tmp_path: Path) -> None:
     )
     done_task = TaskRecord(
         task_id="t-002",
-        mode=TaskMode.LITERATURE_EXPLORATION,
+        mode=TaskMode.RESEARCH_DISCOVERY,
         status=TaskStage.COMPLETED,
         checkpoint=TaskCheckpoint(current_stage=TaskStage.COMPLETED),
     )

@@ -177,6 +177,20 @@ async def test_create_task_validates_required_pdf_source(tmp_path: Path) -> None
 
 
 @pytest.mark.anyio
+async def test_create_task_accepts_legacy_literature_exploration_mode(tmp_path: Path) -> None:
+    payload = create_task_payload()
+    payload["mode"] = "literature_exploration"
+
+    async with make_client(tmp_path) as client:
+        response = await client.post("/tasks", headers=auth_headers(), json=payload)
+
+    assert response.status_code == 201
+    task = JsonStateStore(tmp_path).load_task(response.json()["task_id"])
+    assert task is not None
+    assert task.mode is TaskMode.RESEARCH_DISCOVERY
+
+
+@pytest.mark.anyio
 async def test_list_tasks_filters_by_status(tmp_path: Path) -> None:
     store = JsonStateStore(tmp_path)
     store.save_task(
@@ -190,7 +204,7 @@ async def test_list_tasks_filters_by_status(tmp_path: Path) -> None:
     store.save_task(
         TaskRecord(
             task_id="t-002",
-            mode=TaskMode.LITERATURE_EXPLORATION,
+            mode=TaskMode.RESEARCH_DISCOVERY,
             status=TaskStage.CANCELLED,
             checkpoint=TaskCheckpoint(current_stage=TaskStage.CANCELLED),
         )

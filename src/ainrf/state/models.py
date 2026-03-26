@@ -24,8 +24,16 @@ class TaskStage(StrEnum):
 
 
 class TaskMode(StrEnum):
-    LITERATURE_EXPLORATION = "literature_exploration"
+    RESEARCH_DISCOVERY = "research_discovery"
+    # Backward-compatible alias kept for persisted tasks and older clients.
+    LITERATURE_EXPLORATION = "research_discovery"
     DEEP_REPRODUCTION = "deep_reproduction"
+
+    @classmethod
+    def _missing_(cls, value: object) -> TaskMode | None:
+        if value == "literature_exploration":
+            return cls.RESEARCH_DISCOVERY
+        return None
 
 
 class GateRecord(BaseModel):
