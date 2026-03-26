@@ -148,6 +148,14 @@ class JsonProjectStore:
     def load_container_profile(self, name: str) -> ContainerProfileRecord | None:
         return self.list_container_profiles().get(name)
 
+    def resolve_project_container_profile(
+        self, project: ProjectRecord
+    ) -> ContainerProfileRecord | None:
+        profile_name = project.defaults.container_profile_name.strip()
+        if not profile_name:
+            return None
+        return self.load_container_profile(profile_name)
+
     def default_container_profile_name(self) -> str | None:
         payload = self._read_config_payload()
         value = payload.get("default_container_profile")

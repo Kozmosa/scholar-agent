@@ -18,7 +18,10 @@ def test_project_store_round_trips_project(tmp_path: Path) -> None:
         slug="vision-stack",
         name="Vision Stack",
         description="Local project",
-        defaults=ProjectDefaults(container_host="gpu-01", container_user="researcher"),
+        defaults=ProjectDefaults(
+            container_profile_name="gpu-main",
+            default_mode=TaskMode.RESEARCH_DISCOVERY,
+        ),
     )
 
     store.save_project(project)
@@ -26,7 +29,8 @@ def test_project_store_round_trips_project(tmp_path: Path) -> None:
 
     assert loaded is not None
     assert loaded.name == "Vision Stack"
-    assert loaded.defaults.container_host == "gpu-01"
+    assert loaded.defaults.container_profile_name == "gpu-main"
+    assert loaded.defaults.default_mode is TaskMode.RESEARCH_DISCOVERY
 
 
 def test_project_store_lists_runs_for_project_in_reverse_time_order(tmp_path: Path) -> None:
@@ -96,3 +100,28 @@ def test_project_store_sets_default_container_profile(tmp_path: Path) -> None:
     )
 
     assert store.default_container_profile_name() == "gpu-main"
+
+
+def test_project_store_resolves_project_container_profile(tmp_path: Path) -> None:
+    store = JsonProjectStore(tmp_path)
+    store.save_container_profile(
+        "gpu-main",
+        ContainerProfileRecord(
+            host="gpu-01",
+            port=22,
+            user="researcher",
+            ssh_key_path="",
+            ssh_password="",
+            project_dir="/workspace/projects/vision-stack",
+        ),
+    )
+    project = ProjectRecord(
+        slug="vision-stack",
+        name="Vision Stack",
+        defaults=ProjectDefaults(container_profile_name="gpu-main"),
+    )
+
+    resolved = store.resolve_project_container_profile(project)
+
+    assert resolved is not None
+    assert resolved.host == "gpu-01"

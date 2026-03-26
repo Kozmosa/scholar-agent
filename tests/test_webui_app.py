@@ -20,7 +20,6 @@ from ainrf.artifacts import GateType, HumanGateStatus
 from ainrf.events import TaskEvent, TaskEventCategory
 from ainrf.state import TaskMode, TaskStage
 from ainrf.webui.app import (
-    apply_container_profile_and_render,
     approve_run_and_render,
     build_task_create_request,
     connect_session,
@@ -36,8 +35,30 @@ from ainrf.webui.app import (
     submit_project_run,
 )
 from ainrf.webui.client import ApiAuthenticationError
-from ainrf.webui.models import ConnectionSession, ProjectRunRecord, WebUiConfig
+from ainrf.webui.models import (
+    ConnectionSession,
+    ContainerProfileRecord,
+    ProjectDefaults,
+    ProjectRecord,
+    ProjectRunRecord,
+    WebUiConfig,
+)
 from ainrf.webui.store import JsonProjectStore
+
+
+def save_profile(store: JsonProjectStore, name: str = "gpu-main") -> None:
+    store.save_container_profile(
+        name,
+        profile=ContainerProfileRecord(
+            host="gpu-01",
+            port=22,
+            user="researcher",
+            ssh_key_path="/tmp/id_rsa",
+            ssh_password="",
+            project_dir="/workspace/projects/vision-stack",
+        ),
+        set_default=True,
+    )
 
 
 class FakeClient:
@@ -171,6 +192,7 @@ def test_create_webui_returns_blocks(tmp_path: Path) -> None:
 
 def test_connect_session_updates_local_run_bindings(tmp_path: Path) -> None:
     store = JsonProjectStore(tmp_path)
+    save_profile(store)
     session = ConnectionSession(selected_project_slug="vision-stack")
     save_project_from_form(
         session,
@@ -178,11 +200,8 @@ def test_connect_session_updates_local_run_bindings(tmp_path: Path) -> None:
         name="Vision Stack",
         slug="vision-stack",
         description="",
-        container_host="gpu-01",
-        container_port=22,
-        container_user="researcher",
-        container_ssh_key_path="",
-        container_project_dir="/workspace/projects/vision-stack",
+        container_profile_name="gpu-main",
+        default_mode=TaskMode.DEEP_REPRODUCTION.value,
         budget_gpu_hours=12.0,
         budget_api_cost_usd=6.0,
         budget_wall_clock_hours=24.0,
@@ -231,6 +250,7 @@ def test_connect_session_updates_local_run_bindings(tmp_path: Path) -> None:
 
 def test_save_project_from_form_persists_defaults(tmp_path: Path) -> None:
     store = JsonProjectStore(tmp_path)
+    save_profile(store)
     session = ConnectionSession()
 
     next_session, feedback = save_project_from_form(
@@ -239,11 +259,8 @@ def test_save_project_from_form_persists_defaults(tmp_path: Path) -> None:
         name="Vision Stack",
         slug="",
         description="Project for experiments",
-        container_host="gpu-01",
-        container_port=22,
-        container_user="researcher",
-        container_ssh_key_path="/tmp/id_rsa",
-        container_project_dir="/workspace/projects/vision-stack",
+        container_profile_name="gpu-main",
+        default_mode=TaskMode.RESEARCH_DISCOVERY.value,
         budget_gpu_hours=12.0,
         budget_api_cost_usd=6.0,
         budget_wall_clock_hours=24.0,
@@ -262,6 +279,8 @@ def test_save_project_from_form_persists_defaults(tmp_path: Path) -> None:
     assert next_session.selected_project_slug == "vision-stack"
     assert "Saved Project" in feedback
     assert project is not None
+    assert project.defaults.container_profile_name == "gpu-main"
+    assert project.defaults.default_mode is TaskMode.RESEARCH_DISCOVERY
     assert project.defaults.mode_1.focus_directions == ["clip", "llama"]
     assert project.defaults.mode_2.scope.value == "full-suite"
 
@@ -270,6 +289,7 @@ def test_build_task_create_request_uses_project_defaults_and_mode_specific_input
     tmp_path: Path,
 ) -> None:
     store = JsonProjectStore(tmp_path)
+    save_profile(store)
     session = ConnectionSession()
     save_project_from_form(
         session,
@@ -277,11 +297,8 @@ def test_build_task_create_request_uses_project_defaults_and_mode_specific_input
         name="Vision Stack",
         slug="vision-stack",
         description="",
-        container_host="gpu-01",
-        container_port=22,
-        container_user="researcher",
-        container_ssh_key_path="",
-        container_project_dir="/workspace/projects/vision-stack",
+        container_profile_name="gpu-main",
+        default_mode=TaskMode.RESEARCH_DISCOVERY.value,
         budget_gpu_hours=12.0,
         budget_api_cost_usd=6.0,
         budget_wall_clock_hours=24.0,
@@ -299,13 +316,9 @@ def test_build_task_create_request_uses_project_defaults_and_mode_specific_input
     assert project is not None
 
     request = build_task_create_request(
+        store=store,
         project=project,
         mode=TaskMode.RESEARCH_DISCOVERY.value,
-        run_container_host="",
-        run_container_port=None,
-        run_container_user="",
-        run_container_ssh_key_path="",
-        run_container_project_dir="",
         run_budget_gpu_hours=None,
         run_budget_api_cost_usd=None,
         run_budget_wall_clock_hours=None,
@@ -326,6 +339,7 @@ def test_build_task_create_request_uses_project_defaults_and_mode_specific_input
     )
 
     assert request.container.host == "gpu-01"
+    assert request.container.project_dir == "/workspace/projects/vision-stack"
     assert request.config.mode_1 is not None
     assert request.config.mode_1.focus_directions == ["adapter"]
     assert request.webhook_secret == "runtime-secret"
@@ -333,6 +347,7 @@ def test_build_task_create_request_uses_project_defaults_and_mode_specific_input
 
 def test_submit_project_run_creates_binding_and_keeps_secret_out_of_store(tmp_path: Path) -> None:
     store = JsonProjectStore(tmp_path)
+    save_profile(store)
     session = ConnectionSession(
         api_base_url="http://ainrf.local",
         api_key="secret",
@@ -345,11 +360,8 @@ def test_submit_project_run_creates_binding_and_keeps_secret_out_of_store(tmp_pa
         name="Vision Stack",
         slug="vision-stack",
         description="",
-        container_host="gpu-01",
-        container_port=22,
-        container_user="researcher",
-        container_ssh_key_path="",
-        container_project_dir="/workspace/projects/vision-stack",
+        container_profile_name="gpu-main",
+        default_mode=TaskMode.DEEP_REPRODUCTION.value,
         budget_gpu_hours=12.0,
         budget_api_cost_usd=6.0,
         budget_wall_clock_hours=24.0,
@@ -384,11 +396,6 @@ def test_submit_project_run_creates_binding_and_keeps_secret_out_of_store(tmp_pa
             task_detail=build_task_detail("t-900", TaskStage.GATE_WAITING),
         ),
         mode=TaskMode.DEEP_REPRODUCTION.value,
-        run_container_host="",
-        run_container_port=None,
-        run_container_user="",
-        run_container_ssh_key_path="",
-        run_container_project_dir="",
         run_budget_gpu_hours=None,
         run_budget_api_cost_usd=None,
         run_budget_wall_clock_hours=None,
@@ -448,30 +455,12 @@ def test_save_container_profile_and_apply_to_forms(tmp_path: Path) -> None:
         set_default=True,
     )
     selected = select_container_profile_and_render(store, "gpu-main")
-    applied = apply_container_profile_and_render(
-        store,
-        profile_name="gpu-main",
-        current_project_host="",
-        current_project_port=22,
-        current_project_user="",
-        current_project_ssh_key_path="",
-        current_project_dir="",
-        current_run_host="",
-        current_run_port=22,
-        current_run_user="",
-        current_run_ssh_key_path="",
-        current_run_dir="",
-    )
 
     assert "Saved container profile" in save_feedback
     assert store.default_container_profile_name() == "gpu-main"
     assert selected[0] == "gpu-main"
     assert selected[1] == "gpu-01"
     assert selected[5] == "secret"
-    assert applied[0] == "gpu-01"
-    assert applied[1] == 2222
-    assert applied[5] == "gpu-01"
-    assert "Applied container profile" in applied[-1]
 
 
 def test_save_container_profile_validates_required_fields(tmp_path: Path) -> None:
@@ -516,29 +505,6 @@ def test_save_container_profile_validates_required_fields(tmp_path: Path) -> Non
     assert missing_user_feedback == "Container user is required."
 
 
-def test_apply_container_profile_requires_selection(tmp_path: Path) -> None:
-    store = JsonProjectStore(tmp_path)
-
-    result = apply_container_profile_and_render(
-        store,
-        profile_name=None,
-        current_project_host="gpu-old",
-        current_project_port=22,
-        current_project_user="alice",
-        current_project_ssh_key_path="/tmp/key",
-        current_project_dir="/workspace/projects/old",
-        current_run_host="gpu-old",
-        current_run_port=22,
-        current_run_user="alice",
-        current_run_ssh_key_path="/tmp/key",
-        current_run_dir="/workspace/projects/old",
-    )
-
-    assert result[0] == "gpu-old"
-    assert result[5] == "gpu-old"
-    assert result[-1] == "Choose a container profile before applying."
-
-
 def test_submit_project_run_requires_authenticated_session(tmp_path: Path) -> None:
     store = JsonProjectStore(tmp_path)
     session = ConnectionSession(selected_project_slug="vision-stack")
@@ -550,11 +516,6 @@ def test_submit_project_run_requires_authenticated_session(tmp_path: Path) -> No
             error=ApiAuthenticationError("Unauthorized")
         ),
         mode=TaskMode.DEEP_REPRODUCTION.value,
-        run_container_host="",
-        run_container_port=None,
-        run_container_user="",
-        run_container_ssh_key_path="",
-        run_container_project_dir="",
         run_budget_gpu_hours=None,
         run_budget_api_cost_usd=None,
         run_budget_wall_clock_hours=None,
@@ -577,8 +538,53 @@ def test_submit_project_run_requires_authenticated_session(tmp_path: Path) -> No
     assert "Connect to the API" in feedback
 
 
+def test_submit_project_run_requires_existing_project_container_profile(tmp_path: Path) -> None:
+    store = JsonProjectStore(tmp_path)
+    session = ConnectionSession(
+        api_base_url="http://ainrf.local",
+        api_key="secret",
+        reachable=True,
+        authenticated=True,
+        selected_project_slug="vision-stack",
+    )
+    store.save_project(
+        ProjectRecord(
+            slug="vision-stack",
+            name="Vision Stack",
+            defaults=ProjectDefaults(container_profile_name="gpu-main"),
+        )
+    )
+
+    _, feedback = submit_project_run(
+        session,
+        store,
+        client_factory=lambda base_url, api_key: FakeClient(),
+        mode=TaskMode.DEEP_REPRODUCTION.value,
+        run_budget_gpu_hours=None,
+        run_budget_api_cost_usd=None,
+        run_budget_wall_clock_hours=None,
+        run_webhook_url="",
+        run_webhook_secret="",
+        run_yolo=False,
+        mode_one_seed_rows=[],
+        run_mode_one_domain_context="",
+        run_mode_one_max_depth=None,
+        run_mode_one_focus_directions="",
+        run_mode_one_ignore_directions="",
+        mode_two_title="Target Paper",
+        mode_two_pdf_url="https://example.com/target.pdf",
+        mode_two_pdf_path="",
+        run_mode_two_scope="core-only",
+        run_mode_two_target_tables="",
+        run_mode_two_baseline_first=True,
+    )
+
+    assert "container profile `gpu-main` is missing" in feedback.lower()
+
+
 def test_refresh_selected_run_loads_detail_and_timeline(tmp_path: Path) -> None:
     store = JsonProjectStore(tmp_path)
+    save_profile(store)
     session = ConnectionSession(
         api_base_url="http://ainrf.local",
         api_key="secret",
@@ -591,11 +597,8 @@ def test_refresh_selected_run_loads_detail_and_timeline(tmp_path: Path) -> None:
         name="Vision Stack",
         slug="vision-stack",
         description="",
-        container_host="gpu-01",
-        container_port=22,
-        container_user="researcher",
-        container_ssh_key_path="",
-        container_project_dir="/workspace/projects/vision-stack",
+        container_profile_name="gpu-main",
+        default_mode=TaskMode.RESEARCH_DISCOVERY.value,
         budget_gpu_hours=12.0,
         budget_api_cost_usd=6.0,
         budget_wall_clock_hours=24.0,
@@ -693,6 +696,7 @@ def test_refresh_selected_run_loads_detail_and_timeline(tmp_path: Path) -> None:
 
 def test_approve_run_and_render_updates_run_status(tmp_path: Path) -> None:
     store = JsonProjectStore(tmp_path)
+    save_profile(store)
     session = ConnectionSession(
         api_base_url="http://ainrf.local",
         api_key="secret",
@@ -708,11 +712,8 @@ def test_approve_run_and_render_updates_run_status(tmp_path: Path) -> None:
         name="Vision Stack",
         slug="vision-stack",
         description="",
-        container_host="gpu-01",
-        container_port=22,
-        container_user="researcher",
-        container_ssh_key_path="",
-        container_project_dir="/workspace/projects/vision-stack",
+        container_profile_name="gpu-main",
+        default_mode=TaskMode.DEEP_REPRODUCTION.value,
         budget_gpu_hours=12.0,
         budget_api_cost_usd=6.0,
         budget_wall_clock_hours=24.0,
@@ -770,6 +771,7 @@ def test_approve_run_and_render_updates_run_status(tmp_path: Path) -> None:
 
 def test_reject_run_and_render_updates_feedback_message(tmp_path: Path) -> None:
     store = JsonProjectStore(tmp_path)
+    save_profile(store)
     session = ConnectionSession(
         api_base_url="http://ainrf.local",
         api_key="secret",
@@ -785,11 +787,8 @@ def test_reject_run_and_render_updates_feedback_message(tmp_path: Path) -> None:
         name="Vision Stack",
         slug="vision-stack",
         description="",
-        container_host="gpu-01",
-        container_port=22,
-        container_user="researcher",
-        container_ssh_key_path="",
-        container_project_dir="/workspace/projects/vision-stack",
+        container_profile_name="gpu-main",
+        default_mode=TaskMode.DEEP_REPRODUCTION.value,
         budget_gpu_hours=12.0,
         budget_api_cost_usd=6.0,
         budget_wall_clock_hours=24.0,

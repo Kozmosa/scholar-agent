@@ -128,9 +128,57 @@ def create_webui(
                 value=project_table_rows(store),
                 label="Local Projects",
             )
+            gr.Markdown("### New Project")
+            new_project_feedback = gr.Markdown(
+                value="Create a local Project by choosing one configured container profile."
+            )
+            with gr.Row():
+                new_project_name = gr.Textbox(label="Project Name")
+                new_project_slug = gr.Textbox(label="Project Slug")
+            new_project_description = gr.Textbox(label="Description", lines=3)
+            with gr.Row():
+                new_project_container_profile = gr.Dropdown(
+                    label="Configured Container",
+                    choices=container_profile_choices(store),
+                    value=store.default_container_profile_name(),
+                    allow_custom_value=False,
+                )
+                new_project_default_mode = gr.Radio(
+                    label="Default Mode",
+                    choices=[
+                        ("Mode 2", TaskMode.DEEP_REPRODUCTION.value),
+                        ("Mode 1", TaskMode.RESEARCH_DISCOVERY.value),
+                    ],
+                    value=TaskMode.DEEP_REPRODUCTION.value,
+                )
+            with gr.Row():
+                new_budget_gpu_hours = gr.Number(label="GPU Hours", value=None, precision=2)
+                new_budget_api_cost_usd = gr.Number(label="API Cost USD", value=None, precision=2)
+                new_budget_wall_clock_hours = gr.Number(
+                    label="Wall Clock Hours", value=None, precision=2
+                )
+            with gr.Row():
+                new_webhook_url = gr.Textbox(label="Default Webhook URL")
+                new_default_yolo = gr.Checkbox(label="Default Yolo", value=False)
+            gr.Markdown("#### Mode 1 Template")
+            new_mode_one_domain_context = gr.Textbox(label="Domain Context", lines=2)
+            with gr.Row():
+                new_mode_one_max_depth = gr.Number(label="Max Depth", value=3, precision=0)
+                new_mode_one_focus_directions = gr.Textbox(label="Focus Directions", lines=2)
+                new_mode_one_ignore_directions = gr.Textbox(label="Ignore Directions", lines=2)
+            gr.Markdown("#### Mode 2 Template")
+            with gr.Row():
+                new_mode_two_scope = gr.Dropdown(
+                    label="Mode 2 Scope",
+                    choices=[scope.value for scope in ModeTwoScope],
+                    value=ModeTwoScope.CORE_ONLY.value,
+                )
+                new_mode_two_baseline_first = gr.Checkbox(label="Baseline First", value=True)
+            new_mode_two_target_tables = gr.Textbox(label="Target Tables", lines=2)
+            create_project_button = gr.Button("Create Project", variant="primary")
 
         with gr.Tab("Project Detail"):
-            project_feedback = gr.Markdown(value="Ready to create or edit a local Project.")
+            project_feedback = gr.Markdown(value="Select a local Project to edit its defaults.")
             project_detail_summary = gr.Markdown(
                 value=render_project_detail_summary(initial_session, store)
             )
@@ -138,41 +186,24 @@ def create_webui(
                 project_name = gr.Textbox(label="Project Name")
                 project_slug = gr.Textbox(label="Project Slug")
             project_description = gr.Textbox(label="Description", lines=3)
-            gr.Markdown("### Container Profiles")
-            container_profile_feedback = gr.Markdown(
-                value="Container profiles are shared with CLI via `.ainrf/config.json`."
-            )
             with gr.Row():
-                container_profile_selector = gr.Dropdown(
-                    label="Saved Container",
+                project_container_profile = gr.Dropdown(
+                    label="Configured Container",
                     choices=container_profile_choices(store),
                     value=store.default_container_profile_name(),
                     allow_custom_value=False,
                     scale=3,
                 )
-                apply_container_profile_button = gr.Button("Apply to Project + Run", min_width=200)
+                save_project_button = gr.Button("Save Project", variant="primary", min_width=180)
             with gr.Row():
-                container_profile_name = gr.Textbox(label="Profile Name")
-                container_profile_host = gr.Textbox(label="Container Host")
-                container_profile_port = gr.Number(label="Container Port", value=22, precision=0)
-                container_profile_user = gr.Textbox(label="Container User")
-            with gr.Row():
-                container_profile_ssh_key_path = gr.Textbox(label="SSH Key Path")
-                container_profile_ssh_password = gr.Textbox(label="SSH Password", type="password")
-                container_profile_project_dir = gr.Textbox(label="Container Project Dir")
-            container_profile_set_default = gr.Checkbox(
-                label="Set as default container profile",
-                value=False,
-            )
-            save_container_profile_button = gr.Button("Save Container Profile", variant="secondary")
-            gr.Markdown("### Shared Defaults")
-            with gr.Row():
-                container_host = gr.Textbox(label="Container Host")
-                container_port = gr.Number(label="Container Port", value=22, precision=0)
-                container_user = gr.Textbox(label="Container User")
-            with gr.Row():
-                container_ssh_key_path = gr.Textbox(label="SSH Key Path")
-                container_project_dir = gr.Textbox(label="Container Project Dir")
+                project_default_mode = gr.Radio(
+                    label="Default Mode",
+                    choices=[
+                        ("Mode 2", TaskMode.DEEP_REPRODUCTION.value),
+                        ("Mode 1", TaskMode.RESEARCH_DISCOVERY.value),
+                    ],
+                    value=TaskMode.DEEP_REPRODUCTION.value,
+                )
             with gr.Row():
                 budget_gpu_hours = gr.Number(label="GPU Hours", value=None, precision=2)
                 budget_api_cost_usd = gr.Number(label="API Cost USD", value=None, precision=2)
@@ -197,7 +228,6 @@ def create_webui(
                 )
                 mode_two_baseline_first = gr.Checkbox(label="Baseline First", value=True)
             mode_two_target_tables = gr.Textbox(label="Target Tables", lines=2)
-            save_project_button = gr.Button("Save Project", variant="primary")
 
             gr.Markdown("### Runs")
             project_runs = gr.Dataframe(
@@ -225,13 +255,6 @@ def create_webui(
                     value=TaskMode.DEEP_REPRODUCTION.value,
                 )
                 run_yolo = gr.Checkbox(label="Run Yolo", value=False)
-            with gr.Row():
-                run_container_host = gr.Textbox(label="Run Container Host")
-                run_container_port = gr.Number(label="Run Container Port", value=22, precision=0)
-                run_container_user = gr.Textbox(label="Run Container User")
-            with gr.Row():
-                run_container_ssh_key_path = gr.Textbox(label="Run SSH Key Path")
-                run_container_project_dir = gr.Textbox(label="Run Container Project Dir")
             with gr.Row():
                 run_budget_gpu_hours = gr.Number(label="Run GPU Hours", value=None, precision=2)
                 run_budget_api_cost_usd = gr.Number(
@@ -282,6 +305,35 @@ def create_webui(
             run_mode_two_target_tables = gr.Textbox(label="Run Mode 2 Target Tables", lines=2)
             submit_run_button = gr.Button("Create Run", variant="primary")
 
+        with gr.Tab("Container Management"):
+            container_profile_feedback = gr.Markdown(
+                value="Container profiles are shared with CLI via `.ainrf/config.json`."
+            )
+            with gr.Row():
+                container_profile_selector = gr.Dropdown(
+                    label="Saved Container",
+                    choices=container_profile_choices(store),
+                    value=store.default_container_profile_name(),
+                    allow_custom_value=False,
+                    scale=3,
+                )
+                save_container_profile_button = gr.Button(
+                    "Save Container Profile", variant="secondary", min_width=180
+                )
+            with gr.Row():
+                container_profile_name = gr.Textbox(label="Profile Name")
+                container_profile_host = gr.Textbox(label="Container Host")
+                container_profile_port = gr.Number(label="Container Port", value=22, precision=0)
+                container_profile_user = gr.Textbox(label="Container User")
+            with gr.Row():
+                container_profile_ssh_key_path = gr.Textbox(label="SSH Key Path")
+                container_profile_ssh_password = gr.Textbox(label="SSH Password", type="password")
+                container_profile_project_dir = gr.Textbox(label="Container Project Dir")
+            container_profile_set_default = gr.Checkbox(
+                label="Set as default container profile",
+                value=False,
+            )
+
         with gr.Tab("Run Detail"):
             with gr.Row():
                 refresh_run_button = gr.Button("Refresh Run Detail", variant="secondary")
@@ -323,11 +375,8 @@ def create_webui(
             project_name,
             project_slug,
             project_description,
-            container_host,
-            container_port,
-            container_user,
-            container_ssh_key_path,
-            container_project_dir,
+            project_container_profile,
+            project_default_mode,
             budget_gpu_hours,
             budget_api_cost_usd,
             budget_wall_clock_hours,
@@ -344,11 +393,6 @@ def create_webui(
             run_selector,
             run_feedback,
             run_mode,
-            run_container_host,
-            run_container_port,
-            run_container_user,
-            run_container_ssh_key_path,
-            run_container_project_dir,
             run_budget_gpu_hours,
             run_budget_api_cost_usd,
             run_budget_wall_clock_hours,
@@ -404,7 +448,14 @@ def create_webui(
         )
 
         save_container_profile_button.click(
-            fn=lambda profile_name, host_value, port_value, user_value, ssh_key_value, ssh_password_value, project_dir_value, set_default_value: (
+            fn=lambda profile_name,
+            host_value,
+            port_value,
+            user_value,
+            ssh_key_value,
+            ssh_password_value,
+            project_dir_value,
+            set_default_value: (
                 save_container_profile_and_render(
                     store,
                     profile_name=profile_name,
@@ -430,51 +481,6 @@ def create_webui(
             outputs=[container_profile_selector, container_profile_feedback],
         )
 
-        apply_container_profile_button.click(
-            fn=lambda profile_name, project_host, project_port, project_user, project_ssh_key, project_dir, run_host, run_port, run_user, run_ssh_key, run_dir: (
-                apply_container_profile_and_render(
-                    store,
-                    profile_name=profile_name,
-                    current_project_host=project_host,
-                    current_project_port=project_port,
-                    current_project_user=project_user,
-                    current_project_ssh_key_path=project_ssh_key,
-                    current_project_dir=project_dir,
-                    current_run_host=run_host,
-                    current_run_port=run_port,
-                    current_run_user=run_user,
-                    current_run_ssh_key_path=run_ssh_key,
-                    current_run_dir=run_dir,
-                )
-            ),
-            inputs=[
-                container_profile_selector,
-                container_host,
-                container_port,
-                container_user,
-                container_ssh_key_path,
-                container_project_dir,
-                run_container_host,
-                run_container_port,
-                run_container_user,
-                run_container_ssh_key_path,
-                run_container_project_dir,
-            ],
-            outputs=[
-                container_host,
-                container_port,
-                container_user,
-                container_ssh_key_path,
-                container_project_dir,
-                run_container_host,
-                run_container_port,
-                run_container_user,
-                run_container_ssh_key_path,
-                run_container_project_dir,
-                container_profile_feedback,
-            ],
-        )
-
         save_project_outputs = [
             session_state,
             project_selector,
@@ -482,19 +488,142 @@ def create_webui(
             project_table,
             *selection_outputs[1:],
         ]
-        save_project_button.click(
-            fn=lambda current_session, name, slug, description, host_value, port_value, user_value, ssh_key_value, project_dir_value, gpu_value, api_cost_value, wall_value, webhook_value, yolo_value, mode_one_domain_value, mode_one_depth_value, mode_one_focus_value, mode_one_ignore_value, mode_two_scope_value, mode_two_tables_value, mode_two_baseline_value: (
+        create_project_button.click(
+            fn=lambda current_session,
+            name,
+            slug,
+            description,
+            container_profile_name,
+            default_mode_value,
+            gpu_value,
+            api_cost_value,
+            wall_value,
+            webhook_value,
+            yolo_value,
+            mode_one_domain_value,
+            mode_one_depth_value,
+            mode_one_focus_value,
+            mode_one_ignore_value,
+            mode_two_scope_value,
+            mode_two_tables_value,
+            mode_two_baseline_value: (
                 save_project_and_render(
                     current_session,
                     store,
                     name=name,
                     slug=slug,
                     description=description,
-                    container_host=host_value,
-                    container_port=port_value,
-                    container_user=user_value,
-                    container_ssh_key_path=ssh_key_value,
-                    container_project_dir=project_dir_value,
+                    container_profile_name=container_profile_name,
+                    default_mode=default_mode_value,
+                    budget_gpu_hours=gpu_value,
+                    budget_api_cost_usd=api_cost_value,
+                    budget_wall_clock_hours=wall_value,
+                    webhook_url=webhook_value,
+                    yolo=yolo_value,
+                    mode_one_domain_context=mode_one_domain_value,
+                    mode_one_max_depth=mode_one_depth_value,
+                    mode_one_focus_directions=mode_one_focus_value,
+                    mode_one_ignore_directions=mode_one_ignore_value,
+                    mode_two_scope=mode_two_scope_value,
+                    mode_two_target_tables=mode_two_tables_value,
+                    mode_two_baseline_first=mode_two_baseline_value,
+                )
+            ),
+            inputs=[
+                session_state,
+                new_project_name,
+                new_project_slug,
+                new_project_description,
+                new_project_container_profile,
+                new_project_default_mode,
+                new_budget_gpu_hours,
+                new_budget_api_cost_usd,
+                new_budget_wall_clock_hours,
+                new_webhook_url,
+                new_default_yolo,
+                new_mode_one_domain_context,
+                new_mode_one_max_depth,
+                new_mode_one_focus_directions,
+                new_mode_one_ignore_directions,
+                new_mode_two_scope,
+                new_mode_two_target_tables,
+                new_mode_two_baseline_first,
+            ],
+            outputs=[
+                session_state,
+                project_selector,
+                project_list_summary,
+                project_table,
+                project_feedback,
+                project_detail_summary,
+                project_name,
+                project_slug,
+                project_description,
+                project_container_profile,
+                project_default_mode,
+                budget_gpu_hours,
+                budget_api_cost_usd,
+                budget_wall_clock_hours,
+                webhook_url,
+                default_yolo,
+                mode_one_domain_context,
+                mode_one_max_depth,
+                mode_one_focus_directions,
+                mode_one_ignore_directions,
+                mode_two_scope,
+                mode_two_target_tables,
+                mode_two_baseline_first,
+                project_runs,
+                run_selector,
+                run_feedback,
+                run_mode,
+                run_budget_gpu_hours,
+                run_budget_api_cost_usd,
+                run_budget_wall_clock_hours,
+                run_webhook_url,
+                run_webhook_secret,
+                run_yolo,
+                mode_one_seed_papers,
+                run_mode_one_domain_context,
+                run_mode_one_max_depth,
+                run_mode_one_focus_directions,
+                run_mode_one_ignore_directions,
+                mode_two_title,
+                mode_two_pdf_url,
+                mode_two_pdf_path,
+                run_mode_two_scope,
+                run_mode_two_target_tables,
+                run_mode_two_baseline_first,
+                run_detail,
+            ],
+        )
+        save_project_button.click(
+            fn=lambda current_session,
+            name,
+            slug,
+            description,
+            container_profile_name,
+            default_mode_value,
+            gpu_value,
+            api_cost_value,
+            wall_value,
+            webhook_value,
+            yolo_value,
+            mode_one_domain_value,
+            mode_one_depth_value,
+            mode_one_focus_value,
+            mode_one_ignore_value,
+            mode_two_scope_value,
+            mode_two_tables_value,
+            mode_two_baseline_value: (
+                save_project_and_render(
+                    current_session,
+                    store,
+                    name=name,
+                    slug=slug,
+                    description=description,
+                    container_profile_name=container_profile_name,
+                    default_mode=default_mode_value,
                     budget_gpu_hours=gpu_value,
                     budget_api_cost_usd=api_cost_value,
                     budget_wall_clock_hours=wall_value,
@@ -514,11 +643,8 @@ def create_webui(
                 project_name,
                 project_slug,
                 project_description,
-                container_host,
-                container_port,
-                container_user,
-                container_ssh_key_path,
-                container_project_dir,
+                project_container_profile,
+                project_default_mode,
                 budget_gpu_hours,
                 budget_api_cost_usd,
                 budget_wall_clock_hours,
@@ -536,17 +662,30 @@ def create_webui(
         )
 
         submit_run_button.click(
-            fn=lambda current_session, selected_mode, run_host, run_port, run_user, run_ssh_key, run_project_dir, run_gpu, run_api_cost, run_wall, run_webhook, run_secret, run_yolo_value, seed_rows, run_mode_one_domain_value, run_mode_one_depth_value, run_mode_one_focus_value, run_mode_one_ignore_value, target_title, target_url, target_path, run_mode_two_scope_value, run_mode_two_tables_value, run_mode_two_baseline_value: (
+            fn=lambda current_session,
+            selected_mode,
+            run_gpu,
+            run_api_cost,
+            run_wall,
+            run_webhook,
+            run_secret,
+            run_yolo_value,
+            seed_rows,
+            run_mode_one_domain_value,
+            run_mode_one_depth_value,
+            run_mode_one_focus_value,
+            run_mode_one_ignore_value,
+            target_title,
+            target_url,
+            target_path,
+            run_mode_two_scope_value,
+            run_mode_two_tables_value,
+            run_mode_two_baseline_value: (
                 submit_run_and_render(
                     current_session,
                     store,
                     client_factory=factory,
                     mode=selected_mode,
-                    run_container_host=run_host,
-                    run_container_port=run_port,
-                    run_container_user=run_user,
-                    run_container_ssh_key_path=run_ssh_key,
-                    run_container_project_dir=run_project_dir,
                     run_budget_gpu_hours=run_gpu,
                     run_budget_api_cost_usd=run_api_cost,
                     run_budget_wall_clock_hours=run_wall,
@@ -569,11 +708,6 @@ def create_webui(
             inputs=[
                 session_state,
                 run_mode,
-                run_container_host,
-                run_container_port,
-                run_container_user,
-                run_container_ssh_key_path,
-                run_container_project_dir,
                 run_budget_gpu_hours,
                 run_budget_api_cost_usd,
                 run_budget_wall_clock_hours,
@@ -907,11 +1041,8 @@ def save_project_from_form(
     name: str,
     slug: str,
     description: str,
-    container_host: str,
-    container_port: float | int | None,
-    container_user: str,
-    container_ssh_key_path: str,
-    container_project_dir: str,
+    container_profile_name: str,
+    default_mode: str,
     budget_gpu_hours: float | None,
     budget_api_cost_usd: float | None,
     budget_wall_clock_hours: float | None,
@@ -934,15 +1065,17 @@ def save_project_from_form(
         return session, "Project slug must contain letters or numbers."
     if session.selected_project_slug and session.selected_project_slug != effective_slug:
         return session, "Project slug is immutable after creation."
+    normalized_profile_name = container_profile_name.strip()
+    if not normalized_profile_name:
+        return session, "Choose a configured container profile."
+    if store.load_container_profile(normalized_profile_name) is None:
+        return session, f"Container profile `{normalized_profile_name}` not found."
 
     existing = store.load_project(effective_slug)
     defaults = ProjectDefaults.model_validate(
         {
-            "container_host": container_host.strip(),
-            "container_port": coerce_int(container_port, 22),
-            "container_user": container_user.strip(),
-            "container_ssh_key_path": container_ssh_key_path.strip(),
-            "container_project_dir": container_project_dir.strip(),
+            "container_profile_name": normalized_profile_name,
+            "default_mode": default_mode,
             "budget_gpu_hours": budget_gpu_hours,
             "budget_api_cost_usd": budget_api_cost_usd,
             "budget_wall_clock_hours": budget_wall_clock_hours,
@@ -987,11 +1120,8 @@ def save_project_and_render(
     name: str,
     slug: str,
     description: str,
-    container_host: str,
-    container_port: float | int | None,
-    container_user: str,
-    container_ssh_key_path: str,
-    container_project_dir: str,
+    container_profile_name: str,
+    default_mode: str,
     budget_gpu_hours: float | None,
     budget_api_cost_usd: float | None,
     budget_wall_clock_hours: float | None,
@@ -1011,11 +1141,8 @@ def save_project_and_render(
         name=name,
         slug=slug,
         description=description,
-        container_host=container_host,
-        container_port=container_port,
-        container_user=container_user,
-        container_ssh_key_path=container_ssh_key_path,
-        container_project_dir=container_project_dir,
+        container_profile_name=container_profile_name,
+        default_mode=default_mode,
         budget_gpu_hours=budget_gpu_hours,
         budget_api_cost_usd=budget_api_cost_usd,
         budget_wall_clock_hours=budget_wall_clock_hours,
@@ -1038,11 +1165,6 @@ def submit_project_run(
     *,
     client_factory: ApiClientFactory,
     mode: str,
-    run_container_host: str,
-    run_container_port: float | int | None,
-    run_container_user: str,
-    run_container_ssh_key_path: str,
-    run_container_project_dir: str,
     run_budget_gpu_hours: float | None,
     run_budget_api_cost_usd: float | None,
     run_budget_wall_clock_hours: float | None,
@@ -1069,16 +1191,15 @@ def submit_project_run(
     project = store.load_project(session.selected_project_slug)
     if project is None:
         return session, "Selected Project no longer exists."
+    if store.resolve_project_container_profile(project) is None:
+        profile_name = project.defaults.container_profile_name.strip() or "<empty>"
+        return session, f"Project container profile `{profile_name}` is missing."
 
     try:
         payload = build_task_create_request(
+            store=store,
             project=project,
             mode=mode,
-            run_container_host=run_container_host,
-            run_container_port=run_container_port,
-            run_container_user=run_container_user,
-            run_container_ssh_key_path=run_container_ssh_key_path,
-            run_container_project_dir=run_container_project_dir,
             run_budget_gpu_hours=run_budget_gpu_hours,
             run_budget_api_cost_usd=run_budget_api_cost_usd,
             run_budget_wall_clock_hours=run_budget_wall_clock_hours,
@@ -1136,11 +1257,6 @@ def submit_run_and_render(
     *,
     client_factory: ApiClientFactory,
     mode: str,
-    run_container_host: str,
-    run_container_port: float | int | None,
-    run_container_user: str,
-    run_container_ssh_key_path: str,
-    run_container_project_dir: str,
     run_budget_gpu_hours: float | None,
     run_budget_api_cost_usd: float | None,
     run_budget_wall_clock_hours: float | None,
@@ -1164,11 +1280,6 @@ def submit_run_and_render(
         store,
         client_factory=client_factory,
         mode=mode,
-        run_container_host=run_container_host,
-        run_container_port=run_container_port,
-        run_container_user=run_container_user,
-        run_container_ssh_key_path=run_container_ssh_key_path,
-        run_container_project_dir=run_container_project_dir,
         run_budget_gpu_hours=run_budget_gpu_hours,
         run_budget_api_cost_usd=run_budget_api_cost_usd,
         run_budget_wall_clock_hours=run_budget_wall_clock_hours,
@@ -1316,13 +1427,9 @@ def reject_run_and_render(
 
 def build_task_create_request(
     *,
+    store: JsonProjectStore,
     project: ProjectRecord,
     mode: str,
-    run_container_host: str,
-    run_container_port: float | int | None,
-    run_container_user: str,
-    run_container_ssh_key_path: str,
-    run_container_project_dir: str,
     run_budget_gpu_hours: float | None,
     run_budget_api_cost_usd: float | None,
     run_budget_wall_clock_hours: float | None,
@@ -1343,15 +1450,17 @@ def build_task_create_request(
 ) -> TaskCreateRequest:
     resolved_mode = TaskMode(mode)
     defaults = project.defaults
+    container_profile = store.resolve_project_container_profile(project)
+    if container_profile is None:
+        profile_name = defaults.container_profile_name.strip() or "<empty>"
+        raise ValueError(f"Project container profile `{profile_name}` is missing.")
 
     container = {
-        "host": prefer_text(run_container_host, defaults.container_host),
-        "port": coerce_int(run_container_port, defaults.container_port),
-        "user": prefer_text(run_container_user, defaults.container_user),
-        "ssh_key_path": prefer_optional_text(
-            run_container_ssh_key_path, defaults.container_ssh_key_path
-        ),
-        "project_dir": prefer_text(run_container_project_dir, defaults.container_project_dir),
+        "host": container_profile.host,
+        "port": container_profile.port,
+        "user": container_profile.user,
+        "ssh_key_path": prefer_optional_text("", container_profile.ssh_key_path),
+        "project_dir": container_profile.project_dir,
     }
     budget = {
         "gpu_hours": coerce_optional_float(run_budget_gpu_hours, defaults.budget_gpu_hours),
@@ -1453,11 +1562,8 @@ def render_project_outputs(
         project_name,
         project_slug,
         project_description,
-        container_host,
-        container_port,
-        container_user,
-        container_ssh_key_path,
-        container_project_dir,
+        project_container_profile,
+        project_default_mode,
         budget_gpu_hours,
         budget_api_cost_usd,
         budget_wall_clock_hours,
@@ -1473,11 +1579,6 @@ def render_project_outputs(
     ) = project_form_values(project)
     (
         run_mode,
-        run_container_host,
-        run_container_port,
-        run_container_user,
-        run_container_ssh_key_path,
-        run_container_project_dir,
         run_budget_gpu_hours,
         run_budget_api_cost_usd,
         run_budget_wall_clock_hours,
@@ -1503,11 +1604,11 @@ def render_project_outputs(
         project_name,
         project_slug,
         project_description,
-        container_host,
-        container_port,
-        container_user,
-        container_ssh_key_path,
-        container_project_dir,
+        gr.update(
+            choices=container_profile_choices(store),
+            value=project_container_profile or None,
+        ),
+        project_default_mode,
         budget_gpu_hours,
         budget_api_cost_usd,
         budget_wall_clock_hours,
@@ -1527,11 +1628,6 @@ def render_project_outputs(
         ),
         render_run_feedback(session),
         run_mode,
-        run_container_host,
-        run_container_port,
-        run_container_user,
-        run_container_ssh_key_path,
-        run_container_project_dir,
         run_budget_gpu_hours,
         run_budget_api_cost_usd,
         run_budget_wall_clock_hours,
@@ -1629,10 +1725,14 @@ def render_project_detail_summary(session: ConnectionSession, store: JsonProject
             "No Project selected. Create one locally or pick an existing Project from the selector."
         )
     run_count = len(store.list_project_runs(project.slug))
+    profile_name = project.defaults.container_profile_name or "unbound"
+    profile_status = "configured" if store.resolve_project_container_profile(project) else "missing"
     return (
         "## Project Detail\n"
         f"- Project: `{project.name}` (`{project.slug}`)\n"
         f"- Description: {project.description or 'No description'}\n"
+        f"- Container profile: `{profile_name}` ({profile_status})\n"
+        f"- Default mode: `{project.defaults.default_mode.value}`\n"
         f"- Local runs: `{run_count}`\n"
         f"- State root: `{store.webui_root}`"
     )
@@ -1815,65 +1915,6 @@ def save_container_profile_and_render(
     )
 
 
-def apply_container_profile_and_render(
-    store: JsonProjectStore,
-    *,
-    profile_name: str | None,
-    current_project_host: str,
-    current_project_port: float | int | None,
-    current_project_user: str,
-    current_project_ssh_key_path: str,
-    current_project_dir: str,
-    current_run_host: str,
-    current_run_port: float | int | None,
-    current_run_user: str,
-    current_run_ssh_key_path: str,
-    current_run_dir: str,
-) -> tuple[str, int, str, str, str, str, int, str, str, str, str]:
-    if not profile_name:
-        return (
-            current_project_host,
-            coerce_int(current_project_port, 22),
-            current_project_user,
-            current_project_ssh_key_path,
-            current_project_dir,
-            current_run_host,
-            coerce_int(current_run_port, 22),
-            current_run_user,
-            current_run_ssh_key_path,
-            current_run_dir,
-            "Choose a container profile before applying.",
-        )
-    profile = store.load_container_profile(profile_name)
-    if profile is None:
-        return (
-            current_project_host,
-            coerce_int(current_project_port, 22),
-            current_project_user,
-            current_project_ssh_key_path,
-            current_project_dir,
-            current_run_host,
-            coerce_int(current_run_port, 22),
-            current_run_user,
-            current_run_ssh_key_path,
-            current_run_dir,
-            f"Container profile `{profile_name}` not found.",
-        )
-    return (
-        profile.host,
-        profile.port,
-        profile.user,
-        profile.ssh_key_path,
-        profile.project_dir,
-        profile.host,
-        profile.port,
-        profile.user,
-        profile.ssh_key_path,
-        profile.project_dir,
-        f"Applied container profile `{profile_name}` to Project and Run forms.",
-    )
-
-
 def selected_project(store: JsonProjectStore, session: ConnectionSession) -> ProjectRecord | None:
     if session.selected_project_slug is None:
         return None
@@ -2029,9 +2070,6 @@ def project_form_values(
     str,
     str,
     str,
-    int,
-    str,
-    str,
     str,
     float | None,
     float | None,
@@ -2052,11 +2090,8 @@ def project_form_values(
             "",
             "",
             "",
-            defaults.container_host,
-            defaults.container_port,
-            defaults.container_user,
-            defaults.container_ssh_key_path,
-            defaults.container_project_dir,
+            defaults.container_profile_name,
+            defaults.default_mode.value,
             defaults.budget_gpu_hours,
             defaults.budget_api_cost_usd,
             defaults.budget_wall_clock_hours,
@@ -2075,11 +2110,8 @@ def project_form_values(
         project.name,
         project.slug,
         project.description,
-        defaults.container_host,
-        defaults.container_port,
-        defaults.container_user,
-        defaults.container_ssh_key_path,
-        defaults.container_project_dir,
+        defaults.container_profile_name,
+        defaults.default_mode.value,
         defaults.budget_gpu_hours,
         defaults.budget_api_cost_usd,
         defaults.budget_wall_clock_hours,
@@ -2098,11 +2130,6 @@ def project_form_values(
 def run_form_values(
     project: ProjectRecord | None,
 ) -> tuple[
-    str,
-    str,
-    int,
-    str,
-    str,
     str,
     float | None,
     float | None,
@@ -2124,12 +2151,7 @@ def run_form_values(
 ]:
     defaults = project.defaults if project is not None else ProjectDefaults()
     return (
-        TaskMode.DEEP_REPRODUCTION.value,
-        defaults.container_host,
-        defaults.container_port,
-        defaults.container_user,
-        defaults.container_ssh_key_path,
-        defaults.container_project_dir,
+        defaults.default_mode.value,
         defaults.budget_gpu_hours,
         defaults.budget_api_cost_usd,
         defaults.budget_wall_clock_hours,

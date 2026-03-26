@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ainrf.api.schemas import ApiStatus, ArtifactItemResponse, ModeTwoScope, TaskDetailResponse
 from ainrf.events import TaskEventCategory
@@ -82,11 +82,8 @@ class ModeTwoDefaults(BaseModel):
 class ProjectDefaults(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    container_host: str = ""
-    container_port: int = 22
-    container_user: str = ""
-    container_ssh_key_path: str = ""
-    container_project_dir: str = ""
+    container_profile_name: str = ""
+    default_mode: TaskMode = TaskMode.DEEP_REPRODUCTION
     budget_gpu_hours: float | None = None
     budget_api_cost_usd: float | None = None
     budget_wall_clock_hours: float | None = None
@@ -94,6 +91,19 @@ class ProjectDefaults(BaseModel):
     yolo: bool = False
     mode_1: ModeOneDefaults = Field(default_factory=ModeOneDefaults)
     mode_2: ModeTwoDefaults = Field(default_factory=ModeTwoDefaults)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_legacy_container_fields(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+        payload = dict(value)
+        payload.pop("container_host", None)
+        payload.pop("container_port", None)
+        payload.pop("container_user", None)
+        payload.pop("container_ssh_key_path", None)
+        payload.pop("container_project_dir", None)
+        return payload
 
 
 class ContainerProfileRecord(BaseModel):
