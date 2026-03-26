@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
 from ainrf.api.schemas import TaskSummaryResponse
 from ainrf.state import TaskStage
-from ainrf.webui.models import ProjectRecord, ProjectRunRecord
+from ainrf.webui.models import ContainerProfileRecord, ProjectRecord, ProjectRunRecord
 
 
 class JsonProjectStore:
@@ -23,6 +24,10 @@ class JsonProjectStore:
     @property
     def project_runs_dir(self) -> Path:
         return self.webui_root / "project-runs"
+
+    @property
+    def config_path(self) -> Path:
+        return self._state_root / "config.json"
 
     def save_project(self, project: ProjectRecord) -> Path:
         path = self.projects_dir / f"{project.slug}.json"
@@ -104,6 +109,44 @@ class JsonProjectStore:
                 }
             )
         )
+
+    def list_container_profiles(self) -> dict[str, ContainerProfileRecord]:
+        payload = self._read_config_payload()
+        container_profiles = payload.get("container_profiles")
+        if not isinstance(container_profiles, dict):
+            return {}
+        profiles: dict[str, ContainerProfileRecord] = {}
+        for name, profile_payload in container_profiles.items():
+            if not isinstance(name, str):
+                continue
+            if not isinstance(profile_payload, dict):
+                continue
+            profiles[name] = ContainerProfileRecord.model_validate(profile_payload)
+        return dict(sorted(profiles.items(), key=lambda item: item[0].lower()))
+
+    def save_container_profile(self, name: str, profile: ContainerProfileRecord) -> None:
+        normalized_name = name.strip()
+        if not normalized_name:
+            raise ValueError("Container profile name is required.")
+        payload = self._read_config_payload()
+        container_profiles = payload.get("container_profiles")
+        if not isinstance(container_profiles, dict):
+            container_profiles = cast(dict[str, object], {})
+            payload["container_profiles"] = container_profiles
+        typed_profiles = cast(dict[str, object], container_profiles)
+        typed_profiles[normalized_name] = profile.model_dump(mode="json")
+        self._write_json(self.config_path, payload)
+
+    def load_container_profile(self, name: str) -> ContainerProfileRecord | None:
+        return self.list_container_profiles().get(name)
+
+    def _read_config_payload(self) -> dict[str, object]:
+        if not self.config_path.exists():
+            return {}
+        payload = self._read_json(self.config_path)
+        if isinstance(payload, dict):
+            return cast(dict[str, object], payload)
+        return {}
 
     @staticmethod
     def _read_json(path: Path) -> object:

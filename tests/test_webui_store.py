@@ -3,7 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from ainrf.state import TaskMode, TaskStage
-from ainrf.webui.models import ProjectDefaults, ProjectRecord, ProjectRunRecord
+from ainrf.webui.models import (
+    ContainerProfileRecord,
+    ProjectDefaults,
+    ProjectRecord,
+    ProjectRunRecord,
+)
 from ainrf.webui.store import JsonProjectStore
 
 
@@ -51,3 +56,25 @@ def test_project_store_lists_runs_for_project_in_reverse_time_order(tmp_path: Pa
 
     assert [item.task_id for item in runs] == ["t-002", "t-001"]
 
+
+def test_project_store_round_trips_container_profile(tmp_path: Path) -> None:
+    store = JsonProjectStore(tmp_path)
+    store.save_container_profile(
+        "gpu-main",
+        ContainerProfileRecord(
+            host="gpu-01",
+            port=22,
+            user="researcher",
+            ssh_key_path="/tmp/id_rsa",
+            ssh_password="",
+            project_dir="/workspace/projects/vision-stack",
+        ),
+    )
+
+    loaded = store.load_container_profile("gpu-main")
+    profiles = store.list_container_profiles()
+
+    assert loaded is not None
+    assert loaded.host == "gpu-01"
+    assert loaded.user == "researcher"
+    assert "gpu-main" in profiles

@@ -96,6 +96,17 @@ class ProjectDefaults(BaseModel):
     mode_2: ModeTwoDefaults = Field(default_factory=ModeTwoDefaults)
 
 
+class ContainerProfileRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    host: str
+    port: int = 22
+    user: str
+    ssh_key_path: str = ""
+    ssh_password: str = ""
+    project_dir: str = ""
+
+
 class ProjectRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

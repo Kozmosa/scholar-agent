@@ -28,6 +28,7 @@ from ainrf.webui.client import (
     ApiProtocolError,
 )
 from ainrf.webui.models import (
+    ContainerProfileRecord,
     ConnectionSession,
     ProjectDefaults,
     ProjectRecord,
@@ -116,7 +117,9 @@ def create_webui(
             new_project = gr.Button("New Project", min_width=180)
 
         with gr.Tab("Project List"):
-            project_list_summary = gr.Markdown(value=render_project_list_summary(initial_session, store))
+            project_list_summary = gr.Markdown(
+                value=render_project_list_summary(initial_session, store)
+            )
             project_table = gr.Dataframe(
                 headers=_PROJECT_TABLE_HEADERS,
                 datatype=["str", "str", "number", "str", "str"],
@@ -128,11 +131,36 @@ def create_webui(
 
         with gr.Tab("Project Detail"):
             project_feedback = gr.Markdown(value="Ready to create or edit a local Project.")
-            project_detail_summary = gr.Markdown(value=render_project_detail_summary(initial_session, store))
+            project_detail_summary = gr.Markdown(
+                value=render_project_detail_summary(initial_session, store)
+            )
             with gr.Row():
                 project_name = gr.Textbox(label="Project Name")
                 project_slug = gr.Textbox(label="Project Slug")
             project_description = gr.Textbox(label="Description", lines=3)
+            gr.Markdown("### Container Profiles")
+            container_profile_feedback = gr.Markdown(
+                value="Container profiles are shared with CLI via `.ainrf/config.json`."
+            )
+            with gr.Row():
+                container_profile_selector = gr.Dropdown(
+                    label="Saved Container",
+                    choices=container_profile_choices(store),
+                    value=None,
+                    allow_custom_value=False,
+                    scale=3,
+                )
+                apply_container_profile_button = gr.Button("Apply to Project + Run", min_width=200)
+            with gr.Row():
+                container_profile_name = gr.Textbox(label="Profile Name")
+                container_profile_host = gr.Textbox(label="Container Host")
+                container_profile_port = gr.Number(label="Container Port", value=22, precision=0)
+                container_profile_user = gr.Textbox(label="Container User")
+            with gr.Row():
+                container_profile_ssh_key_path = gr.Textbox(label="SSH Key Path")
+                container_profile_ssh_password = gr.Textbox(label="SSH Password", type="password")
+                container_profile_project_dir = gr.Textbox(label="Container Project Dir")
+            save_container_profile_button = gr.Button("Save Container Profile", variant="secondary")
             gr.Markdown("### Shared Defaults")
             with gr.Row():
                 container_host = gr.Textbox(label="Container Host")
@@ -144,7 +172,9 @@ def create_webui(
             with gr.Row():
                 budget_gpu_hours = gr.Number(label="GPU Hours", value=None, precision=2)
                 budget_api_cost_usd = gr.Number(label="API Cost USD", value=None, precision=2)
-                budget_wall_clock_hours = gr.Number(label="Wall Clock Hours", value=None, precision=2)
+                budget_wall_clock_hours = gr.Number(
+                    label="Wall Clock Hours", value=None, precision=2
+                )
             with gr.Row():
                 webhook_url = gr.Textbox(label="Default Webhook URL")
                 default_yolo = gr.Checkbox(label="Default Yolo", value=False)
@@ -200,8 +230,12 @@ def create_webui(
                 run_container_project_dir = gr.Textbox(label="Run Container Project Dir")
             with gr.Row():
                 run_budget_gpu_hours = gr.Number(label="Run GPU Hours", value=None, precision=2)
-                run_budget_api_cost_usd = gr.Number(label="Run API Cost USD", value=None, precision=2)
-                run_budget_wall_clock_hours = gr.Number(label="Run Wall Clock Hours", value=None, precision=2)
+                run_budget_api_cost_usd = gr.Number(
+                    label="Run API Cost USD", value=None, precision=2
+                )
+                run_budget_wall_clock_hours = gr.Number(
+                    label="Run Wall Clock Hours", value=None, precision=2
+                )
             with gr.Row():
                 run_webhook_url = gr.Textbox(label="Run Webhook URL")
                 run_webhook_secret = gr.Textbox(label="Run Webhook Secret", type="password")
@@ -217,10 +251,16 @@ def create_webui(
             )
             with gr.Row():
                 run_mode_one_domain_context = gr.Textbox(label="Run Mode 1 Domain Context", lines=2)
-                run_mode_one_max_depth = gr.Number(label="Run Mode 1 Max Depth", value=3, precision=0)
+                run_mode_one_max_depth = gr.Number(
+                    label="Run Mode 1 Max Depth", value=3, precision=0
+                )
             with gr.Row():
-                run_mode_one_focus_directions = gr.Textbox(label="Run Mode 1 Focus Directions", lines=2)
-                run_mode_one_ignore_directions = gr.Textbox(label="Run Mode 1 Ignore Directions", lines=2)
+                run_mode_one_focus_directions = gr.Textbox(
+                    label="Run Mode 1 Focus Directions", lines=2
+                )
+                run_mode_one_ignore_directions = gr.Textbox(
+                    label="Run Mode 1 Ignore Directions", lines=2
+                )
             gr.Markdown("#### Mode 2 Target")
             mode_two_title = gr.Textbox(label="Target Paper Title")
             with gr.Row():
@@ -232,7 +272,9 @@ def create_webui(
                     choices=[scope.value for scope in ModeTwoScope],
                     value=ModeTwoScope.CORE_ONLY.value,
                 )
-                run_mode_two_baseline_first = gr.Checkbox(label="Run Mode 2 Baseline First", value=True)
+                run_mode_two_baseline_first = gr.Checkbox(
+                    label="Run Mode 2 Baseline First", value=True
+                )
             run_mode_two_target_tables = gr.Textbox(label="Run Mode 2 Target Tables", lines=2)
             submit_run_button = gr.Button("Create Run", variant="primary")
 
@@ -339,6 +381,94 @@ def create_webui(
             outputs=selection_outputs,
         )
 
+        container_profile_selector.change(
+            fn=lambda profile_name: select_container_profile_and_render(
+                store,
+                profile_name,
+            ),
+            inputs=[container_profile_selector],
+            outputs=[
+                container_profile_name,
+                container_profile_host,
+                container_profile_port,
+                container_profile_user,
+                container_profile_ssh_key_path,
+                container_profile_ssh_password,
+                container_profile_project_dir,
+                container_profile_feedback,
+            ],
+        )
+
+        save_container_profile_button.click(
+            fn=lambda profile_name, host_value, port_value, user_value, ssh_key_value, ssh_password_value, project_dir_value: (
+                save_container_profile_and_render(
+                    store,
+                    profile_name=profile_name,
+                    host=host_value,
+                    port=port_value,
+                    user=user_value,
+                    ssh_key_path=ssh_key_value,
+                    ssh_password=ssh_password_value,
+                    project_dir=project_dir_value,
+                )
+            ),
+            inputs=[
+                container_profile_name,
+                container_profile_host,
+                container_profile_port,
+                container_profile_user,
+                container_profile_ssh_key_path,
+                container_profile_ssh_password,
+                container_profile_project_dir,
+            ],
+            outputs=[container_profile_selector, container_profile_feedback],
+        )
+
+        apply_container_profile_button.click(
+            fn=lambda profile_name, project_host, project_port, project_user, project_ssh_key, project_dir, run_host, run_port, run_user, run_ssh_key, run_dir: (
+                apply_container_profile_and_render(
+                    store,
+                    profile_name=profile_name,
+                    current_project_host=project_host,
+                    current_project_port=project_port,
+                    current_project_user=project_user,
+                    current_project_ssh_key_path=project_ssh_key,
+                    current_project_dir=project_dir,
+                    current_run_host=run_host,
+                    current_run_port=run_port,
+                    current_run_user=run_user,
+                    current_run_ssh_key_path=run_ssh_key,
+                    current_run_dir=run_dir,
+                )
+            ),
+            inputs=[
+                container_profile_selector,
+                container_host,
+                container_port,
+                container_user,
+                container_ssh_key_path,
+                container_project_dir,
+                run_container_host,
+                run_container_port,
+                run_container_user,
+                run_container_ssh_key_path,
+                run_container_project_dir,
+            ],
+            outputs=[
+                container_host,
+                container_port,
+                container_user,
+                container_ssh_key_path,
+                container_project_dir,
+                run_container_host,
+                run_container_port,
+                run_container_user,
+                run_container_ssh_key_path,
+                run_container_project_dir,
+                container_profile_feedback,
+            ],
+        )
+
         save_project_outputs = [
             session_state,
             project_selector,
@@ -347,29 +477,31 @@ def create_webui(
             *selection_outputs[1:],
         ]
         save_project_button.click(
-            fn=lambda current_session, name, slug, description, host_value, port_value, user_value, ssh_key_value, project_dir_value, gpu_value, api_cost_value, wall_value, webhook_value, yolo_value, mode_one_domain_value, mode_one_depth_value, mode_one_focus_value, mode_one_ignore_value, mode_two_scope_value, mode_two_tables_value, mode_two_baseline_value: save_project_and_render(
-                current_session,
-                store,
-                name=name,
-                slug=slug,
-                description=description,
-                container_host=host_value,
-                container_port=port_value,
-                container_user=user_value,
-                container_ssh_key_path=ssh_key_value,
-                container_project_dir=project_dir_value,
-                budget_gpu_hours=gpu_value,
-                budget_api_cost_usd=api_cost_value,
-                budget_wall_clock_hours=wall_value,
-                webhook_url=webhook_value,
-                yolo=yolo_value,
-                mode_one_domain_context=mode_one_domain_value,
-                mode_one_max_depth=mode_one_depth_value,
-                mode_one_focus_directions=mode_one_focus_value,
-                mode_one_ignore_directions=mode_one_ignore_value,
-                mode_two_scope=mode_two_scope_value,
-                mode_two_target_tables=mode_two_tables_value,
-                mode_two_baseline_first=mode_two_baseline_value,
+            fn=lambda current_session, name, slug, description, host_value, port_value, user_value, ssh_key_value, project_dir_value, gpu_value, api_cost_value, wall_value, webhook_value, yolo_value, mode_one_domain_value, mode_one_depth_value, mode_one_focus_value, mode_one_ignore_value, mode_two_scope_value, mode_two_tables_value, mode_two_baseline_value: (
+                save_project_and_render(
+                    current_session,
+                    store,
+                    name=name,
+                    slug=slug,
+                    description=description,
+                    container_host=host_value,
+                    container_port=port_value,
+                    container_user=user_value,
+                    container_ssh_key_path=ssh_key_value,
+                    container_project_dir=project_dir_value,
+                    budget_gpu_hours=gpu_value,
+                    budget_api_cost_usd=api_cost_value,
+                    budget_wall_clock_hours=wall_value,
+                    webhook_url=webhook_value,
+                    yolo=yolo_value,
+                    mode_one_domain_context=mode_one_domain_value,
+                    mode_one_max_depth=mode_one_depth_value,
+                    mode_one_focus_directions=mode_one_focus_value,
+                    mode_one_ignore_directions=mode_one_ignore_value,
+                    mode_two_scope=mode_two_scope_value,
+                    mode_two_target_tables=mode_two_tables_value,
+                    mode_two_baseline_first=mode_two_baseline_value,
+                )
             ),
             inputs=[
                 session_state,
@@ -398,33 +530,35 @@ def create_webui(
         )
 
         submit_run_button.click(
-            fn=lambda current_session, selected_mode, run_host, run_port, run_user, run_ssh_key, run_project_dir, run_gpu, run_api_cost, run_wall, run_webhook, run_secret, run_yolo_value, seed_rows, run_mode_one_domain_value, run_mode_one_depth_value, run_mode_one_focus_value, run_mode_one_ignore_value, target_title, target_url, target_path, run_mode_two_scope_value, run_mode_two_tables_value, run_mode_two_baseline_value: submit_run_and_render(
-                current_session,
-                store,
-                client_factory=factory,
-                mode=selected_mode,
-                run_container_host=run_host,
-                run_container_port=run_port,
-                run_container_user=run_user,
-                run_container_ssh_key_path=run_ssh_key,
-                run_container_project_dir=run_project_dir,
-                run_budget_gpu_hours=run_gpu,
-                run_budget_api_cost_usd=run_api_cost,
-                run_budget_wall_clock_hours=run_wall,
-                run_webhook_url=run_webhook,
-                run_webhook_secret=run_secret,
-                run_yolo=run_yolo_value,
-                mode_one_seed_rows=seed_rows,
-                run_mode_one_domain_context=run_mode_one_domain_value,
-                run_mode_one_max_depth=run_mode_one_depth_value,
-                run_mode_one_focus_directions=run_mode_one_focus_value,
-                run_mode_one_ignore_directions=run_mode_one_ignore_value,
-                mode_two_title=target_title,
-                mode_two_pdf_url=target_url,
-                mode_two_pdf_path=target_path,
-                run_mode_two_scope=run_mode_two_scope_value,
-                run_mode_two_target_tables=run_mode_two_tables_value,
-                run_mode_two_baseline_first=run_mode_two_baseline_value,
+            fn=lambda current_session, selected_mode, run_host, run_port, run_user, run_ssh_key, run_project_dir, run_gpu, run_api_cost, run_wall, run_webhook, run_secret, run_yolo_value, seed_rows, run_mode_one_domain_value, run_mode_one_depth_value, run_mode_one_focus_value, run_mode_one_ignore_value, target_title, target_url, target_path, run_mode_two_scope_value, run_mode_two_tables_value, run_mode_two_baseline_value: (
+                submit_run_and_render(
+                    current_session,
+                    store,
+                    client_factory=factory,
+                    mode=selected_mode,
+                    run_container_host=run_host,
+                    run_container_port=run_port,
+                    run_container_user=run_user,
+                    run_container_ssh_key_path=run_ssh_key,
+                    run_container_project_dir=run_project_dir,
+                    run_budget_gpu_hours=run_gpu,
+                    run_budget_api_cost_usd=run_api_cost,
+                    run_budget_wall_clock_hours=run_wall,
+                    run_webhook_url=run_webhook,
+                    run_webhook_secret=run_secret,
+                    run_yolo=run_yolo_value,
+                    mode_one_seed_rows=seed_rows,
+                    run_mode_one_domain_context=run_mode_one_domain_value,
+                    run_mode_one_max_depth=run_mode_one_depth_value,
+                    run_mode_one_focus_directions=run_mode_one_focus_value,
+                    run_mode_one_ignore_directions=run_mode_one_ignore_value,
+                    mode_two_title=target_title,
+                    mode_two_pdf_url=target_url,
+                    mode_two_pdf_path=target_path,
+                    run_mode_two_scope=run_mode_two_scope_value,
+                    run_mode_two_target_tables=run_mode_two_tables_value,
+                    run_mode_two_baseline_first=run_mode_two_baseline_value,
+                )
             ),
             inputs=[
                 session_state,
@@ -593,7 +727,10 @@ def connect_session(
         projects = store.list_projects()
         if next_session.selected_project_slug is None and projects:
             next_session.selected_project_slug = projects[0].slug
-        if next_session.selected_project_slug and store.load_project(next_session.selected_project_slug) is None:
+        if (
+            next_session.selected_project_slug
+            and store.load_project(next_session.selected_project_slug) is None
+        ):
             next_session.selected_project_slug = None
         if next_session.selected_project_slug:
             project_runs = store.list_project_runs(next_session.selected_project_slug)
@@ -684,7 +821,9 @@ def refresh_selected_run(
         events = client.list_task_events(task_id, after_id=after_id)
         session.run_event_mode = "sse"
         session.run_refresh_error = None
-        session.run_timeline_items = merge_timeline_items(session.run_timeline_items, events, reset=after_id is None)
+        session.run_timeline_items = merge_timeline_items(
+            session.run_timeline_items, events, reset=after_id is None
+        )
         if events:
             session.last_event_id_by_task[task_id] = events[-1].event_id
     except ApiClientError as exc:
@@ -737,7 +876,9 @@ def select_project_and_render(
     clear_run_observation(next_session)
     if next_session.authenticated and next_session.selected_run_task_id is not None:
         next_session = refresh_selected_run(next_session, store, client_factory=client_factory)
-    return render_project_outputs(next_session, store, project_feedback="Project selection updated.")
+    return render_project_outputs(
+        next_session, store, project_feedback="Project selection updated."
+    )
 
 
 def reset_project_and_render(
@@ -748,7 +889,9 @@ def reset_project_and_render(
     next_session.selected_project_slug = None
     next_session.selected_run_task_id = None
     clear_run_observation(next_session)
-    return render_project_outputs(next_session, store, project_feedback="Creating a new local Project.")
+    return render_project_outputs(
+        next_session, store, project_feedback="Creating a new local Project."
+    )
 
 
 def save_project_from_form(
@@ -1105,7 +1248,9 @@ def approve_run_and_render(
     next_session = session
     task_id = next_session.selected_run_task_id
     if not next_session.authenticated or task_id is None:
-        next_session.run_refresh_error = "Connect to the API and select a Run before approving a gate."
+        next_session.run_refresh_error = (
+            "Connect to the API and select a Run before approving a gate."
+        )
         return refresh_run_and_render(next_session, store, client_factory=client_factory)
     if not can_resolve_active_gate(next_session):
         next_session.run_refresh_error = "The selected Run does not have a waiting gate to approve."
@@ -1138,7 +1283,9 @@ def reject_run_and_render(
     next_session = session
     task_id = next_session.selected_run_task_id
     if not next_session.authenticated or task_id is None:
-        next_session.run_refresh_error = "Connect to the API and select a Run before rejecting a gate."
+        next_session.run_refresh_error = (
+            "Connect to the API and select a Run before rejecting a gate."
+        )
         return refresh_run_and_render(next_session, store, client_factory=client_factory)
     if not can_resolve_active_gate(next_session):
         next_session.run_refresh_error = "The selected Run does not have a waiting gate to reject."
@@ -1195,12 +1342,16 @@ def build_task_create_request(
         "host": prefer_text(run_container_host, defaults.container_host),
         "port": coerce_int(run_container_port, defaults.container_port),
         "user": prefer_text(run_container_user, defaults.container_user),
-        "ssh_key_path": prefer_optional_text(run_container_ssh_key_path, defaults.container_ssh_key_path),
+        "ssh_key_path": prefer_optional_text(
+            run_container_ssh_key_path, defaults.container_ssh_key_path
+        ),
         "project_dir": prefer_text(run_container_project_dir, defaults.container_project_dir),
     }
     budget = {
         "gpu_hours": coerce_optional_float(run_budget_gpu_hours, defaults.budget_gpu_hours),
-        "api_cost_usd": coerce_optional_float(run_budget_api_cost_usd, defaults.budget_api_cost_usd),
+        "api_cost_usd": coerce_optional_float(
+            run_budget_api_cost_usd, defaults.budget_api_cost_usd
+        ),
         "wall_clock_hours": coerce_optional_float(
             run_budget_wall_clock_hours,
             defaults.budget_wall_clock_hours,
@@ -1575,7 +1726,9 @@ def project_runs_rows(store: JsonProjectStore, project_slug: str | None) -> list
     return rows
 
 
-def run_selector_choices(store: JsonProjectStore, project_slug: str | None) -> list[tuple[str, str]]:
+def run_selector_choices(
+    store: JsonProjectStore, project_slug: str | None
+) -> list[tuple[str, str]]:
     if project_slug is None:
         return []
     return [
@@ -1584,8 +1737,133 @@ def run_selector_choices(store: JsonProjectStore, project_slug: str | None) -> l
     ]
 
 
+def container_profile_choices(store: JsonProjectStore) -> list[tuple[str, str]]:
+    return [(name, name) for name in store.list_container_profiles()]
+
+
 def project_selector_choices(store: JsonProjectStore) -> list[tuple[str, str]]:
     return [(project.name, project.slug) for project in store.list_projects()]
+
+
+def select_container_profile_and_render(
+    store: JsonProjectStore,
+    profile_name: str | None,
+) -> tuple[str, str, int, str, str, str, str, str]:
+    if not profile_name:
+        return "", "", 22, "", "", "", "", "Choose a saved container profile to preview or apply."
+    profile = store.load_container_profile(profile_name)
+    if profile is None:
+        return "", "", 22, "", "", "", "", f"Container profile `{profile_name}` not found."
+    return (
+        profile_name,
+        profile.host,
+        profile.port,
+        profile.user,
+        profile.ssh_key_path,
+        profile.ssh_password,
+        profile.project_dir,
+        f"Loaded container profile `{profile_name}`.",
+    )
+
+
+def save_container_profile_and_render(
+    store: JsonProjectStore,
+    *,
+    profile_name: str,
+    host: str,
+    port: float | int | None,
+    user: str,
+    ssh_key_path: str,
+    ssh_password: str,
+    project_dir: str,
+) -> tuple[object, str]:
+    normalized_name = profile_name.strip()
+    if not normalized_name:
+        return gr.update(
+            choices=container_profile_choices(store), value=None
+        ), "Container profile name is required."
+    if not host.strip():
+        return (
+            gr.update(choices=container_profile_choices(store), value=normalized_name),
+            "Container host is required.",
+        )
+    if not user.strip():
+        return (
+            gr.update(choices=container_profile_choices(store), value=normalized_name),
+            "Container user is required.",
+        )
+    profile = ContainerProfileRecord(
+        host=host.strip(),
+        port=coerce_int(port, 22),
+        user=user.strip(),
+        ssh_key_path=ssh_key_path.strip(),
+        ssh_password=ssh_password.strip(),
+        project_dir=project_dir.strip(),
+    )
+    store.save_container_profile(normalized_name, profile)
+    return (
+        gr.update(choices=container_profile_choices(store), value=normalized_name),
+        f"Saved container profile `{normalized_name}`.",
+    )
+
+
+def apply_container_profile_and_render(
+    store: JsonProjectStore,
+    *,
+    profile_name: str | None,
+    current_project_host: str,
+    current_project_port: float | int | None,
+    current_project_user: str,
+    current_project_ssh_key_path: str,
+    current_project_dir: str,
+    current_run_host: str,
+    current_run_port: float | int | None,
+    current_run_user: str,
+    current_run_ssh_key_path: str,
+    current_run_dir: str,
+) -> tuple[str, int, str, str, str, str, int, str, str, str, str]:
+    if not profile_name:
+        return (
+            current_project_host,
+            coerce_int(current_project_port, 22),
+            current_project_user,
+            current_project_ssh_key_path,
+            current_project_dir,
+            current_run_host,
+            coerce_int(current_run_port, 22),
+            current_run_user,
+            current_run_ssh_key_path,
+            current_run_dir,
+            "Choose a container profile before applying.",
+        )
+    profile = store.load_container_profile(profile_name)
+    if profile is None:
+        return (
+            current_project_host,
+            coerce_int(current_project_port, 22),
+            current_project_user,
+            current_project_ssh_key_path,
+            current_project_dir,
+            current_run_host,
+            coerce_int(current_run_port, 22),
+            current_run_user,
+            current_run_ssh_key_path,
+            current_run_dir,
+            f"Container profile `{profile_name}` not found.",
+        )
+    return (
+        profile.host,
+        profile.port,
+        profile.user,
+        profile.ssh_key_path,
+        profile.project_dir,
+        profile.host,
+        profile.port,
+        profile.user,
+        profile.ssh_key_path,
+        profile.project_dir,
+        f"Applied container profile `{profile_name}` to Project and Run forms.",
+    )
 
 
 def selected_project(store: JsonProjectStore, session: ConnectionSession) -> ProjectRecord | None:
@@ -1736,7 +2014,30 @@ def summarize_payload(payload: dict[str, Any]) -> str:
     return ", ".join(parts)
 
 
-def project_form_values(project: ProjectRecord | None) -> tuple[str, str, str, str, int, str, str, str, float | None, float | None, float | None, str, bool, str, int, str, str, str, str, bool]:
+def project_form_values(
+    project: ProjectRecord | None,
+) -> tuple[
+    str,
+    str,
+    str,
+    str,
+    int,
+    str,
+    str,
+    str,
+    float | None,
+    float | None,
+    float | None,
+    str,
+    bool,
+    str,
+    int,
+    str,
+    str,
+    str,
+    str,
+    bool,
+]:
     if project is None:
         defaults = ProjectDefaults()
         return (
@@ -1786,7 +2087,33 @@ def project_form_values(project: ProjectRecord | None) -> tuple[str, str, str, s
     )
 
 
-def run_form_values(project: ProjectRecord | None) -> tuple[str, str, int, str, str, str, float | None, float | None, float | None, str, str, bool, list[list[str]], str, int, str, str, str, str, str, str, str, bool]:
+def run_form_values(
+    project: ProjectRecord | None,
+) -> tuple[
+    str,
+    str,
+    int,
+    str,
+    str,
+    str,
+    float | None,
+    float | None,
+    float | None,
+    str,
+    str,
+    bool,
+    list[list[str]],
+    str,
+    int,
+    str,
+    str,
+    str,
+    str,
+    str,
+    str,
+    str,
+    bool,
+]:
     defaults = project.defaults if project is not None else ProjectDefaults()
     return (
         TaskMode.DEEP_REPRODUCTION.value,
@@ -1902,8 +2229,4 @@ def coerce_optional_float(value: float | None, default: float | None) -> float |
 
 
 def _status_card(title: str, detail: str, css_class: str) -> str:
-    return (
-        f"<div class='status-card {css_class}'>"
-        f"<strong>{title}</strong><br/>{detail}"
-        "</div>"
-    )
+    return f"<div class='status-card {css_class}'><strong>{title}</strong><br/>{detail}</div>"

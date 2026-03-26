@@ -20,6 +20,7 @@ from ainrf.artifacts import GateType, HumanGateStatus
 from ainrf.events import TaskEvent, TaskEventCategory
 from ainrf.state import TaskMode, TaskStage
 from ainrf.webui.app import (
+    apply_container_profile_and_render,
     approve_run_and_render,
     build_task_create_request,
     connect_session,
@@ -29,7 +30,9 @@ from ainrf.webui.app import (
     render_project_list_summary,
     render_run_detail,
     reject_run_and_render,
+    save_container_profile_and_render,
     save_project_from_form,
+    select_container_profile_and_render,
     submit_project_run,
 )
 from ainrf.webui.client import ApiAuthenticationError
@@ -208,7 +211,9 @@ def test_connect_session_updates_local_run_bindings(tmp_path: Path) -> None:
         container_health=None,
         detail=None,
     )
-    task_list = TaskListResponse(items=[build_task_summary("t-001", TaskMode.DEEP_REPRODUCTION, TaskStage.PLANNING)])
+    task_list = TaskListResponse(
+        items=[build_task_summary("t-001", TaskMode.DEEP_REPRODUCTION, TaskStage.PLANNING)]
+    )
 
     next_session = connect_session(
         "http://ainrf.local",
@@ -261,7 +266,9 @@ def test_save_project_from_form_persists_defaults(tmp_path: Path) -> None:
     assert project.defaults.mode_2.scope.value == "full-suite"
 
 
-def test_build_task_create_request_uses_project_defaults_and_mode_specific_inputs(tmp_path: Path) -> None:
+def test_build_task_create_request_uses_project_defaults_and_mode_specific_inputs(
+    tmp_path: Path,
+) -> None:
     store = JsonProjectStore(tmp_path)
     session = ConnectionSession()
     save_project_from_form(
@@ -363,7 +370,9 @@ def test_submit_project_run_creates_binding_and_keeps_secret_out_of_store(tmp_pa
         container_health=None,
         detail=None,
     )
-    task_list = TaskListResponse(items=[build_task_summary("t-900", TaskMode.DEEP_REPRODUCTION, TaskStage.GATE_WAITING)])
+    task_list = TaskListResponse(
+        items=[build_task_summary("t-900", TaskMode.DEEP_REPRODUCTION, TaskStage.GATE_WAITING)]
+    )
 
     updated_session, feedback = submit_project_run(
         next_session,
@@ -404,10 +413,14 @@ def test_submit_project_run_creates_binding_and_keeps_secret_out_of_store(tmp_pa
     assert "Created Run" in feedback
     assert binding is not None
     assert binding.project_slug == "vision-stack"
-    assert "runtime-secret" not in (store.project_runs_dir / "t-900.json").read_text(encoding="utf-8")
+    assert "runtime-secret" not in (store.project_runs_dir / "t-900.json").read_text(
+        encoding="utf-8"
+    )
 
 
-def test_render_project_list_summary_mentions_local_projects_when_disconnected(tmp_path: Path) -> None:
+def test_render_project_list_summary_mentions_local_projects_when_disconnected(
+    tmp_path: Path,
+) -> None:
     store = JsonProjectStore(tmp_path)
     session = ConnectionSession()
 
@@ -420,6 +433,45 @@ def test_normalize_project_slug_uses_name_when_blank() -> None:
     assert normalize_project_slug("", "Vision Stack") == "vision-stack"
 
 
+def test_save_container_profile_and_apply_to_forms(tmp_path: Path) -> None:
+    store = JsonProjectStore(tmp_path)
+
+    _, save_feedback = save_container_profile_and_render(
+        store,
+        profile_name="gpu-main",
+        host="gpu-01",
+        port=2222,
+        user="researcher",
+        ssh_key_path="/tmp/id_rsa",
+        ssh_password="secret",
+        project_dir="/workspace/projects/vision-stack",
+    )
+    selected = select_container_profile_and_render(store, "gpu-main")
+    applied = apply_container_profile_and_render(
+        store,
+        profile_name="gpu-main",
+        current_project_host="",
+        current_project_port=22,
+        current_project_user="",
+        current_project_ssh_key_path="",
+        current_project_dir="",
+        current_run_host="",
+        current_run_port=22,
+        current_run_user="",
+        current_run_ssh_key_path="",
+        current_run_dir="",
+    )
+
+    assert "Saved container profile" in save_feedback
+    assert selected[0] == "gpu-main"
+    assert selected[1] == "gpu-01"
+    assert selected[5] == "secret"
+    assert applied[0] == "gpu-01"
+    assert applied[1] == 2222
+    assert applied[5] == "gpu-01"
+    assert "Applied container profile" in applied[-1]
+
+
 def test_submit_project_run_requires_authenticated_session(tmp_path: Path) -> None:
     store = JsonProjectStore(tmp_path)
     session = ConnectionSession(selected_project_slug="vision-stack")
@@ -427,7 +479,9 @@ def test_submit_project_run_requires_authenticated_session(tmp_path: Path) -> No
     _, feedback = submit_project_run(
         session,
         store,
-        client_factory=lambda base_url, api_key: FakeClient(error=ApiAuthenticationError("Unauthorized")),
+        client_factory=lambda base_url, api_key: FakeClient(
+            error=ApiAuthenticationError("Unauthorized")
+        ),
         mode=TaskMode.DEEP_REPRODUCTION.value,
         run_container_host="",
         run_container_port=None,
@@ -622,7 +676,9 @@ def test_approve_run_and_render_updates_run_status(tmp_path: Path) -> None:
         container_health=None,
         detail=None,
     )
-    task_list = TaskListResponse(items=[build_task_summary("t-001", TaskMode.DEEP_REPRODUCTION, TaskStage.PLANNING)])
+    task_list = TaskListResponse(
+        items=[build_task_summary("t-001", TaskMode.DEEP_REPRODUCTION, TaskStage.PLANNING)]
+    )
 
     updated = approve_run_and_render(
         next_session,
@@ -631,7 +687,9 @@ def test_approve_run_and_render_updates_run_status(tmp_path: Path) -> None:
             health=health,
             task_list=task_list,
             task_detail=build_task_detail("t-001", TaskStage.PLANNING),
-            action_response=TaskActionResponse(task_id="t-001", status=TaskStage.PLANNING, detail="approved"),
+            action_response=TaskActionResponse(
+                task_id="t-001", status=TaskStage.PLANNING, detail="approved"
+            ),
         ),
     )
 
@@ -695,7 +753,9 @@ def test_reject_run_and_render_updates_feedback_message(tmp_path: Path) -> None:
         container_health=None,
         detail=None,
     )
-    task_list = TaskListResponse(items=[build_task_summary("t-001", TaskMode.DEEP_REPRODUCTION, TaskStage.CANCELLED)])
+    task_list = TaskListResponse(
+        items=[build_task_summary("t-001", TaskMode.DEEP_REPRODUCTION, TaskStage.CANCELLED)]
+    )
 
     updated = reject_run_and_render(
         next_session,
@@ -707,7 +767,9 @@ def test_reject_run_and_render_updates_feedback_message(tmp_path: Path) -> None:
             task_detail=TaskDetailResponse.model_validate(
                 build_task_detail("t-001", TaskStage.CANCELLED).model_dump(mode="json")
             ),
-            action_response=TaskActionResponse(task_id="t-001", status=TaskStage.CANCELLED, detail="rejected"),
+            action_response=TaskActionResponse(
+                task_id="t-001", status=TaskStage.CANCELLED, detail="rejected"
+            ),
         ),
     )
 
