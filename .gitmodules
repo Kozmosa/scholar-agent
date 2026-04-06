@@ -1,0 +1,6 @@
+[submodule "ref-repos/EvoMaster"]
+	path = ref-repos/EvoMaster
+	url = https://github.com/sjtu-sai-agents/EvoMaster.git
+[submodule "ref-repos/MagiClaw"]
+	path = ref-repos/MagiClaw
+	url = https://github.com/sjtu-sai-agents/MagiClaw.git
