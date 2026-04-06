@@ -61,6 +61,11 @@ last_local_commit: workspace aggregate
 - 这组笔记是"自有框架蓝图"，不是对某一个开源仓库的复述；涉及参考项目的判断，均来自本仓库已有研究报告与静态证据。
 - 现阶段默认研究对象是 AI/ML research，不试图抽象到所有学术门类；写作模块只保留下游接口，不在 V1 文档里展开。
 
+## 当前规划入口
+
+- 如果当前目标是对项目做重定位、requirements / expectations 重对齐，先读 [[LLM-Working/refactoring-plan/index]]。
+- 如果当前目标是继续推进 next release 的 scope、contracts 和 dashboard / architecture baseline，也从 [[LLM-Working/refactoring-plan/index]] 进入。
+
 ## 关联笔记
 
 - [[index]]
