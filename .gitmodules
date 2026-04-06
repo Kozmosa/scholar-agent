@@ -4,3 +4,6 @@
 [submodule "ref-repos/MagiClaw"]
 	path = ref-repos/MagiClaw
 	url = https://github.com/sjtu-sai-agents/MagiClaw.git
+[submodule "ref-repos/Awesome-AI-Scientist"]
+	path = ref-repos/Awesome-AI-Scientist
+	url = https://github.com/ResearAI/Awesome-AI-Scientist.git
