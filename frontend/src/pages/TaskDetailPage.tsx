@@ -1,12 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { getTask, getArtifactContent } from '../api';
 import type { ArtifactListItem } from '../types';
-import TaskSummary from '../components/task/TaskSummary';
-import TaskTimeline from '../components/task/TaskTimeline';
-import ArtifactPreviewModal from '../components/task/ArtifactPreviewModal';
-import ExecutionContext from '../components/task/ExecutionContext';
-import TerminationSummary from '../components/task/TerminationSummary';
+import { TaskSummary, TaskTimeline, ArtifactPreviewModal, ExecutionContext, TerminationSummary } from '../components';
 import { useState } from 'react';
 
 function TaskDetailPage() {
@@ -32,17 +28,24 @@ function TaskDetailPage() {
   };
 
   if (taskQuery.isLoading) {
-    return <div className="p-4 text-gray-500">Loading task details...</div>;
+    return <div className="py-6 text-gray-500">Loading task details...</div>;
   }
 
   if (taskQuery.isError || !taskQuery.data) {
-    return <div className="p-4 text-red-500">Failed to load task</div>;
+    return <div className="py-6 text-red-500">Failed to load task</div>;
   }
 
   const task = taskQuery.data;
 
   return (
-    <div className="min-h-screen p-4">
+    <div className="py-6">
+      {/* Breadcrumb */}
+      <div className="mb-4">
+        <Link to="/tasks" className="text-sm text-[var(--accent)] hover:underline">
+          ← Back to Tasks
+        </Link>
+      </div>
+
       <header className="mb-6">
         <h1 className="text-2xl font-bold text-[var(--text-h)]">{task.input_summary.title}</h1>
       </header>

@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { getHealth, getRunningTasks, getRecentTasks, getRecentArtifacts, getResourceSnapshot } from '../api';
 import HealthStatusBar from '../components/dashboard/HealthStatusBar';
 import RunningTaskTimeline from '../components/dashboard/RunningTaskTimeline';
@@ -14,23 +15,31 @@ function DashboardPage() {
   const resourcesQuery = useQuery({ queryKey: ['resources'], queryFn: getResourceSnapshot });
 
   return (
-    <div className="min-h-screen p-4">
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold text-[var(--text-h)]">Research Dashboard</h1>
-      </header>
-
+    <div className="py-6">
       {/* System Health Status Bar */}
-      <HealthStatusBar health={healthQuery.data} isLoading={healthQuery.isLoading} />
+      <section className="mb-6">
+        <HealthStatusBar health={healthQuery.data} isLoading={healthQuery.isLoading} />
+      </section>
 
       {/* Running Task Timeline */}
       <section className="mb-6">
-        <h2 className="text-lg font-semibold mb-2">Running Tasks</h2>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-lg font-semibold">Running Tasks</h2>
+          <Link to="/tasks" className="text-sm text-[var(--accent)] hover:underline">
+            View All →
+          </Link>
+        </div>
         <RunningTaskTimeline tasks={runningTasksQuery.data} isLoading={runningTasksQuery.isLoading} />
       </section>
 
       {/* Recent Finished Tasks */}
       <section className="mb-6">
-        <h2 className="text-lg font-semibold mb-2">Recent Finished Tasks</h2>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-lg font-semibold">Recent Finished Tasks</h2>
+          <Link to="/tasks" className="text-sm text-[var(--accent)] hover:underline">
+            View All →
+          </Link>
+        </div>
         <RecentFinishedTasks tasks={recentTasksQuery.data} isLoading={recentTasksQuery.isLoading} />
       </section>
 
