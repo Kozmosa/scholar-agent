@@ -5,6 +5,7 @@
 /.ruff_cache/
 /.ainrf/
 /.codex-skill-staging/
+/.worktrees/
 
 
 /site/
