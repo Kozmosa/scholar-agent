@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import shlex
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
@@ -11,7 +10,6 @@ import click
 import typer
 
 from ainrf import __version__
-from ainrf import onboarding
 from ainrf.onboarding import (
     config_path_for,
     ensure_interactive_onboarding_available,
@@ -22,9 +20,6 @@ from ainrf.onboarding import (
 )
 from ainrf.server import run_server, run_server_daemon
 from ainrf.state import default_state_root
-
-
-onboarding.sys = sys
 
 
 app = typer.Typer(
