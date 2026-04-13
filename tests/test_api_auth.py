@@ -58,6 +58,22 @@ async def test_unknown_route_returns_not_found_with_valid_api_key(tmp_path: Path
     assert response.status_code == 404
 
 
+def test_api_config_reads_onboard_minimal_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("AINRF_API_KEY_HASHES", raising=False)
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps({"api_key_hashes": [hash_api_key("bootstrap-secret")]}),
+        encoding="utf-8",
+    )
+
+    config = ApiConfig.from_env(tmp_path)
+
+    assert config.verify_api_key("bootstrap-secret") is True
+    assert config.state_root == tmp_path
+
+
 def test_api_config_loads_default_container_profile_from_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

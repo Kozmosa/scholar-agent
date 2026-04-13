@@ -72,7 +72,24 @@ UV_CACHE_DIR=/tmp/uv-cache uv run ainrf container add --state-root .ainrf
 UV_CACHE_DIR=/tmp/uv-cache uv run ainrf --help
 ```
 
-### 3.2 API Key 配置（启动 API 必需）
+### 3.2 首次运行 Onboarding
+
+AINRF 默认使用当前工作目录下的 `./.ainrf/` 作为 state root；如果通过 `--state-root`
+显式指定，则改用指定目录。
+
+当目录内还不存在 `./.ainrf/config.json`，且也没有通过环境变量提供
+`AINRF_API_KEY_HASHES` 时，第一次执行 `ainrf serve` 会自动进入交互式 onboarding。
+如果希望显式执行同一流程，也可以直接运行：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run ainrf onboard
+```
+
+onboarding 至少会创建 `./.ainrf/config.json`。最小可用配置只需要包含
+`api_key_hashes`；在同一交互流程里，用户也可以选择顺手写入一个默认的 container
+profile，供后续容器连接配置复用。
+
+### 3.3 API Key 配置（启动 API 必需）
 
 API 中间件读取 `AINRF_API_KEY_HASHES`（SHA-256 哈希值，支持逗号分隔多个 key）。
 

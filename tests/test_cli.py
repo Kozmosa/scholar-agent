@@ -53,6 +53,13 @@ def test_help_shows_commands() -> None:
     assert "webui" not in result.stdout
 
 
+def test_help_shows_onboard_command() -> None:
+    result = runner.invoke(app, ["--help"])
+
+    assert result.exit_code == 0
+    assert "onboard" in result.stdout
+
+
 def test_version_outputs_package_version() -> None:
     result = runner.invoke(app, ["--version"])
 
