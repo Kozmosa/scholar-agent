@@ -22,21 +22,27 @@ function HealthStatusBar({ health, isLoading }: Props) {
     );
   }
 
-  const statusColor = health.api_status === 'ok' ? 'green' : health.api_status === 'degraded' ? 'yellow' : 'red';
+  const statusColor = health.status === 'ok' ? 'green' : 'yellow';
+  const sshOk = health.container_health?.ssh_ok ?? false;
+  const workspaceReady = health.container_health?.project_dir_writable ?? false;
 
   return (
-    <div className="flex items-center gap-4 p-2 rounded bg-gray-50 border border-gray-200">
+    <div className="flex flex-wrap items-center gap-4 p-2 rounded bg-gray-50 border border-gray-200">
       <div className="flex items-center gap-2">
-        <span className={`w-2 h-2 rounded-full ${statusColor === 'green' ? 'bg-green-500' : statusColor === 'yellow' ? 'bg-yellow-500' : 'bg-red-500'}`} />
-        <span className="text-sm">API: {health.api_status}</span>
+        <span className={`w-2 h-2 rounded-full ${statusColor === 'green' ? 'bg-green-500' : 'bg-yellow-500'}`} />
+        <span className="text-sm">API: {health.status}</span>
       </div>
       <div className="flex items-center gap-2">
-        <span className={`w-2 h-2 rounded-full ${health.ssh_available ? 'bg-green-500' : 'bg-red-500'}`} />
-        <span className="text-sm">SSH: {health.ssh_available ? 'Available' : 'Unavailable'}</span>
+        <span className={`w-2 h-2 rounded-full ${health.container_configured ? 'bg-green-500' : 'bg-gray-400'}`} />
+        <span className="text-sm">Container: {health.container_configured ? 'Configured' : 'Not configured'}</span>
       </div>
       <div className="flex items-center gap-2">
-        <span className={`w-2 h-2 rounded-full ${health.workspace_ready ? 'bg-green-500' : 'bg-yellow-500'}`} />
-        <span className="text-sm">Workspace: {health.workspace_ready ? 'Ready' : 'Not Ready'}</span>
+        <span className={`w-2 h-2 rounded-full ${sshOk ? 'bg-green-500' : 'bg-red-500'}`} />
+        <span className="text-sm">SSH: {sshOk ? 'Available' : 'Unavailable'}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className={`w-2 h-2 rounded-full ${workspaceReady ? 'bg-green-500' : 'bg-yellow-500'}`} />
+        <span className="text-sm">Workspace: {workspaceReady ? 'Writable' : 'Not ready'}</span>
       </div>
     </div>
   );

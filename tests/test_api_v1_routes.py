@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
 
 import httpx
@@ -33,19 +34,13 @@ async def test_health_routes_are_public(tmp_path: Path, path: str) -> None:
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("path", ["/tasks", "/v1/tasks"])
-async def test_tasks_routes_require_api_key(tmp_path: Path, path: str) -> None:
+async def test_tasks_route_module_is_removed(tmp_path: Path) -> None:
     async with make_client(tmp_path) as client:
-        response = await client.get(path)
-
-    assert response.status_code == 401
-
-
-@pytest.mark.anyio
-@pytest.mark.parametrize("path", ["/tasks", "/v1/tasks"])
-async def test_tasks_routes_accept_valid_api_key(tmp_path: Path, path: str) -> None:
-    async with make_client(tmp_path) as client:
-        response = await client.get(path, headers={"X-API-Key": "secret-key"})
+        response = await client.get("/openapi.json")
 
     assert response.status_code == 200
-    assert "items" in response.json()
+    payload = response.json()
+    assert "/tasks" not in payload["paths"]
+    assert "/v1/tasks" not in payload["paths"]
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("ainrf.api.routes.tasks")

@@ -9,10 +9,13 @@ source_repo: scholar-agent
 source_path: /home/xuyang/code/scholar-agent
 last_local_commit: workspace aggregate
 ---
-# 工件图谱架构：AI-Native Research Framework 的核心模型
+# 工件图谱架构（历史文档）
+
+> [!warning]
+> 本文档保留为历史架构蓝图。它记录的是早期 `artifact graph` 作为框架核心模型时的对象体系与层次拆分，不再是当前 next release 的主要阅读入口或实现约束。
 
 > [!abstract]
-> 如果没有统一工件模型，研究系统就会退化成"几个 skill + 一堆输出文件"。这份笔记定义框架中的一等对象、层间边界和状态转换，确保无论是 Mode 1 的调研发现还是 Mode 2 的从零深度复现，所有研究状态都在同一张图里。
+> 这份文档仍然适合用于理解 `PaperCard`、`ExperimentRun`、`ExplorationGraph`、`QualityAssessment` 等术语的来源，也能帮助回看项目曾经如何把研究状态组织成统一图谱。但当前项目已把 next release 收敛到 task-centric dashboard baseline，因此这里的完整图谱叙事应按历史设计理解。
 
 ## 一等工件
 

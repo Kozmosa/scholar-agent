@@ -1,52 +1,28 @@
 import type { ReactNode } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
 interface Props {
   children: ReactNode;
 }
 
 function Layout({ children }: Props) {
-  const location = useLocation();
-
-  const navItems = [
-    { path: '/', label: 'Dashboard' },
-    { path: '/tasks', label: 'Tasks' },
-  ];
-
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Header */}
+    <div className="min-h-screen bg-gray-50 text-gray-900">
       <header className="border-b border-gray-200 bg-white">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <Link to="/" className="text-lg font-bold text-[var(--accent)]">
-            Scholar Agent
-          </Link>
-          <nav className="flex gap-4">
-            {navItems.map((item) => (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={`px-3 py-1 rounded ${
-                  location.pathname === item.path
-                    ? 'bg-[var(--accent-bg)] text-[var(--accent)]'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+          <div className="space-y-1">
+            <Link to="/" className="text-lg font-semibold text-[var(--accent)]">
+              Scholar Agent
+            </Link>
+            <p className="text-sm text-gray-600">Minimal frontend shell aligned to backend health checks.</p>
+          </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 max-w-6xl mx-auto w-full">
-        {children}
-      </main>
+      <main className="mx-auto flex-1 w-full max-w-5xl">{children}</main>
 
-      {/* Footer */}
-      <footer className="border-t border-gray-200 py-4 text-center text-sm text-gray-500">
-        Scholar Agent Dashboard
+      <footer className="border-t border-gray-200 bg-white py-4 text-center text-sm text-gray-500">
+        Health-only UI during backend cleanup.
       </footer>
     </div>
   );

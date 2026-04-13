@@ -10,10 +10,13 @@ source_repo: scholar-agent
 source_path: /home/xuyang/code/scholar-agent
 last_local_commit: workspace aggregate
 ---
-# V1：双模式有界自治研究引擎
+# V1：双模式有界自治研究引擎（历史蓝图）
+
+> [!warning]
+> 本文档保留为历史蓝图。它描述的是早期将 Mode 1 / Mode 2 组织成完整双模式有界自治研究引擎的方案，不再代表当前 next release 的模式定义。
 
 > [!abstract]
-> V1 支持两种核心操作模式：调研发现（Mode 1）和深度复现（Mode 2）。系统在人类预设的合同边界内自主运行——人在纳入和计划阶段定义边界，agent 在边界内自治执行、全量归档。执行环境是隔离容器（SSH、GPU、root），每个研究项目是独立 git repo。
+> 这份文档仍然有助于理解旧版术语、工件目标和双模式工作流如何形成，但当前项目已经把 next release 的模式要求收缩为 `bounded discovery baseline` 与 `bounded reproduction baseline`。因此，本文档只应作为历史设计材料阅读，而不是当前 requirement。
 
 ## V1 目标
 
