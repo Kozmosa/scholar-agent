@@ -15,3 +15,17 @@ export interface SystemHealth {
   } | null;
   detail?: string | null;
 }
+
+export type TerminalSessionStatus = 'idle' | 'starting' | 'running' | 'stopping' | 'failed';
+
+export interface TerminalSession {
+  session_id: string | null;
+  provider: 'ttyd';
+  target_kind: 'daemon-host';
+  status: TerminalSessionStatus;
+  created_at: string | null;
+  started_at: string | null;
+  closed_at: string | null;
+  terminal_url: string | null;
+  detail: string | null;
+}
