@@ -109,7 +109,15 @@ export AINRF_API_KEY_HASHES=<hash1>,<hash2>
 
 ## 4. API 路由说明
 
-当前对外 API 表面包括：
+### 4.1 Terminal Bench MVP
+
+Terminal Bench MVP 依赖本机可执行的 `ttyd` 二进制；联调前请先确认：
+
+```bash
+ttyd --version
+```
+
+当前 runtime API 只暴露以下最小表面：
 
 - 公共健康检查路径：
   - `GET /health`
@@ -122,9 +130,7 @@ export AINRF_API_KEY_HASHES=<hash1>,<hash2>
   - `POST /v1/terminal/session`
   - `DELETE /v1/terminal/session`
 
-### 4.1 Terminal Bench MVP
-
-当前 terminal API 只控制单个 ttyd-backed browser terminal session：
+其中 terminal session API 只控制单个 ttyd-backed browser terminal session：
 
 - `GET /terminal/session`：读取当前终端 session 状态
 - `POST /terminal/session`：创建或刷新当前终端 session

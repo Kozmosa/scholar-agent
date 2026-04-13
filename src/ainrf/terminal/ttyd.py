@@ -48,16 +48,18 @@ def start_ttyd_session(
     shell_command: tuple[str, ...],
     working_directory: Path,
 ) -> TerminalSessionRecord:
+    working_directory.mkdir(parents=True, exist_ok=True)
+    normalized_working_directory = working_directory.resolve(strict=True)
     command = build_ttyd_command(
         host=host,
         port=port,
         credential=credential,
         shell_command=shell_command,
-        working_directory=working_directory,
+        working_directory=normalized_working_directory,
     )
     process = subprocess.Popen(
         command,
-        cwd=working_directory,
+        cwd=normalized_working_directory,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,

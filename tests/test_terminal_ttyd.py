@@ -93,6 +93,40 @@ def test_start_ttyd_session_launches_process_and_returns_running_record(
     assert session.pid == 4321
 
 
+def test_start_ttyd_session_creates_missing_working_directory(
+    tmp_path: Path, monkeypatch
+) -> None:
+    popen_calls: dict[str, object] = {}
+    working_directory = tmp_path / ".ainrf"
+
+    class DummyProcess:
+        pid = 4321
+
+    def fake_popen(*args, **kwargs):
+        popen_calls["args"] = args
+        popen_calls["kwargs"] = kwargs
+        return DummyProcess()
+
+    monkeypatch.setattr("ainrf.terminal.ttyd.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("ainrf.terminal.ttyd.uuid4", lambda: "session-1234")
+
+    assert working_directory.exists() is False
+
+    session = start_ttyd_session(
+        host="127.0.0.1",
+        port=7681,
+        credential="token:secret",
+        shell_command=("/bin/sh",),
+        working_directory=working_directory,
+    )
+
+    assert working_directory.is_dir()
+    assert getattr(popen_calls["args"][0], "working_directory") == working_directory.resolve()
+    assert popen_calls["kwargs"]["cwd"] == working_directory.resolve()
+    assert session.session_id == "session-1234"
+    assert session.status is TerminalSessionStatus.RUNNING
+
+
 def test_stop_ttyd_session_terminates_pid_and_returns_idle_record(monkeypatch) -> None:
     kill_calls: list[tuple[int, int]] = []
 
