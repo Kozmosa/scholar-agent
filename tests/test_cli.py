@@ -358,9 +358,39 @@ def test_onboard_state_root_preserves_existing_config_keys(
     assert payload["container_profiles"] == {"existing": {"host": "old", "user": "worker", "port": 22}}
 
 
+def test_onboard_command_writes_config(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        ["onboard", "--state-root", str(tmp_path)],
+        input="bootstrap-secret\nbootstrap-secret\nn\n",
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads((tmp_path / "config.json").read_text(encoding="utf-8"))
+    assert payload["api_key_hashes"] == [hash_api_key("bootstrap-secret")]
+
+
+def test_onboard_command_prompts_before_overwrite(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(json.dumps({"api_key_hashes": [hash_api_key("existing")]}), encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        ["onboard", "--state-root", str(tmp_path)],
+        input="n\n",
+    )
+
+    assert result.exit_code == 0
+    assert json.loads(config_path.read_text(encoding="utf-8"))["api_key_hashes"] == [
+        hash_api_key("existing")
+    ]
+
+
 def test_parse_ssh_command_supports_user_flag_and_inline_port() -> None:
     parsed = _parse_ssh_command("ssh -p2200 -l worker gpu-server-02")
 
     assert parsed.host == "gpu-server-02"
     assert parsed.user == "worker"
     assert parsed.port == 2200
+

@@ -9,7 +9,12 @@ from typing import Annotated
 import typer
 
 from ainrf import __version__
-from ainrf.onboarding import ensure_onboarded, load_runtime_config, save_runtime_config
+from ainrf.onboarding import (
+    ensure_onboarded,
+    load_runtime_config,
+    run_onboarding,
+    save_runtime_config,
+)
 from ainrf.server import run_server, run_server_daemon
 from ainrf.state import default_state_root
 
@@ -44,6 +49,16 @@ def main_callback(
     ] = False,
 ) -> None:
     _ = version
+
+
+@app.command()
+def onboard(
+    state_root: Annotated[
+        Path,
+        typer.Option(help="State root where AINRF config will be initialized."),
+    ] = default_state_root(),
+) -> None:
+    run_onboarding(state_root)
 
 
 @app.command()

@@ -85,6 +85,17 @@ def onboard_state_root(state_root: Path) -> Path:
     return config_path
 
 
+def run_onboarding(state_root: Path) -> Path | None:
+    config_path = config_path_for(state_root)
+    if config_path.exists() and not typer.confirm(
+        f"AINRF config already exists at `{config_path}`. Overwrite it?",
+        default=False,
+    ):
+        typer.echo("Keeping existing AINRF config.")
+        return None
+    return onboard_state_root(state_root)
+
+
 def ensure_onboarded(state_root: Path) -> Path:
     config_path = config_path_for(state_root)
     if config_path.exists():
