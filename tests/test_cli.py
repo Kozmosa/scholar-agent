@@ -21,6 +21,7 @@ def test_help_shows_commands() -> None:
     result = runner.invoke(app, ["--help"])
 
     assert result.exit_code == 0
+    assert "daemon-oriented runtime CLI" in result.stdout
     assert "serve" in result.stdout
     assert "container" in result.stdout
     assert "│ run" not in result.stdout

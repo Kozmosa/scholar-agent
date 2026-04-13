@@ -25,11 +25,14 @@ function DashboardPage() {
             Available endpoints: <code className="rounded bg-gray-100 px-1.5 py-0.5">/health</code>{' '}
             and <code className="rounded bg-gray-100 px-1.5 py-0.5">/v1/health</code>.
           </p>
+          <p className="text-sm text-gray-600">
+            State root: <code className="rounded bg-gray-100 px-1.5 py-0.5">{healthQuery.data?.state_root ?? '.ainrf'}</code>
+          </p>
+          {healthQuery.data?.detail ? (
+            <p className="text-sm text-yellow-700">Detail: {healthQuery.data.detail}</p>
+          ) : null}
         </div>
         <HealthStatusBar health={healthQuery.data} isLoading={healthQuery.isLoading} />
-        {healthQuery.data?.message ? (
-          <p className="text-sm text-gray-600">Message: {healthQuery.data.message}</p>
-        ) : null}
       </section>
     </div>
   );

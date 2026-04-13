@@ -17,7 +17,7 @@ from ainrf.state import default_state_root
 
 app = typer.Typer(
     add_completion=False,
-    help="AINRF orchestration CLI scaffold.",
+    help="AINRF daemon-oriented runtime CLI.",
     no_args_is_help=True,
 )
 
