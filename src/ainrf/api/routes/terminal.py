@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request
 
 from ainrf.api.schemas import TerminalSessionResponse, TerminalSessionStatus
 from ainrf.terminal.models import TerminalSessionRecord
+from ainrf.terminal.ttyd import start_ttyd_session, stop_ttyd_session
 
 router = APIRouter(prefix="/terminal", tags=["terminal"])
 
@@ -34,14 +35,6 @@ def get_terminal_session(app: object) -> TerminalSessionRecord:
     return session
 
 
-def start_terminal_session(app: object) -> TerminalSessionRecord:
-    return get_terminal_session(app)
-
-
-def stop_terminal_session(app: object) -> None:
-    app.state.terminal_session = None
-
-
 @router.get("/session", response_model=TerminalSessionResponse)
 async def read_terminal_session(request: Request) -> TerminalSessionResponse:
     session = get_terminal_session(request.app)
@@ -50,16 +43,21 @@ async def read_terminal_session(request: Request) -> TerminalSessionResponse:
 
 @router.post("/session", response_model=TerminalSessionResponse)
 async def create_terminal_session(request: Request) -> TerminalSessionResponse:
-    session = start_terminal_session(request.app)
+    config = request.app.state.api_config
+    api_key = request.headers.get("X-API-Key", "")
+    session = start_ttyd_session(
+        host=config.terminal_host,
+        port=config.terminal_port,
+        credential=f"terminal:{api_key}",
+        shell_command=config.terminal_command,
+        working_directory=config.state_root,
+    )
     request.app.state.terminal_session = session
     return TerminalSessionResponse.model_validate(_serialize_session(session))
 
 
 @router.delete("/session", response_model=TerminalSessionResponse)
 async def delete_terminal_session(request: Request) -> TerminalSessionResponse:
-    stop_terminal_session(request.app)
-    return TerminalSessionResponse(
-        provider="ttyd",
-        target_kind="daemon-host",
-        status=TerminalSessionStatus.IDLE,
-    )
+    stopped = stop_ttyd_session(getattr(request.app.state, "terminal_session", None))
+    request.app.state.terminal_session = stopped
+    return TerminalSessionResponse.model_validate(_serialize_session(stopped))
