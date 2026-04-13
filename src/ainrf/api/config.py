@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
-from typing import cast
-import os
+from typing import Any, cast
 
 from ainrf.execution import ContainerConfig
 from ainrf.state import default_state_root
@@ -26,11 +25,6 @@ class ApiConfig:
     api_key_hashes: frozenset[str]
     state_root: Path
     container_config: ContainerConfig | None = None
-    gate_timeout_seconds: int = 3600
-    gate_sweep_interval_seconds: int = 30
-    webhook_timeout_seconds: float = 10.0
-    sse_keepalive_seconds: float = 15.0
-    sse_poll_interval_seconds: float = 0.5
 
     @classmethod
     def from_env(cls, state_root: Path | None = None) -> ApiConfig:
@@ -38,17 +32,13 @@ class ApiConfig:
         env_hashes = os.environ.get("AINRF_API_KEY_HASHES")
         api_key_hashes = _parse_api_key_hashes(env_hashes) if env_hashes else frozenset()
 
-        if not api_key_hashes:
-            config_path = resolved_state_root / "config.json"
-            if config_path.exists():
-                payload = json.loads(config_path.read_text(encoding="utf-8"))
-                api_key_hashes = cls._parse_config_hashes(payload)
-        else:
-            payload = None
+        payload: object | None = None
+        config_path = resolved_state_root / "config.json"
+        if config_path.exists():
+            payload = json.loads(config_path.read_text(encoding="utf-8"))
 
-        if "payload" not in locals():
-            config_path = resolved_state_root / "config.json"
-            payload = json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else None
+        if not api_key_hashes:
+            api_key_hashes = cls._parse_config_hashes(payload)
 
         if not api_key_hashes:
             raise ValueError("AINRF API key hashes are not configured")
@@ -58,21 +48,10 @@ class ApiConfig:
         except ValueError:
             container_config = cls._parse_container_config(payload)
 
-        gate_timeout_seconds = int(os.environ.get("AINRF_GATE_TIMEOUT_SECONDS", "3600"))
-        gate_sweep_interval_seconds = int(os.environ.get("AINRF_GATE_SWEEP_INTERVAL_SECONDS", "30"))
-        webhook_timeout_seconds = float(os.environ.get("AINRF_WEBHOOK_TIMEOUT_SECONDS", "10"))
-        sse_keepalive_seconds = float(os.environ.get("AINRF_SSE_KEEPALIVE_SECONDS", "15"))
-        sse_poll_interval_seconds = float(os.environ.get("AINRF_SSE_POLL_INTERVAL_SECONDS", "0.5"))
-
         return cls(
             api_key_hashes=api_key_hashes,
             state_root=resolved_state_root,
             container_config=container_config,
-            gate_timeout_seconds=gate_timeout_seconds,
-            gate_sweep_interval_seconds=gate_sweep_interval_seconds,
-            webhook_timeout_seconds=webhook_timeout_seconds,
-            sse_keepalive_seconds=sse_keepalive_seconds,
-            sse_poll_interval_seconds=sse_poll_interval_seconds,
         )
 
     @staticmethod

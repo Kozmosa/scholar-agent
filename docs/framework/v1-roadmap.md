@@ -11,13 +11,16 @@ source_repo: scholar-agent
 source_path: /home/xuyang/code/scholar-agent
 last_local_commit: workspace aggregate
 ---
-# AINRF V1 Roadmap：实现路线图
+# AINRF V1 Roadmap（历史文档）
+
+> [!warning]
+> 本文档保留为历史路线图。它记录的是早期 `AINRF v1` orchestrator 方案的阶段拆分与交付想象，不再代表当前项目的优先级排序或 next release 执行路径。
 
 > [!abstract]
-> 分阶段实现计划，每阶段有明确交付物和可测试标准。总体原则：infrastructure first → Mode 2（更可控）→ Mode 1（更开放）。基础设施阶段（P0-P6）可大量并行；Mode 2（P8）整合全部基础设施；Mode 1（P9）在 Mode 2 之上叠加探索能力。
+> 这份路线图曾用于按 P0-P9 组织 `AINRF v1` 的实现切片，并把基础设施、服务层、编排层和模式集成串成一条完整主线。当前项目已经转向单用户优先、task-centric、dashboard-first 的 realignment，因此本文档应只作为历史背景保留，而不应继续充当当前规划入口。
 
 > [!note]
-> WebUI-v1 作为独立工作台轨道单独规划，不并入 P0-P9 主线；详见 [[framework/webui-v1-rfc]] 与 [[framework/webui-v1-roadmap]]。
+> 与旧版 P-series `LLM-Working` 散档对应的遗留继承说明已统一收拢到 [[LLM-Working/legacy-v1-summary]]；以下阶段描述仅作为历史路线图背景，不再指向分散实施文档。
 
 ## Overview
 
@@ -118,7 +121,7 @@ gantt
 > MinerU Cloud API 是论文 PDF → Markdown 的唯一入口。本阶段交付独立的 API 客户端，不依赖其他模块。
 
 > [!note]
-> 结合当前仓库已落地的 CLI 与 `execution` 模块骨架，P2 的具体实施规划见 [[LLM-Working/p2-mineru-implementation-plan]]。
+> 结合当前仓库已落地的 CLI 与 `execution` 模块骨架，P2 的具体实施规划见 [[LLM-Working/legacy-v1-summary]]。
 
 **交付物：**
 
@@ -151,7 +154,7 @@ gantt
 > [!info]
 > 工件模型是整个框架的核心数据结构（详见 [[framework/artifact-graph-architecture]]）。本阶段把设计文档中的一等工件转化为可运行的 Pydantic models 和状态机。
 >
-> 结合当前仓库已落地的 `execution` / `parsing` 模块边界与本地状态约束，P3 的具体实施规划见 [[LLM-Working/p3-artifact-state-store-implementation-plan]]。
+> 结合当前仓库已落地的 `execution` / `parsing` 模块边界与本地状态约束，P3 的具体实施规划见 [[LLM-Working/legacy-v1-summary]]。
 
 **交付物：**
 
@@ -184,7 +187,7 @@ gantt
 > [!info]
 > FastAPI 服务是框架的对外接口层（详见 [[framework/v1-rfc]]）。本阶段交付 API 骨架、认证和所有端点的 request/response models。
 >
-> 结合当前仓库已落地的 `execution`、`artifacts`、`state` 模块边界与本地 daemon 约束，P4 的具体实施规划见 [[LLM-Working/p4-fastapi-service-auth-implementation-plan]]。
+> 结合当前仓库已落地的 `execution`、`artifacts`、`state` 模块边界与本地 daemon 约束，P4 的具体实施规划见 [[LLM-Working/legacy-v1-summary]]。
 
 **交付物：**
 
@@ -223,7 +226,7 @@ gantt
 > [!info]
 > 人工关卡是有界自治的核心机制（详见 [[framework/ai-native-research-framework]] 和 [[framework/v1-dual-mode-research-engine]]）。V1 保留两个显式关卡：纳入关卡和计划关卡。
 >
-> 结合当前仓库已落地的 P4 task-scoped 路由、`HumanGate` artifact 与本地 state read model，P5 的具体实施规划见 [[LLM-Working/p5-human-gate-webhook-implementation-plan]]。
+> 结合当前仓库已落地的 P4 task-scoped 路由、`HumanGate` artifact 与本地 state read model，P5 的具体实施规划见 [[LLM-Working/legacy-v1-summary]]。
 
 **交付物：**
 
@@ -258,7 +261,7 @@ gantt
 > [!info]
 > Server-Sent Events 提供任务执行的实时可观测性。客户端（CLI、Web UI、webhook consumer）通过 SSE 订阅任务事件流。
 >
-> 结合当前仓库已落地的 P4 task-scoped 路由、P5 Human Gate 生命周期与本地 JSON state 约束，P6 的具体实施规划见 [[LLM-Working/p6-sse-streaming-implementation-plan]]。
+> 结合当前仓库已落地的 P4 task-scoped 路由、P5 Human Gate 生命周期与本地 JSON state 约束，P6 的具体实施规划见 [[LLM-Working/legacy-v1-summary]]。
 
 **交付物：**
 

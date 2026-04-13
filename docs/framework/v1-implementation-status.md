@@ -11,14 +11,17 @@ source_repo: scholar-agent
 source_path: /home/xuyang/code/scholar-agent
 last_local_commit: workspace aggregate
 ---
-# AINRF V1 实现概要
+# AINRF V1 实现概要（历史文档）
+
+> [!warning]
+> 本文档保留为历史状态记录。它用于描述早期 `AINRF v1` / WebUI-v1 叙事下的阶段划分、实现映射与当时的完成度判断，不再代表当前项目的产品方向、requirements 或 next release 评估口径。
 
 > [!abstract]
-> 对齐 [[framework/v1-roadmap]] 与 [[framework/v1-rfc]] 的阶段定义，逐阶段（P0-P9 + WebUI W0-W5）标注已实现 / 未实现状态，并列出与设计文档的差异。
+> 这份文档原本用于对齐 [[framework/v1-roadmap]] 与 [[framework/v1-rfc]] 的阶段定义，逐阶段标注当时认定的已实现 / 未实现状态，并列出与设计文档的差异。随着项目从旧版 orchestrator / WebUI-v1 路线收缩为 dashboard-first realignment，这类阶段统计只应按历史材料理解，而不是继续被视为当前主线进度表。
 
-## 总览
+## 历史总览
 
-| 阶段 | 名称 | 状态 | 实现提交 | 测试数 | 关键差异 |
+| 历史阶段 | 历史名称 | 当时记录状态 | 当时关联实现提交 | 当时记录测试数 | 历史差异备注 |
 |------|------|------|----------|--------|----------|
 | P0 | Project Scaffold | **已完成** | `98118f0` | 11 | 无重大差异 |
 | P1 | SSH Executor | **已完成** | `ab728fc` | 11 | 无重大差异 |
@@ -32,13 +35,13 @@ last_local_commit: workspace aggregate
 | P9 | Mode 1 Research Discovery | **已完成** | workspace aggregate | 2 | 在 fallback 运行时完成 discovery 计划、图谱/claim 落库与终止+报告闭环 |
 | WebUI W0-W3 | 工作台前端 | **W0-W3 已完成** | `31c1df1` `7bb33b2` `08c5bfb` | 23 | W4/W5 未实现 |
 
-**代码统计：** `src/ainrf/` 包含 54 个 Python 文件；测试 111 个用例（17 个测试文件）。
+**归档说明：** 上表保留的是当时用于回看各阶段实现落点的记录方式，包括阶段状态、关联提交与当时引用过的测试数量。它的作用是帮助读者理解旧版 roadmap 叙事下的实现切片，而不是作为当前 realignment 阶段的活跃进度板或发布门槛。
 
 ---
 
-## P0: Project Scaffold — 已完成
+## P0: Project Scaffold — 历史记录中标为已完成
 
-**roadmap 要求：**
+**历史 roadmap 要求：**
 - `src/ainrf/` 包结构、`__init__.py`、`__main__.py`、`cli.py` ✅
 - `pyproject.toml` 更新：ainrf 入口点、基础依赖 ✅
 - CLI 入口：typer，支持 `--help`、`--version`、`serve`、`run` ✅
@@ -48,16 +51,18 @@ last_local_commit: workspace aggregate
 
 **差异：** 无重大差异。CLI 框架选择了 typer（roadmap 建议）。后续阶段新增了 `webui` 子命令（超出 P0 scope 但合理）。
 
-**关键文件：**
+**历史摘记：** 当时的 P0 记录主要对应 CLI scaffolding、日志与基础测试框架已经落地；下列条目保留的是那一轮实现盘点时引用过的范围。
+
+**当时记录的实现范围：**
 - `src/ainrf/cli.py` — CLI 入口，含 `serve`、`run`、`webui` 三个子命令
 - `src/ainrf/__init__.py` — 版本号
 - `src/ainrf/logging.py` — structlog 配置
 
 ---
 
-## P1: SSH Executor & Container Bootstrap — 已完成
+## P1: SSH Executor & Container Bootstrap — 历史记录中标为已完成
 
-**roadmap 要求 vs 实现：**
+**历史 roadmap 要求 vs 当时实现：**
 
 | 交付物 | 状态 | 说明 |
 |--------|------|------|
@@ -71,16 +76,18 @@ last_local_commit: workspace aggregate
 
 **差异：** 无重大差异。实现完整覆盖了 roadmap 要求。
 
-**关键文件：**
+**历史摘记：** 当时的 P1 记录把 SSH 执行器视为一项已闭合的基础设施能力；下面列的是那次对照 roadmap 时引用的实现落点。
+
+**当时记录的实现范围：**
 - `src/ainrf/execution/ssh.py` — SSHExecutor (514 行)
 - `src/ainrf/execution/models.py` — ContainerConfig, CommandResult, ContainerHealth
 - `src/ainrf/execution/errors.py` — 错误类型层次
 
 ---
 
-## P2: MinerU Client — 已完成
+## P2: MinerU Client — 历史记录中标为已完成
 
-**roadmap 要求 vs 实现：**
+**历史 roadmap 要求 vs 当时实现：**
 
 | 交付物 | 状态 | 说明 |
 |--------|------|------|
@@ -96,7 +103,9 @@ last_local_commit: workspace aggregate
 - roadmap 写的是 `submit_pdf(pdf_path) → task_id`，实际实现为 `parse_pdf(request) → ParseResult | ParseFailure`，API 更高层——一次调用完成提交+轮询+解析。符合设计意图但接口粒度不同。
 - 对接了 MinerU batch v4 API（而非简单的单文件 API），实现更完整。
 
-**关键文件：**
+**历史摘记：** 当时的 P2 盘点把 MinerU 集成视为相对完整的解析链路，以下列表仅保留那一版实现说明中引用过的模块位置。
+
+**当时记录的实现范围：**
 - `src/ainrf/parsing/mineru.py` — MinerUClient (725 行)
 - `src/ainrf/parsing/cache.py` — ParseCache
 - `src/ainrf/parsing/contracts.py` — PaperParser Protocol
@@ -104,9 +113,9 @@ last_local_commit: workspace aggregate
 
 ---
 
-## P3: Artifact Model & State Store — 已完成
+## P3: Artifact Model & State Store — 历史记录中标为已完成
 
-**roadmap 要求 vs 实现：**
+**历史 roadmap 要求 vs 当时实现：**
 
 | 交付物 | 状态 | 说明 |
 |--------|------|------|
@@ -122,7 +131,9 @@ last_local_commit: workspace aggregate
 - **缺少 `AgentAdapter` 工件类型**：roadmap P3 列出的一等工件包含 `AgentAdapter`，但 `ArtifactType` 枚举中没有。这是因为 `AgentAdapter` 在实际实现中作为代码抽象（ABC）而非持久化工件存在——设计合理，但与 roadmap 文字有出入。
 - 已实现 9 个工件类型：PaperCard, ReproductionTask, ExperimentRun, EvidenceRecord, Claim, ExplorationGraph, QualityAssessment, WorkspaceManifest, HumanGate。
 
-**关键文件：**
+**历史摘记：** 当时的 P3 记录重点在于工件模型与状态持久化是否已形成闭环；以下路径只是该阶段文档曾引用的代码锚点。
+
+**当时记录的实现范围：**
 - `src/ainrf/artifacts/models.py` — 全部工件 Pydantic models (246 行)
 - `src/ainrf/artifacts/transitions.py` — 状态转换表
 - `src/ainrf/state/store.py` — JsonStateStore (330 行)
@@ -130,9 +141,9 @@ last_local_commit: workspace aggregate
 
 ---
 
-## P4: FastAPI Service & Auth — 已完成
+## P4: FastAPI Service & Auth — 历史记录中标为已完成
 
-**roadmap 要求 vs 实现：**
+**历史 roadmap 要求 vs 当时实现：**
 
 | 交付物 | 状态 | 说明 |
 |--------|------|------|
@@ -152,7 +163,9 @@ last_local_commit: workspace aggregate
 - ✅ **`TaskMode` 命名已完成迁移**：实现现使用 `research_discovery | deep_reproduction`；同时保留 `literature_exploration` 兼容解析，避免旧请求与历史任务回放中断。
 - 多 key 管理：✅ 支持（逗号分隔的 hash 列表）。
 
-**关键文件：**
+**历史摘记：** 当时的 P4 盘点围绕 API 服务骨架、认证和任务路由是否已经成形；下面保留的是彼时用来对照 RFC 的代码位置。
+
+**当时记录的实现范围：**
 - `src/ainrf/api/app.py` — create_app() + lifespan
 - `src/ainrf/api/routes/tasks.py` — 全部任务端点 (467 行)
 - `src/ainrf/api/schemas.py` — request/response models (233 行)
@@ -162,9 +175,9 @@ last_local_commit: workspace aggregate
 
 ---
 
-## P5: Human Gate & Webhook — 已完成
+## P5: Human Gate & Webhook — 历史记录中标为已完成
 
-**roadmap 要求 vs 实现：**
+**历史 roadmap 要求 vs 当时实现：**
 
 | 交付物 | 状态 | 说明 |
 |--------|------|------|
@@ -181,16 +194,18 @@ last_local_commit: workspace aggregate
 
 **差异：** 无重大差异。实现完整度高。
 
-**关键文件：**
+**历史摘记：** 当时的 P5 记录把人工关卡与 webhook 机制视为一条已经补齐的运行时支线；以下位置只是历史说明里引用过的实现入口。
+
+**当时记录的实现范围：**
 - `src/ainrf/gates/manager.py` — HumanGateManager + WebhookDispatcher
 - `src/ainrf/gates/models.py` — GateWebhookPayload, IntakeGatePayload, PlanApprovalGatePayload
 - `src/ainrf/runtime/secrets.py` — WebhookSecretStore
 
 ---
 
-## P6: SSE Streaming — 已完成
+## P6: SSE Streaming — 历史记录中标为已完成
 
-**roadmap 要求 vs 实现：**
+**历史 roadmap 要求 vs 当时实现：**
 
 | 交付物 | 状态 | 说明 |
 |--------|------|------|
@@ -206,7 +221,9 @@ last_local_commit: workspace aggregate
 - ⚠️ **`log.*` 事件未发射**：定义了 `TaskEventCategory.LOG`，但 TaskEngine 和 GateManager 中没有代码发射 `log.info` / `log.warning` / `log.error` 事件。这是一个功能缺口——日志事件只在 RFC 中描述但未实现。
 - ⚠️ **`experiment.*` 事件未发射**：roadmap 提到 `experiment.started` / `experiment.completed`，这些属于 P8 集成范畴，P6 本身不需要实现。
 
-**关键文件：**
+**历史摘记：** 当时的 P6 盘点主要确认事件流与持久化链路已经具备；下面保留的是用于回看该实现切面的代码锚点。
+
+**当时记录的实现范围：**
 - `src/ainrf/events/store.py` — JsonlTaskEventStore（append-only JSONL）
 - `src/ainrf/events/service.py` — TaskEventService
 - `src/ainrf/events/models.py` — TaskEvent, TaskEventCategory
@@ -214,9 +231,9 @@ last_local_commit: workspace aggregate
 
 ---
 
-## P7: Agent Adapter & Task Engine — 部分完成
+## P7: Agent Adapter & Task Engine — 历史记录中标为部分完成
 
-**roadmap 要求 vs 实现：**
+**历史 roadmap 要求 vs 当时实现：**
 
 | 交付物 | 状态 | 说明 |
 |--------|------|------|
@@ -240,7 +257,9 @@ last_local_commit: workspace aggregate
 3. **仅支持 Mode 2**：`engine.py:56-57` 明确写了 `mode_not_implemented` 对 Mode 1 直接 fail。
 4. **`run` 子命令可用但无真实效果**：`ainrf run --once` 可以拉取 task 并执行 planning→executing 流程，但因 Adapter 为 fallback，产出均为占位数据。
 
-**关键文件：**
+**历史摘记：** 当时的 P7 记录反映的是“编排器骨架已出现，但真实 SDK 集成仍不完整”的阶段性判断；以下文件路径只是那次实现盘点时使用的对照入口。
+
+**当时记录的实现范围：**
 - `src/ainrf/agents/base.py` — AgentAdapter ABC
 - `src/ainrf/agents/claude_code.py` — ClaudeCodeAdapter + fallback runner (231 行)
 - `src/ainrf/engine/engine.py` — TaskEngine (490 行)
@@ -248,13 +267,13 @@ last_local_commit: workspace aggregate
 
 ---
 
-## P8: Mode 2 Deep Reproduction Pipeline — 已完成
+## P8: Mode 2 Deep Reproduction Pipeline — 历史记录中标为已完成
 
-**roadmap 要求：** 端到端深度复现——论文解析 → PaperCard → 复现计划 → 从零实现 → 实验执行 → 偏差分析 → QualityAssessment。
+**历史 roadmap 要求：** 端到端深度复现——论文解析 → PaperCard → 复现计划 → 从零实现 → 实验执行 → 偏差分析 → QualityAssessment。
 
-**当前状态：** 已完成（fallback 运行时）。TaskEngine 现在可消费完整 P8 原子步骤并形成工件闭环；ClaudeCodeAdapter 在无 SDK 时通过 fallback 计划与 step 结果继续驱动链路。
+**当时记录状态：** 已完成（fallback 运行时）。TaskEngine 当时已可消费完整 P8 原子步骤并形成工件闭环；ClaudeCodeAdapter 在无 SDK 时通过 fallback 计划与 step 结果继续驱动链路。
 
-**已完成交付物：**
+**当时被视为已落地的能力切面：**
 - [x] 8-step 原子任务计划（`analyze_method` → `generate_quality_assessment`）
 - [x] `run_baseline` / `run_full_experiment` 产出 `ExperimentRun` 工件与 `experiment.*` 事件
 - [x] 偏差阈值检测与 `EvidenceRecord(type=DEVIATION_ANALYSIS)` 落库
@@ -262,18 +281,18 @@ last_local_commit: workspace aggregate
 - [x] 任务完成时自动汇总 `QualityAssessment`（三维评分 + evidence 关联）
 - [x] 核心单测覆盖（`tests/test_task_engine.py` + `tests/test_claude_code_adapter.py`）
 
-**边界与后续增强（非阻塞 P8 完成）：**
+**历史边界说明：** 下面这些项目只是当时文档附带记录的未完成项或后续设想，保留它们是为了说明旧版叙事中的限制，不构成当前 cleanup-first realignment 的待办列表。
 - [ ] SDK 真实语义增强：用真实 `claude_code_sdk` prompt 与结构化 parser 替换 fallback 占位结果
 - [ ] 容器工作区初始化（遵循 [[framework/container-workspace-protocol]]）
 - [ ] 真实容器 + API key 的端到端集成 smoke
 
 ---
 
-## P9: Mode 1 Research Discovery Pipeline — 已完成
+## P9: Mode 1 Research Discovery Pipeline — 历史记录中标为已完成
 
-**roadmap 要求：** 从种子材料出发的递归调研发现——需求澄清 → 文献扩展 → 图谱更新 → idea 发现 → 终止控制 → 调研报告。
+**历史 roadmap 要求：** 从种子材料出发的递归调研发现——需求澄清 → 文献扩展 → 图谱更新 → idea 发现 → 终止控制 → 调研报告。
 
-**当前状态：** 已实现 Mode 1 可运行闭环（含排序/递归控制，SDK 路径可选）：
+**当时记录状态：** 已实现 Mode 1 可运行闭环（含排序/递归控制，SDK 路径可选）：
 - [x] TaskEngine 对 `research_discovery` 不再 fail-fast，进入 planning/executing 正常路径
 - [x] planning 阶段创建/更新 `ExplorationGraph` 并走计划关卡
 - [x] 执行阶段消费 discovery 原子步骤并更新图谱（visited/queued/pruned/depth）
@@ -285,15 +304,15 @@ last_local_commit: workspace aggregate
 - [x] fallback runner 提供 Mode 1 原子步骤与结构化 `step_updates`
 - [x] 单测覆盖：`tests/test_task_engine.py`（基础闭环 + 排序/递归扩展）、`tests/test_claude_code_adapter.py`（含可选真实运行时 smoke）
 
-**边界与后续增强（非阻塞 P9 完成）：**
+**历史边界说明：** 下列条目保留的是当时写在文档里的延伸方向，用来帮助读者理解旧实现仍有哪些限制；它们不是当前文档要推动执行的 active backlog。
 - [ ] 真实 `claude_code_sdk` 语义覆盖面继续扩展（当前仍保留 fallback 降级路径）
 - [ ] 增加 Mode 1 专属 webhook payload 字段（当前沿用通用 plan payload）
 
 ---
 
-## WebUI 独立轨道
+## WebUI 历史独立轨道
 
-| 阶段 | 名称 | 状态 | 提交 |
+| 历史阶段 | 历史名称 | 当时记录状态 | 当时关联提交 |
 |------|------|------|------|
 | W0 | WebUI RFC & IA | ✅ | `31c1df1` |
 | W1 | App Shell & API Client | ✅ | `31c1df1` |
@@ -302,8 +321,9 @@ last_local_commit: workspace aggregate
 | W4 | Mode Mock Panels | **未实现** | — |
 | W5 | Validation & Docs | **未实现** | — |
 
-**已实现能力：**
-- Gradio App Shell + `ainrf webui` 启动入口
+**归档说明：** 这一节只用于回顾 WebUI-v1 曾经推进到什么程度，不表示这些界面、入口或交互仍然构成当前 runtime / frontend surface。
+
+**当时文档归纳过的已实现界面能力：**
 - API 连通性检测 + 健康状态展示
 - AinrfApiClient typed 封装（create_task, get_task, list_tasks, approve, reject, cancel, list_events, health）
 - Project List / Detail 两级视图
@@ -312,7 +332,7 @@ last_local_commit: workspace aggregate
 - Run Detail 页面（gate 状态、approve/reject 操作、artifact 摘要、事件时间线）
 - SSE 优先 + 轮询降级的事件观察
 
-**W4/W5 缺口：**
+**历史缺口摘记：** 下列条目保留的是旧 WebUI 轨道在文档里留下的未完成点，目的是说明该分支当时停在哪里，而不是形成现阶段待执行事项。
 - [ ] Mode 1 / Mode 2 interactive mock 面板
 - [ ] mock data adapter
 - [ ] smoke test coverage
@@ -320,31 +340,33 @@ last_local_commit: workspace aggregate
 
 ---
 
-## 跨阶段差异汇总
+## 历史差异汇总
 
-| 差异项 | 涉及阶段 | 详情 | 严重程度 |
+| 差异项 | 涉及阶段 | 详情 | 历史影响判断 |
 |--------|----------|------|----------|
-| Mode 1 枚举命名 | P4, RFC | RFC 与代码均使用 `research_discovery`，并兼容 `literature_exploration` 旧值 | 已解决 |
-| API 路径无版本前缀 | P4 | RFC 建议 `/v1/`，实际为 `/tasks` | 低 — 可后续添加 |
-| AgentAdapter 工件类型缺失 | P3 | roadmap 列出但未实现为持久化工件 | 低 — 设计合理 |
-| CC SDK 未真实集成 | P7, P9 | 仍以 fallback 为主，SDK 真实语义待增强 | 中 — 主要影响生产质量与策略效果 |
-| AgentAdapter 接口签名 | P7, RFC | RFC 单方法 `execute_task()`；实现为 `plan_reproduction()` + `execute_step()` | 中 — 接口更细但不同 |
-| log.* 事件未发射 | P6 | 定义了 category 但无代码发射 | 低 — 可后续补充 |
-| prompt 字段缺失 | P4 | RFC task schema 有 `prompt` 对象；API schema 未包含 | 中 — Mode 1 依赖 |
+| Mode 1 枚举命名 | P4, RFC | RFC 与代码均使用 `research_discovery`，并兼容 `literature_exploration` 旧值 | 已在当时实现中收敛 |
+| API 路径无版本前缀 | P4 | RFC 建议 `/v1/`，实际为 `/tasks` | 当时记为低优先级偏差 |
+| AgentAdapter 工件类型缺失 | P3 | roadmap 列出但未实现为持久化工件 | 当时记为设计可接受偏差 |
+| CC SDK 未真实集成 | P7, P9 | 仍以 fallback 为主，SDK 真实语义待增强 | 当时记为影响运行质量的主要限制 |
+| AgentAdapter 接口签名 | P7, RFC | RFC 单方法 `execute_task()`；实现为 `plan_reproduction()` + `execute_step()` | 当时记为接口层差异 |
+| log.* 事件未发射 | P6 | 定义了 category 但无代码发射 | 当时记为较小缺口 |
+| prompt 字段缺失 | P4 | RFC task schema 有 `prompt` 对象；API schema 未包含 | 当时记为中等缺口 |
 
 ---
 
-## 验证方式
+## 历史验证记录口径
 
+> [!note]
+> 以下命令块保留的是编写该状态文档时采用过的一组核对示例，用来说明作者当时如何抽样检查实现、CLI 与静态检查覆盖面。它只是一份历史验证口径快照，不代表 cleanup-first realignment 之后仍在沿用的现行发布检查单或操作指南。
 ```bash
-# 运行全部 111 个测试
+# 当时会跑的整体验证示例
 uv run pytest
 
-# 检查 CLI 入口
+# 当时用来确认 CLI 外壳仍可响应的示例
 uv run ainrf --version
 uv run ainrf --help
 
-# 检查 lint
+# 当时引用过的静态检查示例
 uv run ruff check src/ainrf/
 uv run ruff format --check src/ainrf/
 ```

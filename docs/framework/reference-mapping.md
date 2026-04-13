@@ -9,10 +9,13 @@ source_repo: scholar-agent
 source_path: /home/xuyang/code/scholar-agent
 last_local_commit: workspace aggregate
 ---
-# 参考项目到框架映射
+# 参考项目到框架映射（历史文档）
+
+> [!warning]
+> 本文档保留为历史映射材料。它总结的是项目早期如何把外部参考仓库吸收到 `AI-Native Research Framework` 蓝图中，不再是当前文档体系的主阅读入口。
 
 > [!abstract]
-> 这份映射笔记回答一个实际问题：现有调研项目里，哪些能力应该被吸收到 AI-Native Research Framework，哪些只适合作为启发而不适合直接复制。它的作用不是重新评分，而是把参考项目转换成架构决策。
+> 这份映射笔记仍然有助于理解旧版框架叙事为何吸收了平台层、控制层、能力层、编排层和工作台等不同来源，但当前项目已经不再以这套整合后的框架蓝图作为 next release 主路径。因此，本文档应视为设计追溯材料，而不是当前 requirement。
 
 ## 总览结论
 

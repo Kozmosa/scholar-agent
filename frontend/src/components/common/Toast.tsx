@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext, type ReactNode } from 'react';
+import { useState, useEffect, createContext, type ReactNode } from 'react';
 
 type ToastType = 'success' | 'error' | 'warning' | 'info';
 
@@ -13,14 +13,6 @@ interface ToastContextValue {
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
-
-export function useToast() {
-  const context = useContext(ToastContext);
-  if (!context) {
-    throw new Error('useToast must be used within ToastProvider');
-  }
-  return context;
-}
 
 interface ProviderProps {
   children: ReactNode;
@@ -41,7 +33,6 @@ export function ToastProvider({ children }: ProviderProps) {
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
-      {/* Toast Container */}
       <div className="fixed bottom-4 right-4 z-50 space-y-2">
         {toasts.map((toast) => (
           <ToastItem key={toast.id} toast={toast} onClose={() => removeToast(toast.id)} />
@@ -74,7 +65,7 @@ function ToastItem({ toast, onClose }: ItemProps) {
       <div className="flex items-center gap-2">
         <span className="text-sm">{toast.message}</span>
         <button onClick={onClose} className="ml-2 text-sm opacity-50 hover:opacity-100">
-          ✕
+          ×
         </button>
       </div>
     </div>

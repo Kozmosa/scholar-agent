@@ -3,7 +3,6 @@ from __future__ import annotations
 from fastapi import APIRouter, Request, status
 from fastapi.responses import JSONResponse
 
-from ainrf.api.dependencies import get_api_config
 from ainrf.api.schemas import ApiStatus, HealthResponse
 from ainrf.execution import SSHExecutor
 
@@ -12,7 +11,7 @@ router = APIRouter()
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check(request: Request) -> JSONResponse | HealthResponse:
-    api_config = get_api_config(request)
+    api_config = request.app.state.api_config
     payload = api_config.as_public_health_payload()
     container_config = api_config.container_config
     if container_config is None:
@@ -38,4 +37,7 @@ async def health_check(request: Request) -> JSONResponse | HealthResponse:
     )
     if health.ssh_ok:
         return response
-    return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content=response.model_dump(mode="json"))
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content=response.model_dump(mode="json"),
+    )

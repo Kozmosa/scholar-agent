@@ -1,58 +1,35 @@
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
-import { getHealth, getRunningTasks, getRecentTasks, getRecentArtifacts, getResourceSnapshot } from '../api';
+import { getHealth } from '../api';
 import HealthStatusBar from '../components/dashboard/HealthStatusBar';
-import RunningTaskTimeline from '../components/dashboard/RunningTaskTimeline';
-import RecentFinishedTasks from '../components/dashboard/RecentFinishedTasks';
-import RecentArtifacts from '../components/dashboard/RecentArtifacts';
-import ResourceSnapshot from '../components/dashboard/ResourceSnapshot';
 
 function DashboardPage() {
   const healthQuery = useQuery({ queryKey: ['health'], queryFn: getHealth });
-  const runningTasksQuery = useQuery({ queryKey: ['tasks', 'running'], queryFn: getRunningTasks });
-  const recentTasksQuery = useQuery({ queryKey: ['tasks', 'recent'], queryFn: getRecentTasks });
-  const recentArtifactsQuery = useQuery({ queryKey: ['artifacts', 'recent'], queryFn: getRecentArtifacts });
-  const resourcesQuery = useQuery({ queryKey: ['resources'], queryFn: getResourceSnapshot });
 
   return (
-    <div className="py-6">
-      {/* System Health Status Bar */}
-      <section className="mb-6">
+    <div className="py-8 px-4 sm:px-6 lg:px-8">
+      <section className="mb-8 space-y-3">
+        <p className="text-sm font-medium uppercase tracking-wide text-[var(--accent)]">
+          Service status
+        </p>
+        <h1 className="text-3xl font-semibold text-gray-900">Scholar Agent health shell</h1>
+        <p className="max-w-3xl text-sm text-gray-600 sm:text-base">
+          The frontend is temporarily reduced to a minimal shell while the backend exposes only
+          health endpoints. Use this page to confirm API, SSH, and workspace readiness.
+        </p>
+      </section>
+
+      <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="space-y-1">
+          <h2 className="text-lg font-medium text-gray-900">Current backend surface</h2>
+          <p className="text-sm text-gray-600">
+            Available endpoints: <code className="rounded bg-gray-100 px-1.5 py-0.5">/health</code>{' '}
+            and <code className="rounded bg-gray-100 px-1.5 py-0.5">/v1/health</code>.
+          </p>
+        </div>
         <HealthStatusBar health={healthQuery.data} isLoading={healthQuery.isLoading} />
-      </section>
-
-      {/* Running Task Timeline */}
-      <section className="mb-6">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-lg font-semibold">Running Tasks</h2>
-          <Link to="/tasks" className="text-sm text-[var(--accent)] hover:underline">
-            View All →
-          </Link>
-        </div>
-        <RunningTaskTimeline tasks={runningTasksQuery.data} isLoading={runningTasksQuery.isLoading} />
-      </section>
-
-      {/* Recent Finished Tasks */}
-      <section className="mb-6">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-lg font-semibold">Recent Finished Tasks</h2>
-          <Link to="/tasks" className="text-sm text-[var(--accent)] hover:underline">
-            View All →
-          </Link>
-        </div>
-        <RecentFinishedTasks tasks={recentTasksQuery.data} isLoading={recentTasksQuery.isLoading} />
-      </section>
-
-      {/* Recent Artifacts */}
-      <section className="mb-6">
-        <h2 className="text-lg font-semibold mb-2">Recent Artifacts</h2>
-        <RecentArtifacts artifacts={recentArtifactsQuery.data} isLoading={recentArtifactsQuery.isLoading} />
-      </section>
-
-      {/* Resource Snapshot */}
-      <section className="mb-6">
-        <h2 className="text-lg font-semibold mb-2">Resources</h2>
-        <ResourceSnapshot snapshot={resourcesQuery.data} isLoading={resourcesQuery.isLoading} />
+        {healthQuery.data?.message ? (
+          <p className="text-sm text-gray-600">Message: {healthQuery.data.message}</p>
+        ) : null}
       </section>
     </div>
   );

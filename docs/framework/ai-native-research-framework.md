@@ -9,80 +9,104 @@ source_repo: scholar-agent
 source_path: /home/xuyang/code/scholar-agent
 last_local_commit: workspace aggregate
 ---
-# AI-Native Research Framework：有界自治研究系统蓝图
+# AI-Native Research Framework
 
 > [!abstract]
-> 这不是另一条固定 research pipeline，而是一个宿主无关、repo 优先、工件图谱驱动的研究系统。它要解决的问题是：如何让 Claude Code + Opus 等 agent 不只是"会读论文"或"会写报告"，而是能围绕论文、代码、实验和结论形成一个可审计、可复用、有界自治的研究操作系统。系统支持两种核心操作模式——调研发现、深度复现——并在隔离容器中自主执行研究任务。
+> `scholar-agent` 当前不再把自己定义为“跨领域、全天候、完整自治的研究引擎”，也不再把早期 orchestrator / WebUI-v1 蓝图当作现阶段主路径。现在更准确的定位是：一个单用户优先、agent-driven、evidence-grounded 的 research dashboard 项目；它关注 bounded discovery / bounded reproduction task 的启动、观察、回看与归档，而不是继续放大“未来态自动科研系统”的叙事。
 
-## 框架定位
+## 当前定位
 
-- 目标用户既包括要为研究工作流搭平台的团队，也包括直接使用 Claude Code + Opus 进行日常研究的实践者。
-- 设计重心不是单次回答质量，而是研究资产如何沉淀、状态如何转换、人在关键节点如何定义合同边界。
-- V1 的主要宿主是 Claude Code + Opus；核心工件模型保持宿主无关，宿主差异通过 adapter 吸收。
-- 从现有参考项目抽象看，`everything-claude-code` 解决的是底盘，`ArgusBot` 解决的是监督式控制层，`AI-Research-SKILLs` 解决的是能力颗粒度，`ARIS` 和 `academic-research-skills` 解决的是长链路编排，`claude-scholar` 解决的是长期工作台；本框架试图把这些层统一成一个可组合系统。
+- 一句话定位：`scholar-agent` 是一个单用户优先的 agent-driven research dashboard 项目。
+- 当前首要目标不是证明“系统可以完全替代研究者”，而是把典型、简单、定义明确的研究支持任务稳定跑起来。
+- 当前最重要的产品优先级是：dashboard、stability、observability。
+- 系统价值来自 task、artifacts、milestones、workspace context 和结果回看被组织成一个可理解的控制面，而不是来自宏大的自治承诺。
 
-## 双模式概览
+## 为什么要重写定位
 
-- **Mode 1 — 调研发现**：给定若干篇种子文章、论文材料，或直接给定一段文字叙述，系统先与用户交互式澄清问题边界，再自主围绕目标方向及潜在创新点开展文献扩展、笔记撰写、实验方法总结、研究图景构建、知识树状/网状图更新与机会发现；按深度上限/预算/递减收益自动终止，产出调研发现报告、潜在 idea 方向、用户 idea 的可行性验证分析，以及陌生领域所需的研究史与前沿趋势总结。
-- **Mode 2 — 深度复现**：给定一篇没有开源代码的论文，系统从零实现论文方法，按实验设置高精度复现文中表格，产出可运行代码、实验结果、偏差分析和对论文含金量、可复现性、方法科学性的结构化评估。
+- 旧版框架文档把项目叙述成 bounded-autonomous research engine，并把双模式 orchestrator、artifact graph、Gradio WebUI-v1 等方案作为主线入口。
+- 这种写法对理解长期愿景有帮助，但会把新读者直接带入已经退役的实现方向。
+- 当前项目需要优先解决的是 next release 的 requirements / expectations 收敛，而不是继续累积面向未来态的系统承诺。
+- 因此，framework 主文档现在应承担“解释项目现在是什么、当前优先级是什么、什么不再是当前路径”的职责。
 
-## 设计原则
+## 当前要强化的叙事
 
-- 宿主无关：核心工件模型与状态机独立于 Claude/Codex/OpenCode，宿主差异通过 adapter 吸收。
-- Repo 优先：代码、配置、实验日志、复现记录和研究产物都优先落在可版本化目录中，而不是只存在会话记忆里。每个研究项目在容器上是独立的 git repo。
-- 工件优先于流程：流程只是工件之间的状态转换，不把线性 stage 当成唯一真相。
-- 有界自治：系统在人类预设的合同边界内自主运行——包括递归深度上限、预算上限、时间上限和 agent 自评递减收益检测。不是开放式自治，也不是逐步审批；是在明确合同内自由行动，合同外必须停下。
-- 失败可记账：复现失败、实验失败、证据冲突都不是异常分支，而是正式研究资产。
+- 单用户优先，而不是多用户平台想象。
+- task-centric operator control plane，而不是完整研究运营平台。
+- evidence-grounded workflow，而不是会话驱动的模糊自动化。
+- ready-for-use、robustness、observability，而不是为了愿景而继续扩大 scope。
+- a simple but genuinely helpful tool，而不是 fancy but fragile research demo。
 
-## 系统边界
+## 当前要弱化或移除的叙事
 
-- In scope：论文阅读、结构化证据抽取、交互式需求澄清、文献递归探索与自动终止、结构化文献笔记、方法脉络与实验方法总结、领域研究图景建模、知识树状/网状图动态更新、潜在 idea 方向发现、用户 idea 的可行性分析报告、从零实现论文方法（无开源代码场景）、实验追踪与高精度表格复现、偏差归因、结果归档、论文含金量与可复现性的结构化评估、下游写作接口。
-- Out of scope for V1：自动把论文写到可投稿质量、自动完成 rebuttal 与投稿合规、容器生命周期管理（外部负责）、数据集自动获取（用户提供或手动下载）。
-- 一个关键推论是：V1 不应该被定义为"paper writing agent"，而应该被定义为"bounded-autonomous research evidence engine"。
+- 跨所有学科门类的通用研究自动化。
+- “general AI-driven fully autonomous 24x7 researcher” 式承诺。
+- 把完整论文工厂、开放式自治探索或从零高精度复现写成 next release 默认目标。
+- 把早期 orchestrator / WebUI-v1 规格继续包装成当前实现主线。
 
-## 分层视图
+## Next Release 的工作定义
 
-```mermaid
-flowchart TD
-    A[Host Harness<br/>Claude Code / Codex / OpenCode] --> B[Adapter Layer]
-    B --> C[Core Research Runtime]
-    C --> D[Artifact Graph]
-    C --> E[Workflow Controllers]
-    E --> F[Literature Exploration]
-    E --> G[Reproduction & Implementation]
-    E --> H[Experiment Tracking]
-    D --> I[Container Workspace<br/>SSH · GPU · Isolated]
-    I --> J[Per-Project Git Repo]
-```
+当前 next release 的中心不是“完整研究引擎”，而是一个可用的 research dashboard baseline：
 
-## 核心主张
+- 用户能启动 bounded discovery 或 bounded reproduction task。
+- 用户能看到当前任务进度、最近完成任务、最近工件和基础资源状态。
+- 任务必须有 milestone / checkpoint，而不只是散落日志。
+- 失败、取消、阻塞和提前结束都必须成为正式结果。
+- 系统输出必须能围绕 artifacts 被回看，而不是只留在一次 agent 会话里。
 
-- 平台层负责接入宿主能力、权限模型、长任务执行和可观测性。
-- 核心运行时负责统一任务语义，例如"读一篇论文""启动一次复现""从零实现一个方法""归档一次实验"。
-- 工件图谱层负责维持研究状态，不让系统退化为一堆互不相干的 Markdown 与脚本。
-- 工作流控制器负责把一等工件串起来，但它本身不能成为新的单点耦合源。
-- 执行平面运行在隔离容器上（SSH 接入、GPU 资源、完全 root 权限），框架定义工作区约定但不管理容器生命周期。
+更细的要求以以下文档为准：
 
-## 人工关卡
+- [[LLM-Working/refactoring-plan/project-realignment-manifesto-plan]]
+- [[LLM-Working/refactoring-plan/next-release-realignment-roadmap]]
+- [[LLM-Working/refactoring-plan/mode-baseline-spec]]
+- [[LLM-Working/refactoring-plan/dashboard-baseline-spec]]
+- [[LLM-Working/refactoring-plan/architecture-baseline-plan]]
 
-系统保留两个显式关卡，其余环节在预设合同内自治：
+## 对 Mode 1 / Mode 2 的当前理解
 
-- **纳入关卡**：人决定哪些文章/论文材料或研究问题叙述进入系统（Mode 1），或哪些论文进入深度复现（Mode 2）。
-- **计划关卡**：人审批调研或复现计划——包括关注方向、忽略方向、资源预算（GPU 时间、API 费用、总时长）、递归深度上限和终止条件。
+- Mode 1 当前应理解为 `bounded discovery baseline`，不是完整自治文献探索系统。
+- Mode 2 当前应理解为 `bounded reproduction baseline`，不是完整高精度深度复现承诺。
+- 两种模式的最小要求是：可启动、可观察、可终止、可归档、可在 dashboard 中稳定展示。
+- 它们的 next release 基线以 [[LLM-Working/refactoring-plan/mode-baseline-spec]] 为准，而不是以旧版双模式蓝图文档为准。
 
-预算和归档不再是阻塞式关卡，而是"合同与验证"模式：人在计划阶段预授权资源边界，agent 在边界内自主执行；结果（包括失败）全量归档，人事后审阅而非执行中逐一审批。
+## 文档职责边界
 
-## 不是要复制什么
+### 当前有效职责
 
-- 不复制 `ARIS` 的无约束自治默认——系统可以过夜运行，但在合同之内，不是空白支票。吸收其 nightly loop、实验执行链和跨模型 review 思路，但附加终止合同。
-- 不复制 `academic-research-skills` 的完整投稿工厂，因为这会过早把系统重心拉向写作。
-- 不复制 `AI-Research-SKILLs` 的纯技能市场形态，因为那会让工件状态和流程责任继续外溢到宿主。
+- 本文档负责解释项目定位、范围、优先级和非目标。
+- `LLM-Working/refactoring-plan/` 负责 next release 的 requirements、baseline 和 architecture realignment。
+- 代码与运行时 README 负责描述当前仍然存在的运行时表面，而不是保留已经退役的产品路线。
+
+### 历史文档职责
+
+以下文档保留为历史设计材料，用于追溯术语和判断来源，但不再是当前路径入口：
+
+- [[framework/v1-rfc]]
+- [[framework/v1-roadmap]]
+- [[framework/webui-v1-rfc]]
+- [[framework/webui-v1-roadmap]]
+- [[framework/v1-implementation-status]]
+- [[framework/v1-dual-mode-research-engine]]
+- [[framework/artifact-graph-architecture]]
+- [[framework/reference-mapping]]
+
+## 非目标
+
+- 不把 next release 定义成完整研究自动化平台。
+- 不把 dashboard 反向扩张成复杂多用户协作产品。
+- 不承诺完整 artifact graph 浏览器、复杂 telemetry 平台或全局运营分析。
+- 不承诺投稿级写作、paper factory 工作流或稳定完成完整高精度复现。
+
+## 读者指南
+
+- 如果你想知道“项目现在应该做什么”，从 [[framework/index]] 和 `LLM-Working/refactoring-plan/` 文档集进入。
+- 如果你想知道“旧设计当时为什么这样想”，再回读历史文档。
+- 如果你看到某篇文档仍在把 orchestrator / WebUI-v1 描述成当前主线，应优先把它理解为历史材料，除非有更新文档明确覆盖。
 
 ## 关联笔记
 
 - [[framework/index]]
-- [[framework/artifact-graph-architecture]]
-- [[framework/v1-dual-mode-research-engine]]
-- [[framework/container-workspace-protocol]]
-- [[framework/reference-mapping]]
+- [[LLM-Working/refactoring-plan/index]]
+- [[LLM-Working/refactoring-plan/project-realignment-manifesto-plan]]
+- [[LLM-Working/refactoring-plan/mode-baseline-spec]]
+- [[LLM-Working/refactoring-plan/dashboard-baseline-spec]]
 - [[summary/academic-research-agents-overview]]
