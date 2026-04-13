@@ -65,9 +65,9 @@ def prompt_optional_container_profile() -> tuple[str, dict[str, object]] | None:
     return build_container_profile(name, ssh_command, project_dir, password)
 
 
-def onboard_state_root(state_root: Path) -> Path:
+def onboard_state_root(state_root: Path, *, reset_existing: bool = False) -> Path:
     config_path = config_path_for(state_root)
-    payload = load_runtime_config(config_path)
+    payload = {} if reset_existing else load_runtime_config(config_path)
     payload["api_key_hashes"] = [hash_api_key(prompt_api_key())]
 
     container_profile = prompt_optional_container_profile()
@@ -87,13 +87,16 @@ def onboard_state_root(state_root: Path) -> Path:
 
 def run_onboarding(state_root: Path) -> Path | None:
     config_path = config_path_for(state_root)
+    reset_existing = False
     if config_path.exists() and not typer.confirm(
         f"AINRF config already exists at `{config_path}`. Overwrite it?",
         default=False,
     ):
         typer.echo("Keeping existing AINRF config.")
         return None
-    return onboard_state_root(state_root)
+    if config_path.exists():
+        reset_existing = True
+    return onboard_state_root(state_root, reset_existing=reset_existing)
 
 
 def ensure_onboarded(state_root: Path) -> Path:
