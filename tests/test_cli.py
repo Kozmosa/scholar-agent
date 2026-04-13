@@ -138,11 +138,16 @@ def test_serve_daemon_runs_background_process(
     assert captured["log_file"] == state_root / "runtime" / "ainrf-api.log"
 
 
-def test_serve_requires_explicit_onboarding_when_hashes_are_missing(tmp_path: Path) -> None:
+def test_serve_rejects_malformed_config_with_validation_error(tmp_path: Path) -> None:
+    config_path = config_path_for(tmp_path)
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text("{invalid", encoding="utf-8")
+
     result = runner.invoke(app, ["serve", "--state-root", str(tmp_path)])
 
     assert result.exit_code != 0
-    assert "run `ainrf onboard --state-root" in result.output
+    assert "Invalid runtime config" in result.output
+    assert str(config_path) in result.output
 
 
 def test_python_module_entrypoint() -> None:
@@ -236,6 +241,15 @@ def test_load_runtime_config_rejects_invalid_payload(tmp_path: Path) -> None:
         load_runtime_config(config_path)
 
 
+def test_load_runtime_config_rejects_malformed_json(tmp_path: Path) -> None:
+    config_path = config_path_for(tmp_path)
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text("{invalid", encoding="utf-8")
+
+    with pytest.raises(typer.BadParameter, match="Invalid runtime config"):
+        load_runtime_config(config_path)
+
+
 def test_onboard_state_root_rejects_empty_api_key(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -298,7 +312,32 @@ def test_onboard_state_root_preserves_existing_config_keys(
     assert payload["container_profiles"] == {"existing": {"host": "old", "user": "worker", "port": 22}}
 
 
-def test_onboard_command_writes_config(tmp_path: Path) -> None:
+def test_onboard_command_rejects_non_tty_use(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        "ainrf.onboarding.click.get_text_stream",
+        lambda name: FakeTTY(False if name == "stdin" else True),
+    )
+    monkeypatch.setattr(
+        "ainrf.onboarding.typer.confirm",
+        lambda *args, **kwargs: pytest.fail("confirm should not run for non-interactive onboarding"),
+    )
+    monkeypatch.setattr(
+        "ainrf.onboarding.typer.prompt",
+        lambda *args, **kwargs: pytest.fail("prompt should not run for non-interactive onboarding"),
+    )
+
+    result = runner.invoke(app, ["onboard", "--state-root", str(tmp_path)])
+
+    assert result.exit_code != 0
+    assert "AINRF runtime config is not configured" in result.output
+    assert "Run onboarding" in result.output
+    assert "interactively" in result.output
+
+
+def test_onboard_command_writes_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr("ainrf.onboarding.click.get_text_stream", lambda name: FakeTTY(True))
     result = runner.invoke(
         app,
         ["onboard", "--state-root", str(tmp_path)],
@@ -310,7 +349,10 @@ def test_onboard_command_writes_config(tmp_path: Path) -> None:
     assert payload["api_key_hashes"] == [hash_api_key("bootstrap-secret")]
 
 
-def test_onboard_command_prompts_before_overwrite(tmp_path: Path) -> None:
+def test_onboard_command_prompts_before_overwrite(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr("ainrf.onboarding.click.get_text_stream", lambda name: FakeTTY(True))
     config_path = tmp_path / "config.json"
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(json.dumps({"api_key_hashes": [hash_api_key("existing")]}), encoding="utf-8")
@@ -328,7 +370,10 @@ def test_onboard_command_prompts_before_overwrite(tmp_path: Path) -> None:
 
 
 
-def test_onboard_command_overwrites_invalid_existing_config(tmp_path: Path) -> None:
+def test_onboard_command_overwrites_invalid_existing_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr("ainrf.onboarding.click.get_text_stream", lambda name: FakeTTY(True))
     config_path = tmp_path / "config.json"
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text("{invalid", encoding="utf-8")

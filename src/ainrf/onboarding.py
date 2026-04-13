@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from json import JSONDecodeError
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +18,10 @@ def config_path_for(state_root: Path) -> Path:
 def load_runtime_config(config_path: Path) -> dict[str, Any]:
     if not config_path.exists():
         return {}
-    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8"))
+    except JSONDecodeError as exc:
+        raise typer.BadParameter(f"Invalid runtime config at {config_path}") from exc
     if not isinstance(payload, dict):
         raise typer.BadParameter(f"Invalid runtime config at {config_path}")
     return payload
@@ -86,6 +90,7 @@ def onboard_state_root(state_root: Path, *, reset_existing: bool = False) -> Pat
 
 
 def run_onboarding(state_root: Path) -> Path | None:
+    ensure_interactive_onboarding_available()
     config_path = config_path_for(state_root)
     reset_existing = False
     if config_path.exists() and not typer.confirm(
