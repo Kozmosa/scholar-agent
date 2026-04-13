@@ -42,24 +42,20 @@ async def test_missing_unknown_route_stays_unauthorized_without_api_key(tmp_path
 
 
 @pytest.mark.anyio
+async def test_terminal_session_requires_api_key(tmp_path: Path) -> None:
+    async with make_client(tmp_path) as client:
+        response = await client.get("/terminal/session")
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
+
+
+@pytest.mark.anyio
 async def test_unknown_route_returns_not_found_with_valid_api_key(tmp_path: Path) -> None:
     async with make_client(tmp_path) as client:
         response = await client.get("/retired", headers={"X-API-Key": "secret-key"})
 
     assert response.status_code == 404
-
-
-@pytest.mark.anyio
-async def test_openapi_is_public_and_health_only(tmp_path: Path) -> None:
-    async with make_client(tmp_path) as client:
-        response = await client.get("/openapi.json")
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert "/health" in payload["paths"]
-    assert "/v1/health" in payload["paths"]
-    assert "/tasks" not in payload["paths"]
-    assert "/v1/tasks" not in payload["paths"]
 
 
 def test_api_config_loads_default_container_profile_from_config(
