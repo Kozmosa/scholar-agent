@@ -149,6 +149,7 @@ def test_serve_auto_onboards_before_running_server(
         captured["state_root"] = state_root
 
     monkeypatch.delenv("AINRF_API_KEY_HASHES", raising=False)
+    monkeypatch.setattr("ainrf.onboarding.click.get_text_stream", lambda name: FakeTTY(True))
     monkeypatch.setattr("ainrf.cli.run_server", fake_run_server)
 
     result = runner.invoke(
@@ -165,7 +166,18 @@ def test_serve_auto_onboards_before_running_server(
 
 def test_serve_fails_fast_without_interactive_input(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.delenv("AINRF_API_KEY_HASHES", raising=False)
-    monkeypatch.setattr("ainrf.onboarding.sys.stdin", None)
+    monkeypatch.setattr(
+        "ainrf.onboarding.click.get_text_stream",
+        lambda name: FakeTTY(False if name == "stdin" else True),
+    )
+    monkeypatch.setattr(
+        "ainrf.onboarding.typer.prompt",
+        lambda *args, **kwargs: pytest.fail("prompt should not run for non-interactive onboarding"),
+    )
+    monkeypatch.setattr(
+        "ainrf.onboarding.typer.confirm",
+        lambda *args, **kwargs: pytest.fail("confirm should not run for non-interactive onboarding"),
+    )
 
     result = runner.invoke(app, ["serve", "--state-root", str(tmp_path)])
 

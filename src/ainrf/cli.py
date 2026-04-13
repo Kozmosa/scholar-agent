@@ -14,6 +14,7 @@ from ainrf import __version__
 from ainrf import onboarding
 from ainrf.onboarding import (
     config_path_for,
+    ensure_interactive_onboarding_available,
     load_runtime_config,
     onboard_state_root,
     run_onboarding,
@@ -237,12 +238,10 @@ def _ensure_api_key_hashes_configured(state_root: Path) -> None:
         return
     config_path = config_path_for(state_root)
     if not config_path.exists():
-        if onboarding.sys.stdin is None:
-            typer.echo("AINRF API key hashes are not configured. Run `ainrf onboard` interactively.")
-            raise typer.Exit(code=1)
         try:
+            ensure_interactive_onboarding_available()
             onboard_state_root(state_root)
-        except (click.Abort, EOFError, typer.Abort):
+        except (click.Abort, EOFError, typer.Abort, typer.BadParameter):
             typer.echo("AINRF API key hashes are not configured. Run `ainrf onboard` interactively.")
             raise typer.Exit(code=1) from None
         return
