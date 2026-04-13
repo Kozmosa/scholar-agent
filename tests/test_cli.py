@@ -12,9 +12,16 @@ from typer.testing import CliRunner
 from ainrf import __version__
 from ainrf.api.config import hash_api_key
 from ainrf.cli import _parse_ssh_command, app
+from ainrf.state import default_state_root
 
 
 runner = CliRunner()
+
+
+def test_default_state_root_uses_current_working_directory(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("ainrf.state.Path.cwd", lambda: Path("/tmp/workspace"))
+
+    assert default_state_root() == Path("/tmp/workspace/.ainrf")
 
 
 def test_help_shows_commands() -> None:
