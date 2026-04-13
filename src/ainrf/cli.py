@@ -10,7 +10,6 @@ import typer
 
 from ainrf import __version__
 from ainrf.onboarding import (
-    ensure_onboarded,
     load_runtime_config,
     run_onboarding,
     save_runtime_config,
@@ -228,9 +227,12 @@ def _ensure_api_key_hashes_configured(state_root: Path) -> None:
     env_hashes = os.environ.get("AINRF_API_KEY_HASHES", "").strip()
     if env_hashes:
         return
-    config_path = ensure_onboarded(state_root)
+    config_path = state_root / "config.json"
     payload = load_runtime_config(config_path)
     hashes = payload.get("api_key_hashes")
     if isinstance(hashes, list) and any(isinstance(item, str) and item for item in hashes):
         return
-    raise typer.BadParameter(f"Invalid runtime config at {config_path}: missing api_key_hashes")
+    raise typer.BadParameter(
+        "AINRF API key hashes are not configured. "
+        f"Set AINRF_API_KEY_HASHES or run `ainrf onboard --state-root {state_root}` first."
+    )
