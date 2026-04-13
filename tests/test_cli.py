@@ -7,11 +7,19 @@ import subprocess
 import sys
 
 import pytest
+import typer
 from typer.testing import CliRunner
 
 from ainrf import __version__
 from ainrf.api.config import hash_api_key
 from ainrf.cli import _parse_ssh_command, app
+from ainrf.onboarding import (
+    config_path_for,
+    ensure_onboarded,
+    load_runtime_config,
+    onboard_state_root,
+    save_runtime_config,
+)
 from ainrf.state import default_state_root
 
 
@@ -136,7 +144,7 @@ def test_serve_bootstraps_api_key_hashes_interactively(
     result = runner.invoke(
         app,
         ["serve", "--state-root", str(tmp_path)],
-        input="bootstrap-secret\nbootstrap-secret\n",
+        input="bootstrap-secret\nbootstrap-secret\n\n",
     )
 
     assert result.exit_code == 0
@@ -170,7 +178,7 @@ def test_serve_daemon_bootstraps_api_key_hashes_interactively(
     result = runner.invoke(
         app,
         ["serve", "--daemon", "--state-root", str(tmp_path)],
-        input="daemon-secret\ndaemon-secret\n",
+        input="daemon-secret\ndaemon-secret\n\n",
     )
 
     assert result.exit_code == 0
@@ -213,6 +221,108 @@ def test_container_add_interactive_persists_profile(tmp_path: Path) -> None:
     assert profile["ssh_key_path"] == "/tmp/id_ed25519"
     assert profile["ssh_password"] == "secret-pass"
     assert profile["project_dir"] == "/workspace/project-a"
+
+
+def test_onboard_state_root_minimal_writes_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("ainrf.onboarding.typer.prompt", lambda *args, **kwargs: "bootstrap-secret")
+    monkeypatch.setattr("ainrf.onboarding.typer.confirm", lambda *args, **kwargs: False)
+
+    config_path = onboard_state_root(tmp_path)
+
+    assert config_path == config_path_for(tmp_path)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    assert payload["api_key_hashes"] == [hash_api_key("bootstrap-secret")]
+    assert "container_profiles" not in payload
+
+
+def test_ensure_onboarded_returns_existing_config_path(tmp_path: Path) -> None:
+    config_path = config_path_for(tmp_path)
+    save_runtime_config(config_path, {"api_key_hashes": ["existing-hash"]})
+
+    resolved = ensure_onboarded(tmp_path)
+
+    assert resolved == config_path
+
+
+@pytest.mark.parametrize("exception", [EOFError(), typer.Abort()])
+def test_ensure_onboarded_rejects_non_interactive_input(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, exception: Exception
+) -> None:
+    monkeypatch.setattr("ainrf.onboarding.typer.prompt", lambda *args, **kwargs: (_ for _ in ()).throw(exception))
+
+    with pytest.raises(typer.BadParameter, match="interactively"):
+        ensure_onboarded(tmp_path)
+
+
+def test_load_runtime_config_rejects_invalid_payload(tmp_path: Path) -> None:
+    config_path = config_path_for(tmp_path)
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text("[]", encoding="utf-8")
+
+    with pytest.raises(typer.BadParameter, match="Invalid runtime config"):
+        load_runtime_config(config_path)
+
+
+def test_onboard_state_root_rejects_empty_api_key(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr("ainrf.onboarding.typer.prompt", lambda *args, **kwargs: "   ")
+
+    with pytest.raises(typer.BadParameter, match="API key cannot be empty"):
+        onboard_state_root(tmp_path)
+
+
+def test_onboard_state_root_confirm_true_writes_optional_container_profile(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    prompts = iter(
+        [
+            "bootstrap-secret",
+            "gpu-main",
+            "ssh -p 2222 researcher@gpu-server-01 -i /tmp/id_ed25519",
+            "/workspace/project-a",
+            "secret-pass",
+        ]
+    )
+    monkeypatch.setattr("ainrf.onboarding.typer.prompt", lambda *args, **kwargs: next(prompts))
+    monkeypatch.setattr("ainrf.onboarding.typer.confirm", lambda *args, **kwargs: True)
+
+    config_path = onboard_state_root(tmp_path)
+
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    profile = payload["container_profiles"]["gpu-main"]
+    assert payload["default_container_profile"] == "gpu-main"
+    assert profile["host"] == "gpu-server-01"
+    assert profile["port"] == 2222
+    assert profile["user"] == "researcher"
+    assert profile["ssh_key_path"] == "/tmp/id_ed25519"
+    assert profile["ssh_password"] == "secret-pass"
+    assert profile["project_dir"] == "/workspace/project-a"
+    assert config_path == config_path_for(tmp_path)
+
+
+def test_onboard_state_root_preserves_existing_config_keys(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config_path = config_path_for(tmp_path)
+    save_runtime_config(
+        config_path,
+        {
+            "unrelated": {"enabled": True},
+            "default_container_profile": "existing",
+            "container_profiles": {"existing": {"host": "old", "user": "worker", "port": 22}},
+        },
+    )
+    monkeypatch.setattr("ainrf.onboarding.typer.prompt", lambda *args, **kwargs: "bootstrap-secret")
+    monkeypatch.setattr("ainrf.onboarding.typer.confirm", lambda *args, **kwargs: False)
+
+    onboard_state_root(tmp_path)
+
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    assert payload["api_key_hashes"] == [hash_api_key("bootstrap-secret")]
+    assert payload["unrelated"] == {"enabled": True}
+    assert payload["default_container_profile"] == "existing"
+    assert payload["container_profiles"] == {"existing": {"host": "old", "user": "worker", "port": 22}}
 
 
 def test_parse_ssh_command_supports_user_flag_and_inline_port() -> None:

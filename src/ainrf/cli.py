@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-import json
 import os
 import shlex
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated
 
 import typer
 
 from ainrf import __version__
-from ainrf.api.config import hash_api_key
+from ainrf.onboarding import ensure_onboarded, load_runtime_config, save_runtime_config
 from ainrf.server import run_server, run_server_daemon
 from ainrf.state import default_state_root
 
@@ -115,6 +114,29 @@ def container_add(
         typer.Option(help="Set this profile as the default container profile."),
     ] = True,
 ) -> None:
+    profile_name, profile = build_container_profile(name, ssh_command, project_dir, password)
+    config_path = state_root / "config.json"
+    payload = load_runtime_config(config_path)
+    profiles = payload.get("container_profiles")
+    if not isinstance(profiles, dict):
+        profiles = {}
+    profiles[profile_name] = profile
+    payload["container_profiles"] = profiles
+    if set_default:
+        payload["default_container_profile"] = profile_name
+    save_runtime_config(config_path, payload)
+    typer.echo(
+        f"Saved container profile `{profile_name}` -> {profile['user']}@{profile['host']}:{profile['port']} "
+        f"(project_dir={project_dir})"
+    )
+
+
+def build_container_profile(
+    name: str,
+    ssh_command: str,
+    project_dir: str,
+    password: str,
+) -> tuple[str, dict[str, object]]:
     parsed = _parse_ssh_command(ssh_command)
     profile = {
         "host": parsed.host,
@@ -124,20 +146,7 @@ def container_add(
         "project_dir": project_dir,
         "ssh_password": password or None,
     }
-    config_path = state_root / "config.json"
-    payload = _load_runtime_config(config_path)
-    profiles = payload.get("container_profiles")
-    if not isinstance(profiles, dict):
-        profiles = {}
-    profiles[name] = profile
-    payload["container_profiles"] = profiles
-    if set_default:
-        payload["default_container_profile"] = name
-    _save_runtime_config(config_path, payload)
-    typer.echo(
-        f"Saved container profile `{name}` -> {parsed.user}@{parsed.host}:{parsed.port} "
-        f"(project_dir={project_dir})"
-    )
+    return name, profile
 
 
 def main() -> None:
@@ -200,45 +209,13 @@ def _parse_ssh_command(command: str) -> ParsedSSHCommand:
     return ParsedSSHCommand(host=host, user=user, port=port, ssh_key_path=ssh_key_path)
 
 
-def _load_runtime_config(config_path: Path) -> dict[str, Any]:
-    if not config_path.exists():
-        return {}
-    payload = json.loads(config_path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise typer.BadParameter(f"Invalid runtime config at {config_path}")
-    return payload
-
-
-def _save_runtime_config(config_path: Path, payload: dict[str, Any]) -> None:
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
-
-
 def _ensure_api_key_hashes_configured(state_root: Path) -> None:
     env_hashes = os.environ.get("AINRF_API_KEY_HASHES", "").strip()
     if env_hashes:
         return
-    config_path = state_root / "config.json"
-    payload = _load_runtime_config(config_path)
+    config_path = ensure_onboarded(state_root)
+    payload = load_runtime_config(config_path)
     hashes = payload.get("api_key_hashes")
     if isinstance(hashes, list) and any(isinstance(item, str) and item for item in hashes):
         return
-    typer.echo("No API key hashes configured. Starting interactive bootstrap.")
-    try:
-        api_key = typer.prompt(
-            "API key for AINRF clients",
-            hide_input=True,
-            confirmation_prompt=True,
-        ).strip()
-    except (
-        EOFError,
-        typer.Abort,
-    ) as exc:  # pragma: no cover - defensive for non-interactive shells
-        raise typer.BadParameter(
-            "AINRF API key hashes are not configured. Set AINRF_API_KEY_HASHES or run `ainrf serve` interactively."
-        ) from exc
-    if not api_key:
-        raise typer.BadParameter("API key cannot be empty.")
-    payload["api_key_hashes"] = [hash_api_key(api_key)]
-    _save_runtime_config(config_path, payload)
-    typer.echo(f"Saved API key hash to `{config_path}`.")
+    raise typer.BadParameter(f"Invalid runtime config at {config_path}: missing api_key_hashes")
