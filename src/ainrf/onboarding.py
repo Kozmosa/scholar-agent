@@ -29,8 +29,6 @@ def save_runtime_config(config_path: Path, payload: dict[str, Any]) -> None:
 
 
 def ensure_interactive_onboarding_available() -> None:
-    if click.get_current_context(silent=True) is not None:
-        return
     stdin = click.get_text_stream("stdin")
     stdout = click.get_text_stream("stdout")
     if not stdin.isatty() or not stdout.isatty():

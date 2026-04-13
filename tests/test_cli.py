@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import os
 from pathlib import Path
@@ -30,6 +31,15 @@ def test_default_state_root_uses_current_working_directory(monkeypatch: pytest.M
     monkeypatch.setattr("ainrf.state.Path.cwd", lambda: Path("/tmp/workspace"))
 
     assert default_state_root() == Path("/tmp/workspace/.ainrf")
+
+
+class FakeTTY(io.StringIO):
+    def __init__(self, is_tty: bool) -> None:
+        super().__init__()
+        self._is_tty = is_tty
+
+    def isatty(self) -> bool:
+        return self._is_tty
 
 
 def test_help_shows_commands() -> None:
@@ -138,8 +148,12 @@ def test_serve_bootstraps_api_key_hashes_interactively(
         captured["port"] = port
         captured["state_root"] = state_root
 
+    def fake_get_text_stream(name: str) -> FakeTTY:
+        return FakeTTY(True)
+
     monkeypatch.delenv("AINRF_API_KEY_HASHES", raising=False)
     monkeypatch.setattr("ainrf.cli.run_server", fake_run_server)
+    monkeypatch.setattr("ainrf.onboarding.click.get_text_stream", fake_get_text_stream)
 
     result = runner.invoke(
         app,
@@ -172,8 +186,12 @@ def test_serve_daemon_bootstraps_api_key_hashes_interactively(
         captured["log_file"] = log_file
         return 9001
 
+    def fake_get_text_stream(name: str) -> FakeTTY:
+        return FakeTTY(True)
+
     monkeypatch.delenv("AINRF_API_KEY_HASHES", raising=False)
     monkeypatch.setattr("ainrf.cli.run_server_daemon", fake_run_server_daemon)
+    monkeypatch.setattr("ainrf.onboarding.click.get_text_stream", fake_get_text_stream)
 
     result = runner.invoke(
         app,
@@ -244,11 +262,26 @@ def test_ensure_onboarded_returns_existing_config_path(tmp_path: Path) -> None:
     assert resolved == config_path
 
 
-@pytest.mark.parametrize("exception", [EOFError(), typer.Abort()])
-def test_ensure_onboarded_rejects_non_interactive_input(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, exception: Exception
+@pytest.mark.parametrize(
+    ("stdin_isatty", "stdout_isatty"),
+    [(False, True), (True, False), (False, False)],
+)
+def test_ensure_onboarded_rejects_non_tty_streams(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    stdin_isatty: bool,
+    stdout_isatty: bool,
 ) -> None:
-    monkeypatch.setattr("ainrf.onboarding.typer.prompt", lambda *args, **kwargs: (_ for _ in ()).throw(exception))
+    monkeypatch.setattr(
+        "ainrf.onboarding.click.get_text_stream",
+        lambda name: FakeTTY(stdin_isatty if name == "stdin" else stdout_isatty),
+    )
+    monkeypatch.setattr(
+        "ainrf.onboarding.typer.prompt",
+        lambda *args, **kwargs: pytest.fail(
+            "prompt should not run for non-interactive onboarding"
+        ),
+    )
 
     with pytest.raises(typer.BadParameter, match="interactively"):
         ensure_onboarded(tmp_path)
