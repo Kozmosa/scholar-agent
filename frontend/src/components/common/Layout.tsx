@@ -14,7 +14,10 @@ function Layout({ children }: Props) {
             <Link to="/" className="text-lg font-semibold text-[var(--accent)]">
               Scholar Agent
             </Link>
-            <p className="text-sm text-gray-600">Minimal frontend shell aligned to backend health checks.</p>
+            <p className="text-sm text-gray-600">
+              Minimal frontend shell aligned to backend health checks and terminal bench controls
+              during realignment.
+            </p>
           </div>
         </div>
       </header>
@@ -22,7 +25,7 @@ function Layout({ children }: Props) {
       <main className="mx-auto flex-1 w-full max-w-5xl">{children}</main>
 
       <footer className="border-t border-gray-200 bg-white py-4 text-center text-sm text-gray-500">
-        Health-only UI during backend cleanup.
+        Health and terminal bench shell during backend cleanup.
       </footer>
     </div>
   );
