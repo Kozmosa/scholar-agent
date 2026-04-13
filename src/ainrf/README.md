@@ -109,12 +109,36 @@ export AINRF_API_KEY_HASHES=<hash1>,<hash2>
 
 ## 4. API 路由说明
 
-当前仅保留公共健康检查路径：
+### 4.1 Terminal Bench MVP
 
-- `GET /health`
-- `GET /v1/health`
+Terminal Bench MVP 依赖本机可执行的 `ttyd` 二进制；联调前请先确认：
 
-其他路径不会再由应用注册；在提供有效 API key 后会返回 `404`。
+```bash
+ttyd --version
+```
+
+当前 runtime API 只暴露以下最小表面：
+
+- 公共健康检查路径：
+  - `GET /health`
+  - `GET /v1/health`
+- Terminal Bench MVP 路径（均受 API key 中间件保护）：
+  - `GET /terminal/session`
+  - `POST /terminal/session`
+  - `DELETE /terminal/session`
+  - `GET /v1/terminal/session`
+  - `POST /v1/terminal/session`
+  - `DELETE /v1/terminal/session`
+
+其中 terminal session API 只控制单个 ttyd-backed browser terminal session：
+
+- `GET /terminal/session`：读取当前终端 session 状态
+- `POST /terminal/session`：创建或刷新当前终端 session
+- `DELETE /terminal/session`：关闭当前终端 session
+
+`/v1/terminal/session` 提供相同语义的版本化镜像路径。
+
+已移除的旧 task 路径不会再由应用注册；在提供有效 API key 后会返回 `404`。
 
 ## 5. 状态目录结构
 

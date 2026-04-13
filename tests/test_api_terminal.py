@@ -1,0 +1,150 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import httpx
+import pytest
+
+from ainrf.api.app import create_app
+from ainrf.api.config import ApiConfig, hash_api_key
+
+
+@pytest.mark.anyio
+async def test_terminal_session_starts_idle(tmp_path: Path) -> None:
+    app = create_app(
+        ApiConfig(
+            api_key_hashes=frozenset({hash_api_key("secret-key")}),
+            state_root=tmp_path,
+        )
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/terminal/session", headers={"X-API-Key": "secret-key"})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "idle"
+    assert response.json()["provider"] == "ttyd"
+    assert response.json()["target_kind"] == "daemon-host"
+
+
+@pytest.mark.anyio
+async def test_terminal_session_requires_api_key(tmp_path: Path) -> None:
+    app = create_app(
+        ApiConfig(
+            api_key_hashes=frozenset({hash_api_key("secret-key")}),
+            state_root=tmp_path,
+        )
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/terminal/session")
+
+    assert response.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_terminal_session_create_uses_api_config_for_lifecycle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ainrf.terminal.models import TerminalSessionRecord, TerminalSessionStatus, utc_now
+
+    captured: dict[str, object] = {}
+    running = TerminalSessionRecord(
+        session_id="term-1",
+        provider="ttyd",
+        target_kind="daemon-host",
+        status=TerminalSessionStatus.RUNNING,
+        created_at=utc_now(),
+        started_at=utc_now(),
+        terminal_url="http://127.0.0.1:9001",
+        pid=4321,
+    )
+
+    def fake_start_ttyd_session(**kwargs):
+        captured.update(kwargs)
+        return running
+
+    monkeypatch.setattr("ainrf.api.routes.terminal.start_ttyd_session", fake_start_ttyd_session)
+
+    app = create_app(
+        ApiConfig(
+            api_key_hashes=frozenset({hash_api_key("secret-key")}),
+            state_root=tmp_path,
+            terminal_host="127.0.0.1",
+            terminal_port=9001,
+            terminal_command=("/bin/bash", "-lc", "pwd"),
+        )
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post("/terminal/session", headers={"X-API-Key": "secret-key"})
+
+    assert response.status_code == 200
+    assert captured == {
+        "host": "127.0.0.1",
+        "port": 9001,
+        "credential": "terminal:secret-key",
+        "shell_command": ("/bin/bash", "-lc", "pwd"),
+        "working_directory": tmp_path,
+    }
+    assert app.state.terminal_session == running
+
+
+@pytest.mark.anyio
+async def test_terminal_session_delete_stops_active_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ainrf.terminal.models import TerminalSessionRecord, TerminalSessionStatus, utc_now
+
+    running = TerminalSessionRecord(
+        session_id="term-1",
+        provider="ttyd",
+        target_kind="daemon-host",
+        status=TerminalSessionStatus.RUNNING,
+        created_at=utc_now(),
+        started_at=utc_now(),
+        terminal_url="http://127.0.0.1:7681",
+        pid=4321,
+    )
+    stopped = TerminalSessionRecord(
+        session_id=None,
+        provider="ttyd",
+        target_kind="daemon-host",
+        status=TerminalSessionStatus.IDLE,
+        closed_at=utc_now(),
+    )
+    captured: dict[str, object] = {}
+
+    def fake_stop_ttyd_session(session: TerminalSessionRecord) -> TerminalSessionRecord:
+        captured["session"] = session
+        return stopped
+
+    monkeypatch.setattr("ainrf.api.routes.terminal.stop_ttyd_session", fake_stop_ttyd_session)
+
+    app = create_app(
+        ApiConfig(
+            api_key_hashes=frozenset({hash_api_key("secret-key")}),
+            state_root=tmp_path,
+        )
+    )
+    app.state.terminal_session = running
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.delete("/terminal/session", headers={"X-API-Key": "secret-key"})
+
+    assert response.status_code == 200
+    assert captured == {"session": running}
+    assert app.state.terminal_session == stopped
+    assert response.json()["status"] == "idle"

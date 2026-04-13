@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from ainrf.api.config import ApiConfig
 from ainrf.api.middleware import build_api_key_middleware
 from ainrf.api.routes.health import router as health_router
+from ainrf.api.routes.terminal import router as terminal_router
 
 
 def create_app(config: ApiConfig | None = None) -> FastAPI:
@@ -13,5 +14,7 @@ def create_app(config: ApiConfig | None = None) -> FastAPI:
     app.state.api_config = api_config
     app.middleware("http")(build_api_key_middleware(api_config))
     app.include_router(health_router)
+    app.include_router(terminal_router)
     app.include_router(health_router, prefix="/v1")
+    app.include_router(terminal_router, prefix="/v1")
     return app
