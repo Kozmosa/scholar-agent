@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
 
-import click
 import typer
 
 from ainrf import __version__
@@ -235,10 +234,10 @@ def _ensure_api_key_hashes_configured(state_root: Path) -> None:
     if not config_path.exists():
         try:
             ensure_interactive_onboarding_available()
-            onboard_state_root(state_root)
-        except (click.Abort, EOFError, typer.Abort, typer.BadParameter):
+        except typer.BadParameter:
             typer.echo("AINRF API key hashes are not configured. Run `ainrf onboard` interactively.")
             raise typer.Exit(code=1) from None
+        onboard_state_root(state_root)
         return
     payload = load_runtime_config(config_path)
     hashes = payload.get("api_key_hashes")
