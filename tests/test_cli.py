@@ -138,6 +138,41 @@ def test_serve_daemon_runs_background_process(
     assert captured["log_file"] == state_root / "runtime" / "ainrf-api.log"
 
 
+def test_serve_auto_onboards_before_running_server(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_server(host: str, port: int, state_root: Path) -> None:
+        captured["host"] = host
+        captured["port"] = port
+        captured["state_root"] = state_root
+
+    monkeypatch.delenv("AINRF_API_KEY_HASHES", raising=False)
+    monkeypatch.setattr("ainrf.cli.run_server", fake_run_server)
+
+    result = runner.invoke(
+        app,
+        ["serve", "--state-root", str(tmp_path)],
+        input="bootstrap-secret\nbootstrap-secret\nn\n",
+    )
+
+    assert result.exit_code == 0
+    assert captured == {"host": "127.0.0.1", "port": 8000, "state_root": tmp_path}
+    payload = json.loads((tmp_path / "config.json").read_text(encoding="utf-8"))
+    assert payload["api_key_hashes"] == [hash_api_key("bootstrap-secret")]
+
+
+def test_serve_fails_fast_without_interactive_input(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("AINRF_API_KEY_HASHES", raising=False)
+    monkeypatch.setattr("ainrf.onboarding.sys.stdin", None)
+
+    result = runner.invoke(app, ["serve", "--state-root", str(tmp_path)])
+
+    assert result.exit_code != 0
+    assert "Run `ainrf onboard` interactively" in result.stdout
+
+
 def test_serve_rejects_malformed_config_with_validation_error(tmp_path: Path) -> None:
     config_path = config_path_for(tmp_path)
     config_path.parent.mkdir(parents=True, exist_ok=True)

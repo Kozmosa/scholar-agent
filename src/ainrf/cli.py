@@ -2,20 +2,28 @@ from __future__ import annotations
 
 import os
 import shlex
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
 
+import click
 import typer
 
 from ainrf import __version__
+from ainrf import onboarding
 from ainrf.onboarding import (
+    config_path_for,
     load_runtime_config,
+    onboard_state_root,
     run_onboarding,
     save_runtime_config,
 )
 from ainrf.server import run_server, run_server_daemon
 from ainrf.state import default_state_root
+
+
+onboarding.sys = sys
 
 
 app = typer.Typer(
@@ -227,12 +235,19 @@ def _ensure_api_key_hashes_configured(state_root: Path) -> None:
     env_hashes = os.environ.get("AINRF_API_KEY_HASHES", "").strip()
     if env_hashes:
         return
-    config_path = state_root / "config.json"
+    config_path = config_path_for(state_root)
+    if not config_path.exists():
+        if onboarding.sys.stdin is None:
+            typer.echo("AINRF API key hashes are not configured. Run `ainrf onboard` interactively.")
+            raise typer.Exit(code=1)
+        try:
+            onboard_state_root(state_root)
+        except (click.Abort, EOFError, typer.Abort):
+            typer.echo("AINRF API key hashes are not configured. Run `ainrf onboard` interactively.")
+            raise typer.Exit(code=1) from None
+        return
     payload = load_runtime_config(config_path)
     hashes = payload.get("api_key_hashes")
     if isinstance(hashes, list) and any(isinstance(item, str) and item for item in hashes):
         return
-    raise typer.BadParameter(
-        "AINRF API key hashes are not configured. "
-        f"Set AINRF_API_KEY_HASHES or run `ainrf onboard --state-root {state_root}` first."
-    )
+    raise typer.BadParameter(f"Invalid runtime config at {config_path}: missing api_key_hashes")
