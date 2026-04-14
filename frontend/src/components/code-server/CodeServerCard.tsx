@@ -3,9 +3,19 @@ import { getCodeServerStatus } from '../../api';
 
 function CodeServerCard() {
   const codeQuery = useQuery({ queryKey: ['code-server-status'], queryFn: getCodeServerStatus });
-  const status = codeQuery.data?.status ?? 'starting';
+  const status = codeQuery.data?.status;
   const detail = codeQuery.data?.detail;
   const workspaceDir = codeQuery.data?.workspace_dir;
+  const isManaged = codeQuery.data?.managed === true;
+  const requestErrorDetail = codeQuery.error instanceof Error ? codeQuery.error.message : null;
+
+  const showStarting = codeQuery.isLoading || (!codeQuery.isError && isManaged && status === 'starting');
+  const showUnavailable =
+    !codeQuery.isError && (!isManaged || status === 'unavailable' || status === undefined);
+  const unavailableDetail = !isManaged
+    ? detail ?? 'code-server is not managed for this workspace.'
+    : detail ?? 'No status response was returned.';
+  const showReady = !codeQuery.isError && isManaged && status === 'ready';
 
   return (
     <section className="space-y-4 rounded-xl border border-gray-200 bg-gray-50 p-5">
@@ -21,15 +31,20 @@ function CodeServerCard() {
         </p>
       </div>
 
-      {codeQuery.isLoading || status === 'starting' ? (
-        <p className="text-sm text-gray-500">Starting managed code-server...</p>
+      {showStarting ? <p className="text-sm text-gray-500">Starting managed code-server...</p> : null}
+
+      {codeQuery.isError ? (
+        <p className="text-sm text-red-700">
+          Failed to load workspace browser status
+          {requestErrorDetail ? `: ${requestErrorDetail}` : '.'}
+        </p>
       ) : null}
 
-      {status === 'unavailable' ? (
-        <p className="text-sm text-red-700">Workspace browser unavailable{detail ? `: ${detail}` : '.'}</p>
+      {showUnavailable ? (
+        <p className="text-sm text-red-700">Workspace browser unavailable: {unavailableDetail}</p>
       ) : null}
 
-      {status === 'ready' ? (
+      {showReady ? (
         <iframe
           title="Workspace browser"
           src="/code/"
