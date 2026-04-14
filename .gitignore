@@ -8,6 +8,7 @@
 /.worktrees/
 /.claude/
 
+docs/superpowers/plans/
 
 /site/
 __pycache__/
