@@ -9,7 +9,9 @@ from ainrf.terminal.ttyd import start_ttyd_session, stop_ttyd_session
 router = APIRouter(prefix="/terminal", tags=["terminal"])
 
 
-def _serialize_session(session: TerminalSessionRecord) -> dict[str, str | None | TerminalSessionStatus]:
+def _serialize_session(
+    session: TerminalSessionRecord,
+) -> dict[str, str | None | TerminalSessionStatus]:
     return {
         "session_id": session.session_id,
         "provider": session.provider,

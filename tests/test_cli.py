@@ -186,7 +186,9 @@ def test_serve_auto_onboarding_preserves_validation_errors(
     assert "Run `ainrf onboard` interactively" not in result.output
 
 
-def test_serve_fails_fast_without_interactive_input(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_serve_fails_fast_without_interactive_input(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.delenv("AINRF_API_KEY_HASHES", raising=False)
     monkeypatch.setattr(
         "ainrf.onboarding.click.get_text_stream",
@@ -198,7 +200,9 @@ def test_serve_fails_fast_without_interactive_input(monkeypatch: pytest.MonkeyPa
     )
     monkeypatch.setattr(
         "ainrf.onboarding.typer.confirm",
-        lambda *args, **kwargs: pytest.fail("confirm should not run for non-interactive onboarding"),
+        lambda *args, **kwargs: pytest.fail(
+            "confirm should not run for non-interactive onboarding"
+        ),
     )
 
     result = runner.invoke(app, ["serve", "--state-root", str(tmp_path)])
@@ -255,7 +259,9 @@ def test_container_add_interactive_persists_profile(tmp_path: Path) -> None:
     assert profile["project_dir"] == "/workspace/project-a"
 
 
-def test_onboard_state_root_minimal_writes_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_onboard_state_root_minimal_writes_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setattr("ainrf.onboarding.typer.prompt", lambda *args, **kwargs: "bootstrap-secret")
     monkeypatch.setattr("ainrf.onboarding.typer.confirm", lambda *args, **kwargs: False)
 
@@ -292,9 +298,7 @@ def test_ensure_onboarded_rejects_non_tty_streams(
     )
     monkeypatch.setattr(
         "ainrf.onboarding.typer.prompt",
-        lambda *args, **kwargs: pytest.fail(
-            "prompt should not run for non-interactive onboarding"
-        ),
+        lambda *args, **kwargs: pytest.fail("prompt should not run for non-interactive onboarding"),
     )
 
     with pytest.raises(typer.BadParameter, match="interactively"):
@@ -378,17 +382,23 @@ def test_onboard_state_root_preserves_existing_config_keys(
     assert payload["api_key_hashes"] == [hash_api_key("bootstrap-secret")]
     assert payload["unrelated"] == {"enabled": True}
     assert payload["default_container_profile"] == "existing"
-    assert payload["container_profiles"] == {"existing": {"host": "old", "user": "worker", "port": 22}}
+    assert payload["container_profiles"] == {
+        "existing": {"host": "old", "user": "worker", "port": 22}
+    }
 
 
-def test_onboard_command_rejects_non_tty_use(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_onboard_command_rejects_non_tty_use(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setattr(
         "ainrf.onboarding.click.get_text_stream",
         lambda name: FakeTTY(False if name == "stdin" else True),
     )
     monkeypatch.setattr(
         "ainrf.onboarding.typer.confirm",
-        lambda *args, **kwargs: pytest.fail("confirm should not run for non-interactive onboarding"),
+        lambda *args, **kwargs: pytest.fail(
+            "confirm should not run for non-interactive onboarding"
+        ),
     )
     monkeypatch.setattr(
         "ainrf.onboarding.typer.prompt",
@@ -403,9 +413,7 @@ def test_onboard_command_rejects_non_tty_use(monkeypatch: pytest.MonkeyPatch, tm
     assert "interactively" in result.output
 
 
-def test_onboard_command_writes_config(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_onboard_command_writes_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr("ainrf.onboarding.click.get_text_stream", lambda name: FakeTTY(True))
     result = runner.invoke(
         app,
@@ -424,7 +432,9 @@ def test_onboard_command_prompts_before_overwrite(
     monkeypatch.setattr("ainrf.onboarding.click.get_text_stream", lambda name: FakeTTY(True))
     config_path = tmp_path / "config.json"
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(json.dumps({"api_key_hashes": [hash_api_key("existing")]}), encoding="utf-8")
+    config_path.write_text(
+        json.dumps({"api_key_hashes": [hash_api_key("existing")]}), encoding="utf-8"
+    )
 
     result = runner.invoke(
         app,
@@ -436,7 +446,6 @@ def test_onboard_command_prompts_before_overwrite(
     assert json.loads(config_path.read_text(encoding="utf-8"))["api_key_hashes"] == [
         hash_api_key("existing")
     ]
-
 
 
 def test_onboard_command_overwrites_invalid_existing_config(
@@ -465,4 +474,3 @@ def test_parse_ssh_command_supports_user_flag_and_inline_port() -> None:
     assert parsed.host == "gpu-server-02"
     assert parsed.user == "worker"
     assert parsed.port == 2200
-

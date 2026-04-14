@@ -29,3 +29,12 @@ export interface TerminalSession {
   terminal_url: string | null;
   detail: string | null;
 }
+
+export type CodeServerLifecycleStatus = 'starting' | 'ready' | 'unavailable';
+
+export interface CodeServerStatus {
+  status: CodeServerLifecycleStatus;
+  workspace_dir: string | null;
+  detail: string | null;
+  managed: boolean;
+}

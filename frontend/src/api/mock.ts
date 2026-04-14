@@ -1,4 +1,4 @@
-import type { SystemHealth, TerminalSession } from '../types';
+import type { CodeServerStatus, SystemHealth, TerminalSession } from '../types';
 
 const mockHealth: SystemHealth = {
   status: 'ok',
@@ -18,6 +18,13 @@ const mockHealth: SystemHealth = {
   detail: null,
 };
 
+const mockCodeServerStatus: CodeServerStatus = {
+  status: 'ready',
+  workspace_dir: '/workspace/projects/demo',
+  detail: null,
+  managed: true,
+};
+
 let mockTerminalSession: TerminalSession = {
   session_id: null,
   provider: 'ttyd',
@@ -32,6 +39,10 @@ let mockTerminalSession: TerminalSession = {
 
 export function mockGetHealth(): SystemHealth {
   return mockHealth;
+}
+
+export function mockGetCodeServerStatus(): CodeServerStatus {
+  return mockCodeServerStatus;
 }
 
 export function mockGetTerminalSession(): TerminalSession {

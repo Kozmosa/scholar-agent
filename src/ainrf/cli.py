@@ -235,7 +235,9 @@ def _ensure_api_key_hashes_configured(state_root: Path) -> None:
         try:
             ensure_interactive_onboarding_available()
         except typer.BadParameter:
-            typer.echo("AINRF API key hashes are not configured. Run `ainrf onboard` interactively.")
+            typer.echo(
+                "AINRF API key hashes are not configured. Run `ainrf onboard` interactively."
+            )
             raise typer.Exit(code=1) from None
         onboard_state_root(state_root)
         return
