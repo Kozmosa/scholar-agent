@@ -77,6 +77,10 @@ class CodeServerSupervisor:
             detail="code-server not started",
         )
 
+    @property
+    def base_url(self) -> str:
+        return f"http://{self._host}:{self._port}"
+
     def start(self) -> None:
         if self._workspace_dir is None:
             self._state = CodeServerState(
