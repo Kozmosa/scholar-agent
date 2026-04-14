@@ -28,6 +28,9 @@ class ApiConfig:
     terminal_host: str = "127.0.0.1"
     terminal_port: int = 7681
     terminal_command: tuple[str, ...] = ("/bin/sh",)
+    code_server_host: str = "127.0.0.1"
+    code_server_port: int = 18080
+    code_server_workspace_dir: Path | None = None
 
     @classmethod
     def from_env(cls, state_root: Path | None = None) -> ApiConfig:
@@ -55,6 +58,7 @@ class ApiConfig:
             api_key_hashes=api_key_hashes,
             state_root=resolved_state_root,
             container_config=container_config,
+            code_server_workspace_dir=Path(container_config.project_dir) if container_config else None,
         )
 
     @staticmethod

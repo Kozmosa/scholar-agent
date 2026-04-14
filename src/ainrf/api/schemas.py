@@ -19,6 +19,12 @@ class TerminalSessionStatus(StrEnum):
     FAILED = "failed"
 
 
+class CodeServerLifecycleStatus(StrEnum):
+    STARTING = "starting"
+    READY = "ready"
+    UNAVAILABLE = "unavailable"
+
+
 class HealthResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -41,3 +47,12 @@ class TerminalSessionResponse(BaseModel):
     closed_at: str | None = None
     terminal_url: str | None = None
     detail: str | None = None
+
+
+class CodeServerStatusResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: CodeServerLifecycleStatus
+    workspace_dir: str | None = None
+    detail: str | None = None
+    managed: bool = True
