@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-import signal
 import subprocess
 import time
 from dataclasses import dataclass
@@ -51,11 +49,15 @@ def _wait_until_ready(host: str, port: int, timeout_seconds: float = 10.0) -> bo
     return False
 
 
-def _terminate_process(pid: int) -> None:
-    try:
-        os.kill(pid, signal.SIGTERM)
-    except ProcessLookupError:
+def _terminate_process(process: subprocess.Popen[str], timeout_seconds: float = 5.0) -> None:
+    if process.poll() is not None:
         return
+    process.terminate()
+    try:
+        process.wait(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=timeout_seconds)
 
 
 def _is_process_running(process: subprocess.Popen[str]) -> bool:
@@ -88,6 +90,13 @@ class CodeServerSupervisor:
                 status=CodeServerLifecycleStatus.UNAVAILABLE,
                 workspace_dir=self._workspace_dir,
                 detail=f"workspace directory does not exist: {self._workspace_dir}",
+            )
+            return
+        if not self._workspace_dir.is_dir():
+            self._state = CodeServerState(
+                status=CodeServerLifecycleStatus.UNAVAILABLE,
+                workspace_dir=self._workspace_dir,
+                detail=f"workspace path is not a directory: {self._workspace_dir}",
             )
             return
         if self._process is not None and _is_process_running(self._process):
@@ -133,7 +142,7 @@ class CodeServerSupervisor:
                 pid=process.pid,
             )
             return
-        _terminate_process(process.pid)
+        _terminate_process(process)
         self._process = None
         self._state = CodeServerState(
             status=CodeServerLifecycleStatus.UNAVAILABLE,
@@ -146,7 +155,7 @@ class CodeServerSupervisor:
 
     def stop(self) -> None:
         if self._process is not None:
-            _terminate_process(self._process.pid)
+            _terminate_process(self._process)
             self._process = None
         self._state = CodeServerState(
             status=CodeServerLifecycleStatus.UNAVAILABLE,
