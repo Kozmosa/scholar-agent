@@ -58,6 +58,10 @@ def _terminate_process(pid: int) -> None:
         return
 
 
+def _is_process_running(process: subprocess.Popen[str]) -> bool:
+    return process.poll() is None
+
+
 class CodeServerSupervisor:
     def __init__(self, host: str, port: int, workspace_dir: Path | None, state_root: Path) -> None:
         self._host = host
@@ -86,6 +90,15 @@ class CodeServerSupervisor:
                 detail=f"workspace directory does not exist: {self._workspace_dir}",
             )
             return
+        if self._process is not None and _is_process_running(self._process):
+            self._state = CodeServerState(
+                status=CodeServerLifecycleStatus.READY,
+                workspace_dir=self._workspace_dir,
+                detail=None,
+                pid=self._process.pid,
+            )
+            return
+        self._process = None
         self._state = CodeServerState(
             status=CodeServerLifecycleStatus.STARTING,
             workspace_dir=self._workspace_dir,
@@ -94,15 +107,23 @@ class CodeServerSupervisor:
         runtime_dir = self._state_root / "runtime"
         runtime_dir.mkdir(parents=True, exist_ok=True)
         log_file = runtime_dir / "code-server.log"
-        with log_file.open("a", encoding="utf-8") as handle:
-            process = subprocess.Popen(
-                build_code_server_command(self._host, self._port, self._workspace_dir),
-                stdin=subprocess.DEVNULL,
-                stdout=handle,
-                stderr=handle,
-                start_new_session=True,
-                text=True,
+        try:
+            with log_file.open("a", encoding="utf-8") as handle:
+                process = subprocess.Popen(
+                    build_code_server_command(self._host, self._port, self._workspace_dir),
+                    stdin=subprocess.DEVNULL,
+                    stdout=handle,
+                    stderr=handle,
+                    start_new_session=True,
+                    text=True,
+                )
+        except OSError as exc:
+            self._state = CodeServerState(
+                status=CodeServerLifecycleStatus.UNAVAILABLE,
+                workspace_dir=self._workspace_dir,
+                detail=f"failed to start code-server: {exc}",
             )
+            return
         self._process = process
         if _wait_until_ready(self._host, self._port):
             self._state = CodeServerState(
