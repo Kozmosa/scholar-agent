@@ -12,7 +12,9 @@ from ainrf.code_server import CodeServerLifecycleStatus, CodeServerState
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("path", ["/code/status", "/v1/code/status"])
-async def test_code_status_reports_unavailable_without_supervisor(tmp_path: Path, path: str) -> None:
+async def test_code_status_reports_unavailable_without_supervisor(
+    tmp_path: Path, path: str
+) -> None:
     app = create_app(
         ApiConfig(
             api_key_hashes=frozenset({hash_api_key("secret-key")}),
@@ -37,7 +39,9 @@ async def test_code_status_reports_unavailable_without_supervisor(tmp_path: Path
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("path", ["/code/", "/v1/code/"])
-async def test_code_proxy_returns_503_when_code_server_is_unavailable(tmp_path: Path, path: str) -> None:
+async def test_code_proxy_returns_503_when_code_server_is_unavailable(
+    tmp_path: Path, path: str
+) -> None:
     app = create_app(
         ApiConfig(
             api_key_hashes=frozenset({hash_api_key("secret-key")}),
@@ -64,7 +68,9 @@ class ReadySupervisor:
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("path", ["/code/", "/v1/code/"])
-async def test_code_proxy_forwards_ready_requests(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, path: str) -> None:
+async def test_code_proxy_forwards_ready_requests(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, path: str
+) -> None:
     app = create_app(
         ApiConfig(
             api_key_hashes=frozenset({hash_api_key("secret-key")}),
@@ -118,7 +124,13 @@ async def test_code_proxy_forwards_ready_requests(tmp_path: Path, monkeypatch: p
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("path", ["/code/proxy/assets/app.js?folder=/workspace/project&view=preview", "/v1/code/proxy/assets/app.js?folder=/workspace/project&view=preview"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/code/proxy/assets/app.js?folder=/workspace/project&view=preview",
+        "/v1/code/proxy/assets/app.js?folder=/workspace/project&view=preview",
+    ],
+)
 async def test_code_proxy_forwards_query_string(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -144,7 +156,10 @@ async def test_code_proxy_forwards_query_string(
             return await original_request(self, method, url, **kwargs)
 
         assert method == "GET"
-        assert url == "http://127.0.0.1:18080/proxy/assets/app.js?folder=/workspace/project&view=preview"
+        assert (
+            url
+            == "http://127.0.0.1:18080/proxy/assets/app.js?folder=/workspace/project&view=preview"
+        )
         return httpx.Response(status_code=204)
 
     monkeypatch.setattr(httpx.AsyncClient, "request", fake_request)

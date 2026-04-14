@@ -58,7 +58,9 @@ class ApiConfig:
             api_key_hashes=api_key_hashes,
             state_root=resolved_state_root,
             container_config=container_config,
-            code_server_workspace_dir=Path(container_config.project_dir) if container_config else None,
+            code_server_workspace_dir=Path(container_config.project_dir)
+            if container_config
+            else None,
         )
 
     @staticmethod

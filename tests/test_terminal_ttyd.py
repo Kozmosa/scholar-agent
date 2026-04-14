@@ -93,9 +93,7 @@ def test_start_ttyd_session_launches_process_and_returns_running_record(
     assert session.pid == 4321
 
 
-def test_start_ttyd_session_creates_missing_working_directory(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_start_ttyd_session_creates_missing_working_directory(tmp_path: Path, monkeypatch) -> None:
     popen_calls: dict[str, object] = {}
     working_directory = tmp_path / ".ainrf"
 

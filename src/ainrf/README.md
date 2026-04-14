@@ -126,12 +126,18 @@ export AINRF_API_KEY_HASHES=<hash1>,<hash2>
 
 ## 4. API 路由说明
 
-### 4.1 Terminal Bench MVP
+### 4.1 Terminal Bench MVP 与 Workspace Browser
 
 Terminal Bench MVP 依赖本机可执行的 `ttyd` 二进制；联调前请先确认：
 
 ```bash
 ttyd --version
+```
+
+Workspace Browser 依赖本机可执行的 `code-server` 二进制；联调前请先确认：
+
+```bash
+code-server --version
 ```
 
 当前 runtime API 只暴露以下最小表面：
@@ -146,6 +152,13 @@ ttyd --version
   - `GET /v1/terminal/session`
   - `POST /v1/terminal/session`
   - `DELETE /v1/terminal/session`
+- code-server 状态路径（均受 API key 中间件保护）：
+  - `GET /code/status`
+  - `GET /v1/code/status`
+- managed code-server browser 路径（均受 API key 中间件保护）：
+  - `GET /code/`
+  - `GET /v1/code/`
+  - `GET /code/...` 与 `GET /v1/code/...` 下的嵌套静态资源 / 子路径，均由 API 反向代理到受管 `code-server`
 
 其中 terminal session API 只控制单个 ttyd-backed browser terminal session：
 
@@ -154,6 +167,14 @@ ttyd --version
 - `DELETE /terminal/session`：关闭当前终端 session
 
 `/v1/terminal/session` 提供相同语义的版本化镜像路径。
+
+code-server 相关路径只暴露当前 daemon 受管的单实例 workspace browser：
+
+- `GET /code/status`：读取当前 code-server supervisor 状态
+- `GET /code/`：通过 API 代理访问 browser 入口
+- `/v1/code/status` 与 `/v1/code/` 提供相同语义的版本化镜像路径
+
+如果本机未安装 `code-server`，或者当前 `project_dir` 缺失 / 不可用，API 仍会正常启动；此时 `/code/status` 会返回 `unavailable`，`/code/` 会返回不可用错误，而不会阻断主服务启动。
 
 已移除的旧 task 路径不会再由应用注册；在提供有效 API key 后会返回 `404`。
 

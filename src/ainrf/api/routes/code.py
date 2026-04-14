@@ -51,11 +51,7 @@ def _filter_request_headers(headers: httpx.Headers) -> dict[str, str]:
 
 
 def _filter_response_headers(headers: httpx.Headers) -> dict[str, str]:
-    return {
-        key: value
-        for key, value in headers.items()
-        if key.lower() not in _HOP_BY_HOP_HEADERS
-    }
+    return {key: value for key, value in headers.items() if key.lower() not in _HOP_BY_HOP_HEADERS}
 
 
 def _build_upstream_url(base_url: str, request: Request, path: str) -> str:
@@ -65,7 +61,9 @@ def _build_upstream_url(base_url: str, request: Request, path: str) -> str:
     return urlunsplit(("http", urlsplit(base).netloc, upstream_path, split.query, ""))
 
 
-@router.api_route("/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"])
+@router.api_route(
+    "/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
+)
 async def proxy_code_server(request: Request, path: str) -> Response:
     supervisor = getattr(request.app.state, "code_server_supervisor", None)
     if supervisor is None or supervisor.status().status != CodeServerLifecycleStatus.READY:

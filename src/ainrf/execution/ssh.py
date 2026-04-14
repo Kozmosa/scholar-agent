@@ -181,9 +181,7 @@ class SSHExecutor:
             warnings.append("claude_unavailable")
 
         api_key_result = await self.run_command("printenv ANTHROPIC_API_KEY", timeout=30)
-        anthropic_api_key_ok = (
-            api_key_result.exit_code == 0 and bool(api_key_result.stdout.strip())
-        )
+        anthropic_api_key_ok = api_key_result.exit_code == 0 and bool(api_key_result.stdout.strip())
         if not anthropic_api_key_ok:
             warnings.append("anthropic_api_key_missing")
 
@@ -388,7 +386,9 @@ class SSHExecutor:
             return CommandResult(exit_code=0, stdout="", stderr="")
 
         try:
-            await self._run_with_reconnect(operation, operation_timeout=self._container.command_timeout)
+            await self._run_with_reconnect(
+                operation, operation_timeout=self._container.command_timeout
+            )
         except Exception as exc:
             raise TransferError(f"Failed to upload {local_path} to {remote_path}") from exc
 
@@ -399,7 +399,9 @@ class SSHExecutor:
             return CommandResult(exit_code=0, stdout="", stderr="")
 
         try:
-            await self._run_with_reconnect(operation, operation_timeout=self._container.command_timeout)
+            await self._run_with_reconnect(
+                operation, operation_timeout=self._container.command_timeout
+            )
         except Exception as exc:
             raise TransferError(f"Failed to download {remote_path} to {local_path}") from exc
 
@@ -411,7 +413,9 @@ class SSHExecutor:
                 raise TransferError(f"Unable to determine remote file size: {remote_path}")
             return CommandResult(exit_code=0, stdout=str(attrs.size), stderr="")
 
-        result = await self._run_with_reconnect(operation, operation_timeout=self._container.command_timeout)
+        result = await self._run_with_reconnect(
+            operation, operation_timeout=self._container.command_timeout
+        )
         return int(result.stdout)
 
     async def _should_use_rsync(self, file_size: int) -> bool:
@@ -510,6 +514,7 @@ class SSHExecutor:
         if isinstance(exc, (OSError, ConnectionError)):
             return True
         return isinstance(exc, _RETRYABLE_ASYNCSSH_ERROR)
+
     @property
     def container(self) -> ContainerConfig:
         return self._container

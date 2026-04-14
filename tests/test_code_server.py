@@ -101,12 +101,13 @@ class FakeProcess:
         return self.returncode
 
 
-
 def test_supervisor_marks_ready_after_successful_probe(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("ainrf.code_server.subprocess.Popen", lambda *args, **kwargs: FakeProcess(4321))
+    monkeypatch.setattr(
+        "ainrf.code_server.subprocess.Popen", lambda *args, **kwargs: FakeProcess(4321)
+    )
     monkeypatch.setattr("ainrf.code_server._wait_until_ready", lambda host, port: True)
 
     supervisor = CodeServerSupervisor(
@@ -119,7 +120,6 @@ def test_supervisor_marks_ready_after_successful_probe(
 
     assert supervisor.status().status is CodeServerLifecycleStatus.READY
     assert supervisor.status().pid == 4321
-
 
 
 def test_supervisor_degrades_when_spawn_fails(
@@ -146,7 +146,6 @@ def test_supervisor_degrades_when_spawn_fails(
     assert "code-server not found" in (supervisor.status().detail or "")
 
 
-
 def test_supervisor_degrades_when_probe_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -166,7 +165,6 @@ def test_supervisor_degrades_when_probe_fails(
     assert supervisor.status().status is CodeServerLifecycleStatus.UNAVAILABLE
     assert process.actions == ["terminate"]
     assert process.wait_timeouts == [5.0]
-
 
 
 def test_supervisor_stop_terminates_and_reaps_process(
@@ -192,7 +190,6 @@ def test_supervisor_stop_terminates_and_reaps_process(
     assert supervisor.status().detail == "code-server stopped"
 
 
-
 def test_supervisor_stop_kills_after_terminate_timeout(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -213,7 +210,6 @@ def test_supervisor_stop_kills_after_terminate_timeout(
 
     assert process.actions == ["terminate", "kill"]
     assert process.wait_timeouts == [5.0, 5.0]
-
 
 
 def test_supervisor_reuses_existing_running_process_on_repeated_start(
