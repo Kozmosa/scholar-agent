@@ -13,7 +13,6 @@ from ainrf.terminal.models import TerminalSessionRecord, TerminalSessionStatus, 
 
 BROWSER_OPEN_TOKEN_TTL = timedelta(minutes=5)
 VIEWER_COOKIE_NAME = "ainrf_terminal_viewer"
-DEFAULT_TTYD_AUTH_HEADER = "X-AINRF-Terminal-Auth"
 
 
 class TtydCommand(list[str]):
