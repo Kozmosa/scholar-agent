@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import timedelta
 from pathlib import Path
 
 import httpx
@@ -10,48 +10,22 @@ from ainrf.api.app import create_app
 from ainrf.api.config import ApiConfig, hash_api_key
 
 
-def test_terminal_session_serialize_preserves_public_fields_with_browser_state() -> None:
-    from ainrf.api.routes.terminal import _serialize_session
+def test_terminal_session_record_supports_open_and_viewer_state() -> None:
     from ainrf.terminal.models import TerminalSessionRecord, TerminalSessionStatus
-
-    created_at = datetime(2026, 4, 14, 9, 30, tzinfo=UTC)
-    started_at = datetime(2026, 4, 14, 9, 31, tzinfo=UTC)
-    closed_at = datetime(2026, 4, 14, 9, 45, tzinfo=UTC)
-    browser_open_expires_at = datetime(2026, 4, 14, 10, 0, tzinfo=UTC)
-    browser_open_consumed_at = datetime(2026, 4, 14, 10, 1, tzinfo=UTC)
-    viewer_session_expires_at = datetime(2026, 4, 14, 11, 0, tzinfo=UTC)
 
     session = TerminalSessionRecord(
         session_id="term-1",
         provider="ttyd",
         target_kind="daemon-host",
         status=TerminalSessionStatus.RUNNING,
-        created_at=created_at,
-        started_at=started_at,
-        closed_at=closed_at,
-        terminal_url="http://127.0.0.1:7681",
-        detail="ready",
         browser_open_token="open-token",
-        browser_open_expires_at=browser_open_expires_at,
-        browser_open_consumed_at=browser_open_consumed_at,
         viewer_session_token="viewer-token",
-        viewer_session_expires_at=viewer_session_expires_at,
         viewer_cookie_name="ainrf_terminal_viewer",
     )
 
-    serialized = _serialize_session(session)
-
-    assert serialized == {
-        "session_id": "term-1",
-        "provider": "ttyd",
-        "target_kind": "daemon-host",
-        "status": TerminalSessionStatus.RUNNING,
-        "created_at": created_at.isoformat(),
-        "started_at": started_at.isoformat(),
-        "closed_at": closed_at.isoformat(),
-        "terminal_url": "http://127.0.0.1:7681",
-        "detail": "ready",
-    }
+    assert session.browser_open_token == "open-token"
+    assert session.viewer_session_token == "viewer-token"
+    assert session.viewer_cookie_name == "ainrf_terminal_viewer"
 
 
 @pytest.mark.anyio
@@ -107,8 +81,14 @@ async def test_terminal_session_create_uses_api_config_for_lifecycle(
         status=TerminalSessionStatus.RUNNING,
         created_at=utc_now(),
         started_at=utc_now(),
-        terminal_url="http://127.0.0.1:9001",
+        terminal_url="http://testserver/terminal/session/term-1/open?token=open-token",
         pid=4321,
+        browser_open_token="open-token",
+        browser_open_expires_at=utc_now() + timedelta(minutes=5),
+        browser_open_consumed_at=None,
+        viewer_session_token=None,
+        viewer_session_expires_at=None,
+        viewer_cookie_name="ainrf_terminal_viewer",
     )
 
     def fake_start_ttyd_session(**kwargs):
@@ -137,15 +117,151 @@ async def test_terminal_session_create_uses_api_config_for_lifecycle(
     assert captured == {
         "host": "127.0.0.1",
         "port": 9001,
-        "credential": "terminal:secret-key",
+        "auth_header_name": "X-AINRF-Terminal-Auth",
         "shell_command": ("/bin/bash", "-lc", "pwd"),
         "working_directory": tmp_path,
+        "api_base_url": "http://testserver",
     }
     assert app.state.terminal_session == running
+    assert response.json()["terminal_url"] == "http://testserver/terminal/session/term-1/open?token=open-token"
 
 
 @pytest.mark.anyio
-async def test_terminal_session_delete_stops_active_session(
+async def test_terminal_open_sets_viewer_cookie_and_redirects_to_proxy(
+    tmp_path: Path,
+) -> None:
+    from ainrf.terminal.models import TerminalSessionRecord, TerminalSessionStatus, utc_now
+
+    now = utc_now()
+    app = create_app(
+        ApiConfig(
+            api_key_hashes=frozenset({hash_api_key("secret-key")}),
+            state_root=tmp_path,
+            terminal_host="127.0.0.1",
+            terminal_port=9001,
+        )
+    )
+    app.state.terminal_session = TerminalSessionRecord(
+        session_id="term-1",
+        provider="ttyd",
+        target_kind="daemon-host",
+        status=TerminalSessionStatus.RUNNING,
+        created_at=now,
+        started_at=now,
+        terminal_url="http://testserver/terminal/session/term-1/open?token=open-token",
+        pid=4321,
+        browser_open_token="open-token",
+        browser_open_expires_at=now + timedelta(minutes=5),
+        browser_open_consumed_at=None,
+        viewer_session_token=None,
+        viewer_session_expires_at=None,
+        viewer_cookie_name="ainrf_terminal_viewer",
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+        follow_redirects=False,
+    ) as client:
+        response = await client.get("/terminal/session/term-1/open?token=open-token")
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/terminal/session/term-1/proxy/"
+    assert "ainrf_terminal_viewer=" in response.headers["set-cookie"]
+    assert app.state.terminal_session.browser_open_consumed_at is not None
+    assert app.state.terminal_session.viewer_session_token is not None
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("token", "expires_delta", "consumed", "viewer_token", "expected_status"),
+    [
+        ("wrong-token", timedelta(minutes=5), None, None, 403),
+        ("open-token", timedelta(minutes=-1), None, None, 410),
+        ("open-token", timedelta(minutes=5), timedelta(seconds=1), None, 409),
+        ("open-token", timedelta(minutes=5), None, "viewer-token", 409),
+    ],
+)
+async def test_terminal_open_rejects_invalid_or_reused_state(
+    tmp_path: Path,
+    token: str,
+    expires_delta: timedelta,
+    consumed: timedelta | None,
+    viewer_token: str | None,
+    expected_status: int,
+) -> None:
+    from ainrf.terminal.models import TerminalSessionRecord, TerminalSessionStatus, utc_now
+
+    now = utc_now()
+    app = create_app(
+        ApiConfig(
+            api_key_hashes=frozenset({hash_api_key("secret-key")}),
+            state_root=tmp_path,
+        )
+    )
+    app.state.terminal_session = TerminalSessionRecord(
+        session_id="term-1",
+        provider="ttyd",
+        target_kind="daemon-host",
+        status=TerminalSessionStatus.RUNNING,
+        created_at=now,
+        started_at=now,
+        terminal_url="http://testserver/terminal/session/term-1/open?token=open-token",
+        browser_open_token="open-token",
+        browser_open_expires_at=now + expires_delta,
+        browser_open_consumed_at=now + consumed if consumed is not None else None,
+        viewer_session_token=viewer_token,
+        viewer_session_expires_at=now + timedelta(minutes=30) if viewer_token else None,
+        viewer_cookie_name="ainrf_terminal_viewer",
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get(f"/terminal/session/term-1/open?token={token}")
+
+    assert response.status_code == expected_status
+
+
+@pytest.mark.anyio
+async def test_terminal_proxy_requires_valid_viewer_cookie(tmp_path: Path) -> None:
+    from ainrf.terminal.models import TerminalSessionRecord, TerminalSessionStatus, utc_now
+
+    now = utc_now()
+    app = create_app(
+        ApiConfig(
+            api_key_hashes=frozenset({hash_api_key("secret-key")}),
+            state_root=tmp_path,
+        )
+    )
+    app.state.terminal_session = TerminalSessionRecord(
+        session_id="term-1",
+        provider="ttyd",
+        target_kind="daemon-host",
+        status=TerminalSessionStatus.RUNNING,
+        created_at=now,
+        started_at=now,
+        terminal_url="http://testserver/terminal/session/term-1/open?token=open-token",
+        browser_open_token="open-token",
+        browser_open_expires_at=now + timedelta(minutes=5),
+        browser_open_consumed_at=now,
+        viewer_session_token="viewer-token",
+        viewer_session_expires_at=now + timedelta(minutes=30),
+        viewer_cookie_name="ainrf_terminal_viewer",
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/terminal/session/term-1/proxy/")
+
+    assert response.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_terminal_session_delete_stops_active_session_and_clears_browser_state(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from ainrf.terminal.models import TerminalSessionRecord, TerminalSessionStatus, utc_now
@@ -157,8 +273,14 @@ async def test_terminal_session_delete_stops_active_session(
         status=TerminalSessionStatus.RUNNING,
         created_at=utc_now(),
         started_at=utc_now(),
-        terminal_url="http://127.0.0.1:7681",
+        terminal_url="http://testserver/terminal/session/term-1/open?token=open-token",
         pid=4321,
+        browser_open_token="open-token",
+        browser_open_expires_at=utc_now() + timedelta(minutes=5),
+        browser_open_consumed_at=utc_now(),
+        viewer_session_token="viewer-token",
+        viewer_session_expires_at=utc_now() + timedelta(minutes=30),
+        viewer_cookie_name="ainrf_terminal_viewer",
     )
     stopped = TerminalSessionRecord(
         session_id=None,
@@ -166,6 +288,12 @@ async def test_terminal_session_delete_stops_active_session(
         target_kind="daemon-host",
         status=TerminalSessionStatus.IDLE,
         closed_at=utc_now(),
+        browser_open_token=None,
+        browser_open_expires_at=None,
+        browser_open_consumed_at=None,
+        viewer_session_token=None,
+        viewer_session_expires_at=None,
+        viewer_cookie_name="ainrf_terminal_viewer",
     )
     captured: dict[str, object] = {}
 
