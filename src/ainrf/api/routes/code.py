@@ -75,14 +75,19 @@ async def proxy_code_server(request: Request, path: str) -> Response:
     request_headers = _filter_request_headers(request.headers)
     request_body = await request.body()
 
-    async with httpx.AsyncClient() as client:
-        upstream_response = await client.request(
-            request.method,
-            upstream_url,
-            headers=request_headers,
-            content=request_body,
-            follow_redirects=False,
-        )
+    try:
+        async with httpx.AsyncClient() as client:
+            upstream_response = await client.request(
+                request.method,
+                upstream_url,
+                headers=request_headers,
+                content=request_body,
+                follow_redirects=False,
+            )
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=503, detail="code-server upstream timed out") from exc
+    except (httpx.RequestError, httpx.TransportError) as exc:
+        raise HTTPException(status_code=502, detail="code-server upstream request failed") from exc
 
     return Response(
         content=upstream_response.content,
