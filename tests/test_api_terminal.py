@@ -5,6 +5,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from starlette.websockets import WebSocketState
 
 from ainrf.api.app import create_app
 from ainrf.api.config import ApiConfig, hash_api_key
@@ -258,6 +259,106 @@ async def test_terminal_proxy_requires_valid_viewer_cookie(tmp_path: Path) -> No
         response = await client.get("/terminal/session/term-1/proxy/")
 
     assert response.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_terminal_websocket_proxy_forwards_upstream_messages(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from ainrf.api.routes import terminal as terminal_routes
+    from ainrf.terminal.models import TerminalSessionRecord, TerminalSessionStatus, utc_now
+
+    now = utc_now()
+    app = create_app(
+        ApiConfig(
+            api_key_hashes=frozenset({hash_api_key("secret-key")}),
+            state_root=tmp_path,
+            terminal_host="127.0.0.1",
+            terminal_port=9001,
+        )
+    )
+    app.state.terminal_session = TerminalSessionRecord(
+        session_id="term-1",
+        provider="ttyd",
+        target_kind="daemon-host",
+        status=TerminalSessionStatus.RUNNING,
+        created_at=now,
+        started_at=now,
+        terminal_url="http://testserver/terminal/session/term-1/open?token=open-token",
+        browser_open_token="open-token",
+        browser_open_expires_at=now + timedelta(minutes=5),
+        browser_open_consumed_at=now,
+        viewer_session_token="viewer-token",
+        viewer_session_expires_at=now + timedelta(minutes=30),
+        viewer_cookie_name="ainrf_terminal_viewer",
+    )
+
+    class FakeWebSocket:
+        def __init__(self) -> None:
+            self.app = app
+            self.cookies = {"ainrf_terminal_viewer": "viewer-token"}
+            self.client_state = WebSocketState.CONNECTED
+            self.accepted = False
+            self.closed_code: int | None = None
+            self.sent_text: list[str] = []
+            self._received_once = False
+
+        async def accept(self) -> None:
+            self.accepted = True
+
+        async def receive(self) -> dict[str, str | None]:
+            if not self._received_once:
+                self._received_once = True
+                return {"type": "websocket.disconnect", "text": None, "bytes": None}
+            raise AssertionError("browser receive should stop after disconnect")
+
+        async def send_text(self, message: str) -> None:
+            self.sent_text.append(message)
+
+        async def send_bytes(self, message: bytes) -> None:
+            raise AssertionError(f"unexpected binary message: {message!r}")
+
+        async def close(self, code: int = 1000) -> None:
+            self.client_state = WebSocketState.DISCONNECTED
+            self.closed_code = code
+
+    class FakeUpstream:
+        def __init__(self) -> None:
+            self.sent: list[str | bytes] = []
+            self._messages = iter(["upstream-ready"])
+
+        async def send(self, message: str | bytes) -> None:
+            self.sent.append(message)
+
+        def __aiter__(self) -> "FakeUpstream":
+            return self
+
+        async def __anext__(self) -> str:
+            try:
+                return next(self._messages)
+            except StopIteration as exc:
+                raise StopAsyncIteration from exc
+
+    upstream = FakeUpstream()
+
+    class FakeConnect:
+        def __init__(self, upstream_conn: FakeUpstream) -> None:
+            self.upstream_conn = upstream_conn
+
+        async def __aenter__(self) -> FakeUpstream:
+            return self.upstream_conn
+
+        async def __aexit__(self, exc_type, exc, tb) -> bool:
+            return False
+
+    monkeypatch.setattr(terminal_routes.websockets, "connect", lambda *args, **kwargs: FakeConnect(upstream))
+
+    websocket = FakeWebSocket()
+
+    await terminal_routes.proxy_terminal_websocket("term-1", websocket)  # type: ignore[arg-type]
+
+    assert websocket.accepted is True
+    assert websocket.sent_text == ["upstream-ready"]
+    assert websocket.closed_code == 1000
+    assert upstream.sent == []
 
 
 @pytest.mark.anyio

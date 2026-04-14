@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 from secrets import compare_digest, token_urlsafe
 
+import anyio
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import RedirectResponse, StreamingResponse
@@ -193,28 +194,35 @@ async def proxy_terminal_websocket(session_id: str, websocket: WebSocket) -> Non
         upstream_ws_url,
         additional_headers=_ttyd_auth_headers(),
     ) as upstream:
-        async def browser_to_upstream() -> None:
-            while True:
-                message = await websocket.receive()
-                if message.get("type") == "websocket.disconnect":
-                    break
-                if "text" in message and message["text"] is not None:
-                    await upstream.send(message["text"])
-                if "bytes" in message and message["bytes"] is not None:
-                    await upstream.send(message["bytes"])
+        async def browser_to_upstream(task_group: anyio.abc.TaskGroup) -> None:
+            try:
+                while True:
+                    message = await websocket.receive()
+                    if message.get("type") == "websocket.disconnect":
+                        break
+                    if "text" in message and message["text"] is not None:
+                        await upstream.send(message["text"])
+                    if "bytes" in message and message["bytes"] is not None:
+                        await upstream.send(message["bytes"])
+            except WebSocketDisconnect:
+                pass
+            finally:
+                task_group.cancel_scope.cancel()
 
-        async def upstream_to_browser() -> None:
-            async for message in upstream:
-                if isinstance(message, bytes):
-                    await websocket.send_bytes(message)
-                else:
-                    await websocket.send_text(message)
+        async def upstream_to_browser(task_group: anyio.abc.TaskGroup) -> None:
+            try:
+                async for message in upstream:
+                    if isinstance(message, bytes):
+                        await websocket.send_bytes(message)
+                    else:
+                        await websocket.send_text(message)
+            finally:
+                task_group.cancel_scope.cancel()
 
         try:
-            async with httpx.AsyncClient():
-                await browser_to_upstream()
-        except WebSocketDisconnect:
-            pass
+            async with anyio.create_task_group() as task_group:
+                task_group.start_soon(browser_to_upstream, task_group)
+                task_group.start_soon(upstream_to_browser, task_group)
         finally:
             if websocket.client_state != WebSocketState.DISCONNECTED:
                 await websocket.close()
