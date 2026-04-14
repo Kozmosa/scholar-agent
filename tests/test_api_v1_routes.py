@@ -33,7 +33,7 @@ async def test_health_routes_are_public(tmp_path: Path, path: str) -> None:
 
 
 @pytest.mark.anyio
-async def test_openapi_registers_health_and_terminal_routes_and_removes_tasks(tmp_path: Path) -> None:
+async def test_openapi_registers_health_terminal_and_code_routes_and_removes_tasks(tmp_path: Path) -> None:
     async with make_client(tmp_path) as client:
         response = await client.get("/openapi.json")
 
@@ -43,5 +43,7 @@ async def test_openapi_registers_health_and_terminal_routes_and_removes_tasks(tm
     assert "/v1/health" in payload["paths"]
     assert "/terminal/session" in payload["paths"]
     assert "/v1/terminal/session" in payload["paths"]
+    assert "/code/status" in payload["paths"]
+    assert "/v1/code/status" in payload["paths"]
     assert "/tasks" not in payload["paths"]
     assert "/v1/tasks" not in payload["paths"]
