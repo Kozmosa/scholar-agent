@@ -262,6 +262,43 @@ async def test_terminal_proxy_requires_valid_viewer_cookie(tmp_path: Path) -> No
 
 
 @pytest.mark.anyio
+async def test_terminal_http_proxy_rejects_wrong_session_id(tmp_path: Path) -> None:
+    from ainrf.terminal.models import TerminalSessionRecord, TerminalSessionStatus, utc_now
+
+    now = utc_now()
+    app = create_app(
+        ApiConfig(
+            api_key_hashes=frozenset({hash_api_key("secret-key")}),
+            state_root=tmp_path,
+        )
+    )
+    app.state.terminal_session = TerminalSessionRecord(
+        session_id="term-1",
+        provider="ttyd",
+        target_kind="daemon-host",
+        status=TerminalSessionStatus.RUNNING,
+        created_at=now,
+        started_at=now,
+        terminal_url="http://testserver/terminal/session/term-1/open?token=open-token",
+        browser_open_token="open-token",
+        browser_open_expires_at=now + timedelta(minutes=5),
+        browser_open_consumed_at=now,
+        viewer_session_token="viewer-token",
+        viewer_session_expires_at=now + timedelta(minutes=30),
+        viewer_cookie_name="ainrf_terminal_viewer",
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+        cookies={"ainrf_terminal_viewer": "viewer-token"},
+    ) as client:
+        response = await client.get("/terminal/session/wrong-id/proxy/")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.anyio
 async def test_terminal_websocket_proxy_forwards_upstream_messages(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from ainrf.api.routes import terminal as terminal_routes
     from ainrf.terminal.models import TerminalSessionRecord, TerminalSessionStatus, utc_now
@@ -359,6 +396,66 @@ async def test_terminal_websocket_proxy_forwards_upstream_messages(tmp_path: Pat
     assert websocket.sent_text == ["upstream-ready"]
     assert websocket.closed_code == 1000
     assert upstream.sent == []
+
+
+@pytest.mark.anyio
+async def test_terminal_websocket_proxy_rejects_wrong_session_id(tmp_path: Path) -> None:
+    from ainrf.api.routes import terminal as terminal_routes
+    from ainrf.terminal.models import TerminalSessionRecord, TerminalSessionStatus, utc_now
+
+    now = utc_now()
+    app = create_app(
+        ApiConfig(
+            api_key_hashes=frozenset({hash_api_key("secret-key")}),
+            state_root=tmp_path,
+        )
+    )
+    app.state.terminal_session = TerminalSessionRecord(
+        session_id="term-1",
+        provider="ttyd",
+        target_kind="daemon-host",
+        status=TerminalSessionStatus.RUNNING,
+        created_at=now,
+        started_at=now,
+        terminal_url="http://testserver/terminal/session/term-1/open?token=open-token",
+        browser_open_token="open-token",
+        browser_open_expires_at=now + timedelta(minutes=5),
+        browser_open_consumed_at=now,
+        viewer_session_token="viewer-token",
+        viewer_session_expires_at=now + timedelta(minutes=30),
+        viewer_cookie_name="ainrf_terminal_viewer",
+    )
+
+    class FakeWebSocket:
+        def __init__(self) -> None:
+            self.app = app
+            self.cookies = {"ainrf_terminal_viewer": "viewer-token"}
+            self.client_state = WebSocketState.CONNECTED
+            self.accepted = False
+            self.closed_code: int | None = None
+
+        async def accept(self) -> None:
+            self.accepted = True
+
+        async def receive(self) -> dict[str, str | None]:
+            raise AssertionError("websocket should be closed before receiving")
+
+        async def send_text(self, message: str) -> None:
+            raise AssertionError(f"unexpected text message: {message!r}")
+
+        async def send_bytes(self, message: bytes) -> None:
+            raise AssertionError(f"unexpected binary message: {message!r}")
+
+        async def close(self, code: int = 1000) -> None:
+            self.client_state = WebSocketState.DISCONNECTED
+            self.closed_code = code
+
+    websocket = FakeWebSocket()
+
+    await terminal_routes.proxy_terminal_websocket("wrong-id", websocket)  # type: ignore[arg-type]
+
+    assert websocket.accepted is False
+    assert websocket.closed_code == 4404
 
 
 @pytest.mark.anyio

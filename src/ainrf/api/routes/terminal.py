@@ -96,6 +96,14 @@ def _require_viewer_session(session: TerminalSessionRecord, viewer_token: str | 
         raise HTTPException(status_code=401, detail="Terminal viewer session has expired")
 
 
+def _require_proxy_session(
+    session: TerminalSessionRecord, session_id: str, viewer_token: str | None
+) -> None:
+    if session.session_id != session_id:
+        raise HTTPException(status_code=404, detail="Terminal session not found")
+    _require_viewer_session(session, viewer_token)
+
+
 def _ttyd_auth_headers() -> dict[str, str]:
     return {TTYD_AUTH_HEADER: "allow"}
 
@@ -147,7 +155,7 @@ async def open_terminal_session(session_id: str, token: str, request: Request) -
 @router.get("/session/{session_id}/proxy/{path:path}")
 async def proxy_terminal_http(session_id: str, path: str, request: Request) -> Response:
     session = get_terminal_session(request.app)
-    _require_viewer_session(session, request.cookies.get(_viewer_cookie_name(session)))
+    _require_proxy_session(session, session_id, request.cookies.get(_viewer_cookie_name(session)))
     upstream_url = _proxy_target_url(request, session_id, path)
     upstream_headers = {
         key: value
@@ -181,9 +189,10 @@ async def proxy_terminal_websocket(session_id: str, websocket: WebSocket) -> Non
     session = get_terminal_session(websocket.app)
     viewer_token = websocket.cookies.get(_viewer_cookie_name(session))
     try:
-        _require_viewer_session(session, viewer_token)
-    except HTTPException:
-        await websocket.close(code=4401)
+        _require_proxy_session(session, session_id, viewer_token)
+    except HTTPException as exc:
+        close_code = 4404 if exc.status_code == 404 else 4401
+        await websocket.close(code=close_code)
         return
 
     config = websocket.app.state.api_config
