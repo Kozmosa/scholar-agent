@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 import httpx
@@ -47,3 +48,43 @@ async def test_openapi_registers_health_terminal_and_code_routes_and_removes_tas
     assert "/v1/code/status" in payload["paths"]
     assert "/tasks" not in payload["paths"]
     assert "/v1/tasks" not in payload["paths"]
+
+
+@pytest.mark.anyio
+async def test_lifespan_attaches_supervisor_and_runs_sync_hooks_off_event_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    events: list[tuple[str, int]] = []
+    main_thread_id = threading.get_ident()
+
+    class SupervisorSpy:
+        def __init__(self, **_: object) -> None:
+            self.started = False
+            self.stopped = False
+
+        def start(self) -> None:
+            self.started = True
+            events.append(("start", threading.get_ident()))
+
+        def stop(self) -> None:
+            self.stopped = True
+            events.append(("stop", threading.get_ident()))
+
+    monkeypatch.setattr("ainrf.api.app.CodeServerSupervisor", SupervisorSpy)
+    app = create_app(
+        ApiConfig(
+            api_key_hashes=frozenset({hash_api_key("secret-key")}),
+            state_root=tmp_path,
+        )
+    )
+
+    async with app.router.lifespan_context(app):
+        supervisor = app.state.code_server_supervisor
+        assert isinstance(supervisor, SupervisorSpy)
+        assert supervisor.started is True
+        assert supervisor.stopped is False
+
+    assert supervisor.stopped is True
+    assert events == [("start", events[0][1]), ("stop", events[1][1])]
+    assert events[0][1] != main_thread_id
+    assert events[1][1] != main_thread_id

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
+from anyio import to_thread
 from fastapi import FastAPI
 
 from ainrf.api.config import ApiConfig
@@ -11,6 +12,10 @@ from ainrf.api.routes.code import router as code_router
 from ainrf.api.routes.health import router as health_router
 from ainrf.api.routes.terminal import router as terminal_router
 from ainrf.code_server import CodeServerSupervisor
+
+
+def _run_sync_in_lifespan(callback: Callable[[], None]) -> Awaitable[None]:
+    return to_thread.run_sync(callback)
 
 
 @asynccontextmanager
@@ -23,11 +28,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         state_root=config.state_root,
     )
     app.state.code_server_supervisor = supervisor
-    supervisor.start()
+    await _run_sync_in_lifespan(supervisor.start)
     try:
         yield
     finally:
-        supervisor.stop()
+        await _run_sync_in_lifespan(supervisor.stop)
 
 
 def create_app(config: ApiConfig | None = None) -> FastAPI:
