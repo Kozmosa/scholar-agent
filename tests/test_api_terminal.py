@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -7,6 +8,50 @@ import pytest
 
 from ainrf.api.app import create_app
 from ainrf.api.config import ApiConfig, hash_api_key
+
+
+def test_terminal_session_serialize_preserves_public_fields_with_browser_state() -> None:
+    from ainrf.api.routes.terminal import _serialize_session
+    from ainrf.terminal.models import TerminalSessionRecord, TerminalSessionStatus
+
+    created_at = datetime(2026, 4, 14, 9, 30, tzinfo=UTC)
+    started_at = datetime(2026, 4, 14, 9, 31, tzinfo=UTC)
+    closed_at = datetime(2026, 4, 14, 9, 45, tzinfo=UTC)
+    browser_open_expires_at = datetime(2026, 4, 14, 10, 0, tzinfo=UTC)
+    browser_open_consumed_at = datetime(2026, 4, 14, 10, 1, tzinfo=UTC)
+    viewer_session_expires_at = datetime(2026, 4, 14, 11, 0, tzinfo=UTC)
+
+    session = TerminalSessionRecord(
+        session_id="term-1",
+        provider="ttyd",
+        target_kind="daemon-host",
+        status=TerminalSessionStatus.RUNNING,
+        created_at=created_at,
+        started_at=started_at,
+        closed_at=closed_at,
+        terminal_url="http://127.0.0.1:7681",
+        detail="ready",
+        browser_open_token="open-token",
+        browser_open_expires_at=browser_open_expires_at,
+        browser_open_consumed_at=browser_open_consumed_at,
+        viewer_session_token="viewer-token",
+        viewer_session_expires_at=viewer_session_expires_at,
+        viewer_cookie_name="ainrf_terminal_viewer",
+    )
+
+    serialized = _serialize_session(session)
+
+    assert serialized == {
+        "session_id": "term-1",
+        "provider": "ttyd",
+        "target_kind": "daemon-host",
+        "status": TerminalSessionStatus.RUNNING,
+        "created_at": created_at.isoformat(),
+        "started_at": started_at.isoformat(),
+        "closed_at": closed_at.isoformat(),
+        "terminal_url": "http://127.0.0.1:7681",
+        "detail": "ready",
+    }
 
 
 @pytest.mark.anyio

@@ -25,6 +25,12 @@ class TerminalSessionRecord:
     terminal_url: str | None = None
     detail: str | None = None
     pid: int | None = None
+    browser_open_token: str | None = None
+    browser_open_expires_at: datetime | None = None
+    browser_open_consumed_at: datetime | None = None
+    viewer_session_token: str | None = None
+    viewer_session_expires_at: datetime | None = None
+    viewer_cookie_name: str | None = None
 
 
 def utc_now() -> datetime:
