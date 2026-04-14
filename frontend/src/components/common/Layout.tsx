@@ -15,8 +15,8 @@ function Layout({ children }: Props) {
               Scholar Agent
             </Link>
             <p className="text-sm text-gray-600">
-              Minimal frontend shell aligned to backend health checks and terminal bench controls
-              during realignment.
+              Minimal frontend shell aligned to backend health checks, terminal bench controls,
+              and the managed workspace browser.
             </p>
           </div>
         </div>
@@ -25,7 +25,7 @@ function Layout({ children }: Props) {
       <main className="mx-auto flex-1 w-full max-w-5xl">{children}</main>
 
       <footer className="border-t border-gray-200 bg-white py-4 text-center text-sm text-gray-500">
-        Health and terminal bench shell during backend cleanup.
+        Health, terminal bench, and workspace browser shell during backend realignment.
       </footer>
     </div>
   );

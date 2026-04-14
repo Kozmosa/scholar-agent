@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { getHealth } from '../api';
-import { HealthStatusBar, TerminalBenchCard } from '../components';
+import { CodeServerCard, HealthStatusBar, TerminalBenchCard } from '../components';
 
 function DashboardPage() {
   const healthQuery = useQuery({ queryKey: ['health'], queryFn: getHealth });
@@ -11,11 +11,12 @@ function DashboardPage() {
         <p className="text-sm font-medium uppercase tracking-wide text-[var(--accent)]">
           Service status
         </p>
-        <h1 className="text-3xl font-semibold text-gray-900">Scholar Agent terminal shell</h1>
+        <h1 className="text-3xl font-semibold text-gray-900">Scholar Agent runtime shell</h1>
         <p className="max-w-3xl text-sm text-gray-600 sm:text-base">
-          The frontend now exposes the cleaned runtime shell: health checks plus the single-session
-          terminal bench control surface. Use this page to confirm API, SSH, workspace readiness,
-          and terminal session state.
+          The frontend now exposes the cleaned runtime shell: health checks, the single-session
+          terminal bench control surface, and the managed workspace browser panel. Use this page
+          to confirm API, SSH, workspace readiness, terminal session state, and code-server
+          availability.
         </p>
       </section>
 
@@ -25,8 +26,10 @@ function DashboardPage() {
           <p className="text-sm text-gray-600">
             Available endpoints: <code className="rounded bg-gray-100 px-1.5 py-0.5">/health</code>,{' '}
             <code className="rounded bg-gray-100 px-1.5 py-0.5">/v1/health</code>,{' '}
-            <code className="rounded bg-gray-100 px-1.5 py-0.5">/terminal/session</code>, and{' '}
-            <code className="rounded bg-gray-100 px-1.5 py-0.5">/v1/terminal/session</code>.
+            <code className="rounded bg-gray-100 px-1.5 py-0.5">/terminal/session</code>,{' '}
+            <code className="rounded bg-gray-100 px-1.5 py-0.5">/v1/terminal/session</code>,{' '}
+            <code className="rounded bg-gray-100 px-1.5 py-0.5">/code/status</code>, and{' '}
+            <code className="rounded bg-gray-100 px-1.5 py-0.5">/v1/code/status</code>.
           </p>
           <p className="text-sm text-gray-600">
             State root:{' '}
@@ -40,6 +43,7 @@ function DashboardPage() {
         </div>
         <HealthStatusBar health={healthQuery.data} isLoading={healthQuery.isLoading} />
         <TerminalBenchCard />
+        <CodeServerCard />
       </section>
     </div>
   );

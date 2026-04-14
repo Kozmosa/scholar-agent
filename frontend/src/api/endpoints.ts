@@ -1,8 +1,9 @@
 import { api } from './client';
-import type { SystemHealth, TerminalSession } from '../types';
+import type { CodeServerStatus, SystemHealth, TerminalSession } from '../types';
 import {
   mockCreateTerminalSession,
   mockDeleteTerminalSession,
+  mockGetCodeServerStatus,
   mockGetHealth,
   mockGetTerminalSession,
 } from './mock';
@@ -26,3 +27,8 @@ export const deleteTerminalSession = (): Promise<TerminalSession> =>
   USE_MOCK
     ? Promise.resolve(mockDeleteTerminalSession())
     : api.delete<TerminalSession>('/terminal/session');
+
+export const getCodeServerStatus = (): Promise<CodeServerStatus> =>
+  USE_MOCK
+    ? Promise.resolve(mockGetCodeServerStatus())
+    : api.get<CodeServerStatus>('/code/status');
