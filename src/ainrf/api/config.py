@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+import pwd
+from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, cast
@@ -21,12 +22,25 @@ def _parse_api_key_hashes(raw: str) -> frozenset[str]:
     return frozenset(hashes)
 
 
+def _default_terminal_command() -> tuple[str, ...]:
+    shell_path: str | None
+    try:
+        shell_path = pwd.getpwuid(os.getuid()).pw_shell
+    except Exception:
+        shell_path = None
+    if not shell_path:
+        shell_path = os.environ.get("SHELL")
+    if not shell_path:
+        shell_path = "/bin/sh"
+    return (shell_path,)
+
+
 @dataclass(slots=True)
 class ApiConfig:
     api_key_hashes: frozenset[str]
     state_root: Path
     container_config: ContainerConfig | None = None
-    terminal_command: tuple[str, ...] = ("/bin/sh",)
+    terminal_command: tuple[str, ...] = field(default_factory=_default_terminal_command)
     code_server_host: str = "127.0.0.1"
     code_server_port: int = 18080
     code_server_workspace_dir: Path | None = None

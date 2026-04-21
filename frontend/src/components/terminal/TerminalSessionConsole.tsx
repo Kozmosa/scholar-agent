@@ -216,7 +216,7 @@ function TerminalSessionConsole({ sessionId, terminalWsUrl, status, onDisconnect
   }
 
   return (
-    <section className="space-y-3 rounded-2xl border border-gray-200 bg-gray-50 p-4">
+    <section className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="space-y-1">
           <h3 className="text-sm font-semibold uppercase tracking-[0.24em] text-[var(--accent)]">
@@ -234,7 +234,7 @@ function TerminalSessionConsole({ sessionId, terminalWsUrl, status, onDisconnect
 
       <div
         ref={containerRef}
-        className="min-h-[480px] overflow-hidden rounded-2xl border border-gray-800 bg-[#0b1020]"
+        className="min-h-[480px] overflow-hidden rounded-lg border border-gray-800 bg-[#0b1020]"
       />
     </section>
   );
