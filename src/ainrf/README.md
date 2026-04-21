@@ -128,11 +128,8 @@ export AINRF_API_KEY_HASHES=<hash1>,<hash2>
 
 ### 4.1 Terminal Bench MVP 与 Workspace Browser
 
-Terminal Bench MVP 依赖本机可执行的 `ttyd` 二进制；联调前请先确认：
-
-```bash
-ttyd --version
-```
+Terminal Bench MVP 现已切换为 `xterm.js + PTY/WebSocket`，不再依赖 `ttyd` 二进制。
+联调时只需要确保后端 API 服务可启动，并且前端能访问同源 WebSocket 地址即可。
 
 Workspace Browser 依赖本机可执行的 `code-server` 二进制；联调前请先确认：
 
@@ -160,11 +157,12 @@ code-server --version
   - `GET /v1/code/`
   - `GET /code/...` 与 `GET /v1/code/...` 下的嵌套静态资源 / 子路径，均由 API 反向代理到受管 `code-server`
 
-其中 terminal session API 只控制单个 ttyd-backed browser terminal session：
+其中 terminal session API 只控制单个单会话 PTY terminal session：
 
 - `GET /terminal/session`：读取当前终端 session 状态
-- `POST /terminal/session`：创建或刷新当前终端 session
+- `POST /terminal/session`：创建当前终端 session，并返回 `terminal_ws_url`
 - `DELETE /terminal/session`：关闭当前终端 session
+- `GET /terminal/session/{session_id}/ws?token=...`：终端数据通道
 
 `/v1/terminal/session` 提供相同语义的版本化镜像路径。
 
