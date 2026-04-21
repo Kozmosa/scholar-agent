@@ -52,7 +52,7 @@ def prompt_api_key() -> str:
     return api_key
 
 
-def prompt_optional_container_profile() -> tuple[str, dict[str, object]] | None:
+def prompt_optional_container_profile() -> tuple[str, dict[str, str | int | None]] | None:
     if not typer.confirm("Add an optional container profile?", default=False):
         return None
     from ainrf.cli import build_container_profile

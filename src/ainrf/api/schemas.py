@@ -39,13 +39,13 @@ class TerminalSessionResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     session_id: str | None = None
-    provider: str = "ttyd"
+    provider: str = "pty"
     target_kind: str = "daemon-host"
     status: TerminalSessionStatus
     created_at: str | None = None
     started_at: str | None = None
     closed_at: str | None = None
-    terminal_url: str | None = None
+    terminal_ws_url: str | None = None
     detail: str | None = None
 
 

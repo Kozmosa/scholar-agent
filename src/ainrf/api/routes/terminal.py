@@ -1,26 +1,33 @@
 from __future__ import annotations
 
-from datetime import timedelta
-from secrets import compare_digest, token_urlsafe
+import asyncio
+import errno
+import json
+import os
+from contextlib import suppress
+from typing import Any
 
-import anyio
-import httpx
-from fastapi import APIRouter, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
-from fastapi.responses import RedirectResponse, StreamingResponse
+from anyio import create_task_group, to_thread
+from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
-import websockets
 
 from ainrf.api.schemas import TerminalSessionResponse, TerminalSessionStatus
-from ainrf.terminal.models import TerminalSessionRecord, utc_now
-from ainrf.terminal.ttyd import start_ttyd_session, stop_ttyd_session, terminal_url
+from ainrf.terminal.models import TerminalSessionRecord, TerminalSessionStatus as RuntimeStatus
+from ainrf.terminal.pty import (
+    TerminalSessionRuntime,
+    refresh_terminal_session,
+    resize_terminal,
+    start_terminal_session,
+    stop_terminal_session,
+    write_terminal_input,
+)
 
 router = APIRouter(prefix="/terminal", tags=["terminal"])
 
-VIEWER_SESSION_TTL = timedelta(minutes=30)
-TTYD_AUTH_HEADER = "X-AINRF-Terminal-Auth"
 
-
-def _serialize_session(session: TerminalSessionRecord) -> dict[str, str | None | TerminalSessionStatus]:
+def _serialize_session(
+    session: TerminalSessionRecord,
+) -> dict[str, str | None | TerminalSessionStatus]:
     return {
         "session_id": session.session_id,
         "provider": session.provider,
@@ -29,83 +36,35 @@ def _serialize_session(session: TerminalSessionRecord) -> dict[str, str | None |
         "created_at": session.created_at.isoformat() if session.created_at else None,
         "started_at": session.started_at.isoformat() if session.started_at else None,
         "closed_at": session.closed_at.isoformat() if session.closed_at else None,
-        "terminal_url": session.terminal_url,
+        "terminal_ws_url": session.terminal_ws_url,
         "detail": session.detail,
     }
 
 
-def get_terminal_session(app: object) -> TerminalSessionRecord:
-    session = getattr(app.state, "terminal_session", None)
-    if session is None:
-        return TerminalSessionRecord(
-            session_id=None,
-            provider="ttyd",
-            target_kind="daemon-host",
-            status=TerminalSessionStatus.IDLE,
-        )
-    return session
+def _idle_session() -> TerminalSessionRecord:
+    return TerminalSessionRecord(
+        session_id=None,
+        provider="pty",
+        target_kind="daemon-host",
+        status=RuntimeStatus.IDLE,
+    )
 
 
-def _api_base_url(request: Request) -> str:
-    return str(request.base_url).rstrip("/")
+def get_terminal_runtime(app: Any) -> TerminalSessionRuntime | None:
+    return getattr(app.state, "terminal_runtime", None)
 
 
-def _proxy_base_path(session_id: str) -> str:
-    return f"/terminal/session/{session_id}/proxy"
+def get_terminal_session(app: Any) -> TerminalSessionRecord:
+    runtime = get_terminal_runtime(app)
+    if runtime is None:
+        return _idle_session()
+    return refresh_terminal_session(runtime)
 
 
-def _proxy_target_url(request: Request, session_id: str, suffix: str) -> str:
-    config = request.app.state.api_config
-    base = terminal_url(config.terminal_host, config.terminal_port)
-    normalized_suffix = suffix.lstrip("/")
-    if normalized_suffix:
-        return f"{base}/{normalized_suffix}"
-    return f"{base}/"
-
-
-def _viewer_cookie_name(session: TerminalSessionRecord) -> str:
-    return session.viewer_cookie_name or "ainrf_terminal_viewer"
-
-
-def _validate_open_request(session: TerminalSessionRecord, session_id: str, token: str) -> None:
-    if session.session_id != session_id:
-        raise HTTPException(status_code=404, detail="Terminal session not found")
-    if session.status != TerminalSessionStatus.RUNNING:
-        raise HTTPException(status_code=409, detail="Terminal session is not running")
-    if session.browser_open_token is None or session.browser_open_expires_at is None:
-        raise HTTPException(status_code=404, detail="Terminal open token is unavailable")
-    if not compare_digest(session.browser_open_token, token):
-        raise HTTPException(status_code=403, detail="Invalid terminal open token")
-    if session.browser_open_consumed_at is not None:
-        raise HTTPException(status_code=409, detail="Terminal open token has already been used")
-    if session.browser_open_expires_at <= utc_now():
-        raise HTTPException(status_code=410, detail="Terminal open token has expired")
-    if session.viewer_session_token is not None and session.viewer_session_expires_at is not None:
-        if session.viewer_session_expires_at > utc_now():
-            raise HTTPException(status_code=409, detail="Terminal viewer session already exists")
-
-
-def _require_viewer_session(session: TerminalSessionRecord, viewer_token: str | None) -> None:
-    if session.session_id is None or session.status != TerminalSessionStatus.RUNNING:
-        raise HTTPException(status_code=409, detail="Terminal session is not running")
-    if session.viewer_session_token is None or session.viewer_session_expires_at is None:
-        raise HTTPException(status_code=401, detail="Terminal viewer session is unavailable")
-    if viewer_token is None or not compare_digest(session.viewer_session_token, viewer_token):
-        raise HTTPException(status_code=401, detail="Invalid terminal viewer session")
-    if session.viewer_session_expires_at <= utc_now():
-        raise HTTPException(status_code=401, detail="Terminal viewer session has expired")
-
-
-def _require_proxy_session(
-    session: TerminalSessionRecord, session_id: str, viewer_token: str | None
-) -> None:
-    if session.session_id != session_id:
-        raise HTTPException(status_code=404, detail="Terminal session not found")
-    _require_viewer_session(session, viewer_token)
-
-
-def _ttyd_auth_headers() -> dict[str, str]:
-    return {TTYD_AUTH_HEADER: "allow"}
+async def _stop_existing_runtime(runtime: TerminalSessionRuntime | None) -> None:
+    if runtime is None:
+        return
+    await to_thread.run_sync(stop_terminal_session, runtime)
 
 
 @router.get("/session", response_model=TerminalSessionResponse)
@@ -117,128 +76,147 @@ async def read_terminal_session(request: Request) -> TerminalSessionResponse:
 @router.post("/session", response_model=TerminalSessionResponse)
 async def create_terminal_session(request: Request) -> TerminalSessionResponse:
     config = request.app.state.api_config
-    existing_session = getattr(request.app.state, "terminal_session", None)
-    if existing_session is not None and existing_session.status == TerminalSessionStatus.RUNNING:
-        request.app.state.terminal_session = stop_ttyd_session(existing_session)
-    session = start_ttyd_session(
-        host=config.terminal_host,
-        port=config.terminal_port,
-        auth_header_name=TTYD_AUTH_HEADER,
-        shell_command=config.terminal_command,
-        working_directory=config.state_root,
-        api_base_url=_api_base_url(request),
+    existing_runtime = get_terminal_runtime(request.app)
+    await _stop_existing_runtime(existing_runtime)
+    runtime = await to_thread.run_sync(
+        start_terminal_session,
+        str(request.base_url),
+        config.terminal_command,
+        config.state_root,
     )
-    request.app.state.terminal_session = session
-    return TerminalSessionResponse.model_validate(_serialize_session(session))
+    request.app.state.terminal_runtime = runtime
+    return TerminalSessionResponse.model_validate(_serialize_session(runtime.record))
 
 
-@router.get("/session/{session_id}/open")
-async def open_terminal_session(session_id: str, token: str, request: Request) -> RedirectResponse:
-    session = get_terminal_session(request.app)
-    _validate_open_request(session, session_id, token)
-    now = utc_now()
-    session.browser_open_consumed_at = now
-    session.viewer_session_token = token_urlsafe(24)
-    session.viewer_session_expires_at = now + VIEWER_SESSION_TTL
-    redirect = RedirectResponse(url=f"{_proxy_base_path(session_id)}/", status_code=303)
-    redirect.set_cookie(
-        key=_viewer_cookie_name(session),
-        value=session.viewer_session_token,
-        httponly=True,
-        samesite="lax",
-        max_age=int(VIEWER_SESSION_TTL.total_seconds()),
-        path=_proxy_base_path(session_id),
-    )
-    return redirect
+def _close_code_for_session_state(status: int) -> int:
+    if status == 404:
+        return 4404
+    if status == 401:
+        return 4401
+    return 4409
 
 
-@router.get("/session/{session_id}/proxy/{path:path}")
-async def proxy_terminal_http(session_id: str, path: str, request: Request) -> Response:
-    session = get_terminal_session(request.app)
-    _require_proxy_session(session, session_id, request.cookies.get(_viewer_cookie_name(session)))
-    upstream_url = _proxy_target_url(request, session_id, path)
-    upstream_headers = {
-        key: value
-        for key, value in request.headers.items()
-        if key.lower() not in {"host", "cookie", "content-length"}
-    }
-    upstream_headers.update(_ttyd_auth_headers())
-    async with httpx.AsyncClient(follow_redirects=False) as client:
-        upstream = await client.request(
-            method=request.method,
-            url=upstream_url,
-            params=request.query_params,
-            headers=upstream_headers,
-            content=await request.body(),
-        )
-    response_headers = {
-        key: value
-        for key, value in upstream.headers.items()
-        if key.lower() not in {"content-length", "connection", "transfer-encoding"}
-    }
-    return StreamingResponse(
-        iter([upstream.content]),
-        status_code=upstream.status_code,
-        headers=response_headers,
-        media_type=upstream.headers.get("content-type"),
-    )
+def _get_active_runtime(session_id: str, token: str, app: object) -> TerminalSessionRuntime:
+    runtime = get_terminal_runtime(app)
+    if runtime is None or runtime.record.session_id != session_id:
+        raise HTTPException(status_code=404, detail="Terminal session not found")
+    refresh_terminal_session(runtime)
+    if runtime.record.terminal_ws_token is None or runtime.record.terminal_ws_token != token:
+        raise HTTPException(status_code=401, detail="Invalid terminal session token")
+    if runtime.record.status != RuntimeStatus.RUNNING:
+        raise HTTPException(status_code=409, detail="Terminal session is not running")
+    if runtime.master_fd is None:
+        raise HTTPException(status_code=409, detail="Terminal session is unavailable")
+    return runtime
 
 
-@router.websocket("/session/{session_id}/proxy/ws")
-async def proxy_terminal_websocket(session_id: str, websocket: WebSocket) -> None:
-    session = get_terminal_session(websocket.app)
-    viewer_token = websocket.cookies.get(_viewer_cookie_name(session))
+@router.websocket("/session/{session_id}/ws")
+async def terminal_session_ws(session_id: str, token: str, websocket: WebSocket) -> None:
     try:
-        _require_proxy_session(session, session_id, viewer_token)
+        runtime = _get_active_runtime(session_id, token, websocket.app)
     except HTTPException as exc:
-        close_code = 4404 if exc.status_code == 404 else 4401
-        await websocket.close(code=close_code)
+        await websocket.close(code=_close_code_for_session_state(exc.status_code))
         return
 
-    config = websocket.app.state.api_config
-    upstream_ws_url = f"ws://{config.terminal_host}:{config.terminal_port}/ws"
     await websocket.accept()
+    loop = asyncio.get_running_loop()
+    output_queue: asyncio.Queue[str | None] = asyncio.Queue()
+    master_fd = runtime.master_fd
+    if master_fd is None:
+        await websocket.close(code=4409)
+        return
 
-    async with websockets.connect(
-        upstream_ws_url,
-        additional_headers=_ttyd_auth_headers(),
-    ) as upstream:
-        async def browser_to_upstream(task_group: anyio.abc.TaskGroup) -> None:
-            try:
-                while True:
-                    message = await websocket.receive()
-                    if message.get("type") == "websocket.disconnect":
-                        break
-                    if "text" in message and message["text"] is not None:
-                        await upstream.send(message["text"])
-                    if "bytes" in message and message["bytes"] is not None:
-                        await upstream.send(message["bytes"])
-            except WebSocketDisconnect:
-                pass
-            finally:
-                task_group.cancel_scope.cancel()
-
-        async def upstream_to_browser(task_group: anyio.abc.TaskGroup) -> None:
-            try:
-                async for message in upstream:
-                    if isinstance(message, bytes):
-                        await websocket.send_bytes(message)
-                    else:
-                        await websocket.send_text(message)
-            finally:
-                task_group.cancel_scope.cancel()
-
+    def on_master_ready() -> None:
+        if runtime.master_fd is None:
+            return
         try:
-            async with anyio.create_task_group() as task_group:
-                task_group.start_soon(browser_to_upstream, task_group)
-                task_group.start_soon(upstream_to_browser, task_group)
+            raw_chunk = os.read(runtime.master_fd, 4096)
+        except OSError as exc:
+            if exc.errno not in {errno.EIO, errno.EBADF}:
+                output_queue.put_nowait(None)
+                return
+            raw_chunk = b""
+        if raw_chunk:
+            output_queue.put_nowait(raw_chunk.decode("utf-8", errors="replace"))
+            return
+        output_queue.put_nowait(None)
+
+    loop.add_reader(master_fd, on_master_ready)
+
+    async def forward_input() -> None:
+        try:
+            while True:
+                message = await websocket.receive_text()
+                payload = json.loads(message)
+                message_type = payload.get("type")
+                if message_type == "input":
+                    data = payload.get("data")
+                    if not isinstance(data, str):
+                        raise ValueError("input payload must include string data")
+                    write_terminal_input(runtime, data)
+                    continue
+                if message_type == "resize":
+                    cols = payload.get("cols")
+                    rows = payload.get("rows")
+                    if not isinstance(cols, int) or not isinstance(rows, int):
+                        raise ValueError("resize payload must include integer cols and rows")
+                    resize_terminal(runtime, cols, rows)
+                    continue
+                raise ValueError(f"Unsupported terminal message type: {message_type!r}")
+        except WebSocketDisconnect:
+            return
         finally:
-            if websocket.client_state != WebSocketState.DISCONNECTED:
-                await websocket.close()
+            task_group.cancel_scope.cancel()
+
+    async def forward_output() -> None:
+        try:
+            while True:
+                chunk = await output_queue.get()
+                if chunk is None:
+                    return
+                await websocket.send_json({"type": "output", "data": chunk})
+        finally:
+            task_group.cancel_scope.cancel()
+
+    async def watch_process() -> None:
+        try:
+            while True:
+                returncode = runtime.process.poll()
+                if returncode is not None:
+                    refresh_terminal_session(runtime, close_fd=False)
+                    output_queue.put_nowait(None)
+                    if websocket.client_state == WebSocketState.CONNECTED:
+                        with suppress(Exception):
+                            await websocket.send_json(
+                                {
+                                    "type": "status",
+                                    "status": "exited",
+                                    "return_code": returncode,
+                                }
+                            )
+                    return
+                await asyncio.sleep(0.25)
+        finally:
+            task_group.cancel_scope.cancel()
+
+    try:
+        async with create_task_group() as task_group:
+            task_group.start_soon(forward_input)
+            task_group.start_soon(forward_output)
+            task_group.start_soon(watch_process)
+    finally:
+        loop.remove_reader(master_fd)
+        if runtime.process.poll() is not None and runtime.master_fd is not None:
+            with suppress(OSError):
+                os.close(runtime.master_fd)
+            runtime.master_fd = None
+        if websocket.client_state != WebSocketState.DISCONNECTED:
+            await websocket.close()
 
 
 @router.delete("/session", response_model=TerminalSessionResponse)
 async def delete_terminal_session(request: Request) -> TerminalSessionResponse:
-    stopped = stop_ttyd_session(getattr(request.app.state, "terminal_session", None))
-    request.app.state.terminal_session = stopped
+    runtime = get_terminal_runtime(request.app)
+    stopped = await to_thread.run_sync(stop_terminal_session, runtime)
+    request.app.state.terminal_runtime = None
     return TerminalSessionResponse.model_validate(_serialize_session(stopped))

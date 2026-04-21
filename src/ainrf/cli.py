@@ -153,7 +153,7 @@ def build_container_profile(
     ssh_command: str,
     project_dir: str,
     password: str,
-) -> tuple[str, dict[str, object]]:
+) -> tuple[str, dict[str, str | int | None]]:
     parsed = _parse_ssh_command(ssh_command)
     profile = {
         "host": parsed.host,

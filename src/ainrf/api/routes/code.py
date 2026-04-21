@@ -4,6 +4,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Response
+from starlette.datastructures import Headers
 
 from ainrf.api.schemas import CodeServerLifecycleStatus, CodeServerStatusResponse
 
@@ -42,7 +43,7 @@ async def read_code_server_status(request: Request) -> CodeServerStatusResponse:
     )
 
 
-def _filter_request_headers(headers: httpx.Headers) -> dict[str, str]:
+def _filter_request_headers(headers: Headers) -> dict[str, str]:
     return {
         key: value
         for key, value in headers.items()

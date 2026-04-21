@@ -25,8 +25,6 @@ class ApiConfig:
     api_key_hashes: frozenset[str]
     state_root: Path
     container_config: ContainerConfig | None = None
-    terminal_host: str = "127.0.0.1"
-    terminal_port: int = 7681
     terminal_command: tuple[str, ...] = ("/bin/sh",)
     code_server_host: str = "127.0.0.1"
     code_server_port: int = 18080
