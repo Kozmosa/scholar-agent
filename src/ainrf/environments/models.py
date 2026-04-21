@@ -36,6 +36,7 @@ class EnvironmentRegistryEntry:
     alias: str
     display_name: str
     description: str | None
+    is_seed: bool = False
     tags: list[str] = field(default_factory=list)
     host: str = ""
     port: int = 22

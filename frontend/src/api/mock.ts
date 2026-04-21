@@ -41,6 +41,33 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function createSeedEnvironment(): EnvironmentRecord {
+  const timestamp = nowIso();
+  return {
+    id: 'env-localhost',
+    alias: 'localhost',
+    display_name: 'Localhost',
+    description: 'Seed SSH profile for the current machine.',
+    is_seed: true,
+    tags: ['seed', 'default'],
+    host: '127.0.0.1',
+    port: 22,
+    user: 'root',
+    auth_kind: 'ssh_key',
+    identity_file: null,
+    proxy_jump: null,
+    proxy_command: null,
+    ssh_options: {},
+    default_workdir: '/workspace/projects',
+    preferred_python: null,
+    preferred_env_manager: null,
+    preferred_runtime_notes: null,
+    created_at: timestamp,
+    updated_at: timestamp,
+    latest_detection: null,
+  };
+}
+
 function cloneEnvironment(environment: EnvironmentRecord): EnvironmentRecord {
   return {
     ...environment,
@@ -96,6 +123,7 @@ function createMockEnvironment(
     preferred_python: payload.preferred_python ?? existing?.preferred_python ?? null,
     preferred_env_manager: payload.preferred_env_manager ?? existing?.preferred_env_manager ?? null,
     preferred_runtime_notes: payload.preferred_runtime_notes ?? existing?.preferred_runtime_notes ?? null,
+    is_seed: existing?.is_seed ?? false,
     created_at: existing?.created_at ?? timestamp,
     updated_at: timestamp,
     latest_detection: existing?.latest_detection ?? null,
@@ -107,24 +135,34 @@ function createMockDetection(environment: EnvironmentRecord): EnvironmentRecord[
   return {
     environment_id: environment.id,
     detected_at: timestamp,
-    status: 'success',
-    summary: `Manual detection completed for ${environment.alias}.`,
-    errors: [],
-    warnings: [],
-    ssh_ok: true,
+    status: environment.is_seed ? 'failed' : 'success',
+    summary: environment.is_seed
+      ? 'Localhost seed profile requires a reachable SSH service.'
+      : `Manual detection completed for ${environment.alias}.`,
+    errors: environment.is_seed ? ['localhost_seed_unreachable'] : [],
+    warnings: environment.is_seed ? ['localhost_seed_unreachable'] : [],
+    ssh_ok: !environment.is_seed,
     hostname: environment.host,
     os_info: 'linux',
     arch: 'x86_64',
     workdir_exists: Boolean(environment.default_workdir),
-    python: createToolStatus(true, environment.preferred_python ?? 'python3', '/usr/bin/python3'),
+    python: createToolStatus(
+      !environment.is_seed,
+      environment.is_seed ? null : environment.preferred_python ?? 'python3',
+      environment.is_seed ? null : '/usr/bin/python3'
+    ),
     conda: createToolStatus(false),
-    uv: createToolStatus(true, 'mock', '/usr/bin/uv'),
+    uv: createToolStatus(!environment.is_seed, environment.is_seed ? null : 'mock', environment.is_seed ? null : '/usr/bin/uv'),
     pixi: createToolStatus(false),
     torch: createToolStatus(false),
     cuda: createToolStatus(false),
     gpu_models: [],
     gpu_count: 0,
-    claude_cli: createToolStatus(true, 'mock', '/usr/bin/claude'),
+    claude_cli: createToolStatus(
+      !environment.is_seed,
+      environment.is_seed ? null : 'mock',
+      environment.is_seed ? null : '/usr/bin/claude'
+    ),
     anthropic_env: 'unknown' as AnthropicEnvStatus,
   };
 }
@@ -142,7 +180,8 @@ let mockTerminalSession: TerminalSession = {
 };
 
 const initialTerminalSession: TerminalSession = mockTerminalSession;
-const initialMockEnvironments: EnvironmentRecord[] = [...mockEnvironments];
+const initialMockEnvironments: EnvironmentRecord[] = [createSeedEnvironment()];
+mockEnvironments = [...initialMockEnvironments];
 
 export function mockGetHealth(): SystemHealth {
   return mockHealth;
@@ -231,6 +270,10 @@ export function mockUpdateEnvironment(
 }
 
 export function mockDeleteEnvironment(environmentId: string): void {
+  const current = mockEnvironments.find((environment) => environment.id === environmentId);
+  if (current?.is_seed) {
+    throw new Error(`Environment cannot be deleted: ${environmentId}`);
+  }
   mockEnvironments = mockEnvironments.filter((environment) => environment.id !== environmentId);
 }
 

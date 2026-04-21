@@ -672,6 +672,11 @@ function ContainersPage() {
                           <div className="space-y-1">
                             <p className="font-medium text-gray-900">
                               {environment.display_name}
+                              {environment.is_seed ? (
+                                <span className="ml-2 rounded-full bg-[var(--accent)]/10 px-2 py-0.5 text-xs font-semibold text-[var(--accent)]">
+                                  {t('common.default')}
+                                </span>
+                              ) : null}
                               {isActive ? (
                                 <span className="ml-2 rounded-full bg-[var(--accent)]/10 px-2 py-0.5 text-xs font-semibold text-[var(--accent)]">
                                   {t('pages.containers.activeBadge')}
@@ -753,7 +758,12 @@ function ContainersPage() {
                                   void deleteMutation.mutateAsync(environment.id);
                                 }
                               }}
-                              disabled={deleteMutation.isPending}
+                              disabled={deleteMutation.isPending || environment.is_seed}
+                              title={
+                                environment.is_seed
+                                  ? t('pages.containers.defaultEnvironmentLocked')
+                                  : undefined
+                              }
                               className="rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               {t('common.delete')}

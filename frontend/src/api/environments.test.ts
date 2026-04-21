@@ -15,7 +15,14 @@ describe('environment endpoints', () => {
     const { createEnvironment, deleteEnvironment, detectEnvironment, getEnvironments } =
       await import('./endpoints');
 
-    await expect(getEnvironments()).resolves.toEqual({ items: [] });
+    await expect(getEnvironments()).resolves.toEqual({
+      items: [
+        expect.objectContaining({
+          alias: 'localhost',
+          is_seed: true,
+        }),
+      ],
+    });
 
     const created = await createEnvironment({
       alias: 'gpu-lab',
@@ -31,7 +38,14 @@ describe('environment endpoints', () => {
     expect(detected.latest_detection?.summary).toContain('gpu-lab');
 
     await expect(deleteEnvironment(created.id)).resolves.toBeUndefined();
-    await expect(getEnvironments()).resolves.toEqual({ items: [] });
+    await expect(getEnvironments()).resolves.toEqual({
+      items: [
+        expect.objectContaining({
+          alias: 'localhost',
+          is_seed: true,
+        }),
+      ],
+    });
   });
 
   it('uses the real api client when VITE_USE_MOCK is false', async () => {

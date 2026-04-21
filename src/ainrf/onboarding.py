@@ -9,6 +9,7 @@ import click
 import typer
 
 from ainrf.api.config import hash_api_key
+from ainrf.runtime import build_default_runtime_config, normalize_runtime_config
 
 
 def config_path_for(state_root: Path) -> Path:
@@ -71,7 +72,8 @@ def prompt_optional_container_profile() -> tuple[str, dict[str, str | int | None
 
 def onboard_state_root(state_root: Path, *, reset_existing: bool = False) -> Path:
     config_path = config_path_for(state_root)
-    payload = {} if reset_existing else load_runtime_config(config_path)
+    payload = build_default_runtime_config() if reset_existing else load_runtime_config(config_path)
+    payload = normalize_runtime_config(payload)
     payload["api_key_hashes"] = [hash_api_key(prompt_api_key())]
 
     container_profile = prompt_optional_container_profile()
@@ -82,7 +84,6 @@ def onboard_state_root(state_root: Path, *, reset_existing: bool = False) -> Pat
             profiles = {}
         profiles[name] = profile
         payload["container_profiles"] = profiles
-        payload["default_container_profile"] = name
 
     save_runtime_config(config_path, payload)
     typer.echo(f"Saved onboarding config to `{config_path}`.")

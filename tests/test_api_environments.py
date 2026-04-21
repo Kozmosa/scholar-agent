@@ -34,9 +34,10 @@ async def test_environment_list_starts_empty(tmp_path: Path) -> None:
         v1_response = await client.get("/v1/environments", headers={"X-API-Key": "secret-key"})
 
     assert response.status_code == 200
-    assert response.json() == {"items": []}
+    assert [item["alias"] for item in response.json()["items"]] == ["localhost"]
+    assert response.json()["items"][0]["is_seed"] is True
     assert v1_response.status_code == 200
-    assert v1_response.json() == {"items": []}
+    assert [item["alias"] for item in v1_response.json()["items"]] == ["localhost"]
 
 
 @pytest.mark.anyio
@@ -157,7 +158,12 @@ async def test_environment_lifecycle_supports_update_detect_and_delete(tmp_path:
     assert detect_response.json()["latest_detection"]["summary"] == "Manual detection completed for gpu-lab."
 
     assert listed_response.status_code == 200
-    assert listed_response.json()["items"][0]["latest_detection"]["environment_id"] == environment_id
+    listed_items = listed_response.json()["items"]
+    assert any(
+        item["latest_detection"] is not None
+        and item["latest_detection"]["environment_id"] == environment_id
+        for item in listed_items
+    )
 
     assert delete_response.status_code == 204
     assert missing_response.status_code == 404
@@ -201,3 +207,21 @@ async def test_environment_alias_conflicts_and_reference_protection(tmp_path: Pa
     assert "alias" in conflict_response.json()["detail"].lower()
     assert delete_response.status_code == 409
     assert "referenced" in delete_response.json()["detail"].lower()
+
+
+@pytest.mark.anyio
+async def test_localhost_environment_is_present_and_cannot_be_deleted(tmp_path: Path) -> None:
+    app = make_app(tmp_path)
+
+    async with make_client(app) as client:
+        list_response = await client.get("/environments", headers={"X-API-Key": "secret-key"})
+        localhost_id = list_response.json()["items"][0]["id"]
+        delete_response = await client.delete(
+            f"/environments/{localhost_id}",
+            headers={"X-API-Key": "secret-key"},
+        )
+
+    assert list_response.status_code == 200
+    assert list_response.json()["items"][0]["alias"] == "localhost"
+    assert delete_response.status_code == 409
+    assert "cannot be deleted" in delete_response.json()["detail"].lower()

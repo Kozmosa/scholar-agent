@@ -102,6 +102,7 @@ class EnvironmentResponse(BaseModel):
     alias: str
     display_name: str
     description: str | None = None
+    is_seed: bool = False
     tags: list[str] = Field(default_factory=list)
     host: str
     port: int = 22

@@ -109,3 +109,21 @@ def test_api_config_loads_default_container_profile_from_config(
     assert config.container_config.user == "researcher"
     assert config.container_config.port == 2200
     assert config.container_config.ssh_password == "secret-pass"
+
+
+def test_api_config_seeds_localhost_container_profile_when_config_is_minimal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("AINRF_API_KEY_HASHES", raising=False)
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps({"api_key_hashes": [hash_api_key("secret-key")]}),
+        encoding="utf-8",
+    )
+
+    config = ApiConfig.from_env(tmp_path)
+
+    assert config.container_config is not None
+    assert config.container_config.host == "127.0.0.1"
+    assert config.container_config.port == 22
+    assert config.container_config.project_dir == "/workspace/projects"

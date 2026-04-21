@@ -13,6 +13,7 @@ from ainrf.api.schemas import (
 from ainrf.environments import (
     AliasConflictError,
     DeleteReferencedEnvironmentError,
+    DeleteSeedEnvironmentError,
     EnvironmentNotFoundError,
     InMemoryEnvironmentService,
 )
@@ -47,6 +48,11 @@ def _translate_environment_error(exc: Exception) -> HTTPException:
         return HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Environment is still referenced by a project",
+        )
+    if isinstance(exc, DeleteSeedEnvironmentError):
+        return HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Default localhost environment cannot be deleted",
         )
     return HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unexpected environment error")
 

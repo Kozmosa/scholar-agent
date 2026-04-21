@@ -251,6 +251,7 @@ def test_container_add_interactive_persists_profile(tmp_path: Path) -> None:
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     profile = payload["container_profiles"]["gpu-main"]
     assert payload["default_container_profile"] == "gpu-main"
+    assert payload["container_profiles"]["localhost"]["host"] == "127.0.0.1"
     assert profile["host"] == "gpu-server-01"
     assert profile["port"] == 2222
     assert profile["user"] == "researcher"
@@ -270,7 +271,8 @@ def test_onboard_state_root_minimal_writes_config(
     assert config_path == config_path_for(tmp_path)
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     assert payload["api_key_hashes"] == [hash_api_key("bootstrap-secret")]
-    assert "container_profiles" not in payload
+    assert payload["default_container_profile"] == "localhost"
+    assert payload["container_profiles"]["localhost"]["host"] == "127.0.0.1"
 
 
 def test_ensure_onboarded_returns_existing_config_path(tmp_path: Path) -> None:
@@ -351,7 +353,8 @@ def test_onboard_state_root_confirm_true_writes_optional_container_profile(
 
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     profile = payload["container_profiles"]["gpu-main"]
-    assert payload["default_container_profile"] == "gpu-main"
+    assert payload["default_container_profile"] == "localhost"
+    assert payload["container_profiles"]["localhost"]["host"] == "127.0.0.1"
     assert profile["host"] == "gpu-server-01"
     assert profile["port"] == 2222
     assert profile["user"] == "researcher"
@@ -382,9 +385,12 @@ def test_onboard_state_root_preserves_existing_config_keys(
     assert payload["api_key_hashes"] == [hash_api_key("bootstrap-secret")]
     assert payload["unrelated"] == {"enabled": True}
     assert payload["default_container_profile"] == "existing"
-    assert payload["container_profiles"] == {
-        "existing": {"host": "old", "user": "worker", "port": 22}
+    assert payload["container_profiles"]["existing"] == {
+        "host": "old",
+        "user": "worker",
+        "port": 22,
     }
+    assert payload["container_profiles"]["localhost"]["host"] == "127.0.0.1"
 
 
 def test_onboard_command_rejects_non_tty_use(
@@ -465,7 +471,8 @@ def test_onboard_command_overwrites_invalid_existing_config(
     assert result.exit_code == 0
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     assert payload["api_key_hashes"] == [hash_api_key("bootstrap-secret")]
-    assert "container_profiles" not in payload
+    assert payload["default_container_profile"] == "localhost"
+    assert payload["container_profiles"]["localhost"]["host"] == "127.0.0.1"
 
 
 def test_parse_ssh_command_supports_user_flag_and_inline_port() -> None:

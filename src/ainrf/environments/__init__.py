@@ -10,6 +10,7 @@ from ainrf.environments.models import (
 from ainrf.environments.service import (
     AliasConflictError,
     DeleteReferencedEnvironmentError,
+    DeleteSeedEnvironmentError,
     EnvironmentNotFoundError,
     InMemoryEnvironmentService,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "AliasConflictError",
     "AnthropicEnvStatus",
     "DeleteReferencedEnvironmentError",
+    "DeleteSeedEnvironmentError",
     "DetectionSnapshot",
     "DetectionStatus",
     "EnvironmentAuthKind",

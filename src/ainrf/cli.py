@@ -18,6 +18,7 @@ from ainrf.onboarding import (
     save_runtime_config,
 )
 from ainrf.server import run_server, run_server_daemon
+from ainrf.runtime import normalize_runtime_config
 from ainrf.state import default_state_root
 
 
@@ -133,7 +134,7 @@ def container_add(
 ) -> None:
     profile_name, profile = build_container_profile(name, ssh_command, project_dir, password)
     config_path = state_root / "config.json"
-    payload = load_runtime_config(config_path)
+    payload = normalize_runtime_config(load_runtime_config(config_path))
     profiles = payload.get("container_profiles")
     if not isinstance(profiles, dict):
         profiles = {}

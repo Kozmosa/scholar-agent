@@ -33,6 +33,7 @@ export const messages = {
       edit: 'Edit',
       detect: 'Detect',
       delete: 'Delete',
+      default: 'Default',
       start: 'Start',
       stop: 'Stop',
       active: 'Active',
@@ -139,6 +140,7 @@ export const messages = {
         detectedAt: 'Detected',
         notDetected: 'Not detected yet',
         confirmDelete: 'Delete environment "{{alias}}"?',
+        defaultEnvironmentLocked: 'The default localhost environment cannot be deleted.',
         detectionStatus: {
           success: 'Success',
           partial: 'Partial',
@@ -295,6 +297,7 @@ export const messages = {
       edit: '编辑',
       detect: '探测',
       delete: '删除',
+      default: '默认',
       start: '启动',
       stop: '停止',
       active: '已激活',
@@ -395,6 +398,7 @@ export const messages = {
         detectedAt: '探测于',
         notDetected: '尚未探测',
         confirmDelete: '删除环境“{{alias}}”？',
+        defaultEnvironmentLocked: '默认的 localhost 环境不能删除。',
         detectionStatus: {
           success: '成功',
           partial: '部分成功',

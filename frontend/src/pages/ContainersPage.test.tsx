@@ -28,6 +28,7 @@ const baseEnvironment: EnvironmentRecord = {
   alias: 'gpu-lab',
   display_name: 'GPU Lab',
   description: 'Primary CUDA environment',
+  is_seed: false,
   tags: ['gpu'],
   host: 'gpu.example.com',
   port: 22,

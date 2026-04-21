@@ -17,6 +17,7 @@ const baseEnvironment: EnvironmentRecord = {
   alias: 'gpu-lab',
   display_name: 'GPU Lab',
   description: 'Primary CUDA environment',
+  is_seed: false,
   tags: ['gpu'],
   host: 'gpu.example.com',
   port: 22,
@@ -43,6 +44,16 @@ const secondaryEnvironment: EnvironmentRecord = {
   host: 'cpu.example.com',
 };
 
+const defaultEnvironment: EnvironmentRecord = {
+  ...baseEnvironment,
+  id: 'env-localhost',
+  alias: 'localhost',
+  display_name: 'Localhost',
+  description: 'Seed SSH profile for the current machine.',
+  is_seed: true,
+  host: '127.0.0.1',
+};
+
 function EnvironmentSelectionHarness() {
   const selection = useEnvironmentSelection();
 
@@ -55,13 +66,17 @@ beforeEach(() => {
 });
 
 describe('EnvironmentSelectorPanel', () => {
-  it('defaults to the first available environment and remembers the selection', async () => {
-    mockGetEnvironments.mockResolvedValue({ items: [baseEnvironment, secondaryEnvironment] });
+  it('defaults to the seed environment and remembers the selection', async () => {
+    mockGetEnvironments.mockResolvedValue({
+      items: [baseEnvironment, defaultEnvironment, secondaryEnvironment],
+    });
 
     renderWithProviders(<EnvironmentSelectionHarness />);
 
     await waitFor(() =>
-      expect(screen.getByRole('combobox', { name: 'Active environment' })).toHaveValue('env-1')
+      expect(screen.getByRole('combobox', { name: 'Active environment' })).toHaveValue(
+        'env-localhost'
+      )
     );
 
     fireEvent.change(screen.getByRole('combobox', { name: 'Active environment' }), {
@@ -76,7 +91,9 @@ describe('EnvironmentSelectorPanel', () => {
 
   it('falls back to a live environment after the selected one disappears', async () => {
     window.localStorage.setItem('scholar-agent:selected-environment-id', 'env-2');
-    mockGetEnvironments.mockResolvedValue({ items: [secondaryEnvironment, baseEnvironment] });
+    mockGetEnvironments.mockResolvedValue({
+      items: [secondaryEnvironment, defaultEnvironment, baseEnvironment],
+    });
 
     const firstRender = renderWithProviders(<EnvironmentSelectionHarness />);
 

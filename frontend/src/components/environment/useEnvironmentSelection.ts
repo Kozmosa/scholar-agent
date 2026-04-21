@@ -42,6 +42,11 @@ function resolveEnvironmentSelection(
     return storedEnvironment.id;
   }
 
+  const defaultEnvironment = environments.find((environment) => environment.is_seed);
+  if (defaultEnvironment !== undefined) {
+    return defaultEnvironment.id;
+  }
+
   return environments[0]?.id ?? null;
 }
 

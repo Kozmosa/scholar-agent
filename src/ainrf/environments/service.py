@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from getpass import getuser
 from uuid import uuid4
 
 from ainrf.environments.models import (
@@ -27,11 +28,45 @@ class DeleteReferencedEnvironmentError(ValueError):
     pass
 
 
+class DeleteSeedEnvironmentError(ValueError):
+    pass
+
+
+def _current_system_user() -> str:
+    try:
+        user = getuser()
+    except Exception:
+        return "root"
+    return user or "root"
+
+
+def _build_seed_environment() -> EnvironmentRegistryEntry:
+    now = utc_now()
+    return EnvironmentRegistryEntry(
+        id="env-localhost",
+        alias="localhost",
+        display_name="Localhost",
+        description="Seed SSH profile for the current machine.",
+        is_seed=True,
+        tags=["seed", "default"],
+        host="127.0.0.1",
+        port=22,
+        user=_current_system_user(),
+        auth_kind=EnvironmentAuthKind.SSH_KEY,
+        ssh_options={},
+        default_workdir="/workspace/projects",
+        created_at=now,
+        updated_at=now,
+    )
+
+
 class InMemoryEnvironmentService:
     def __init__(self) -> None:
         self._environments: dict[str, EnvironmentRegistryEntry] = {}
         self._detections: dict[str, list[DetectionSnapshot]] = defaultdict(list)
         self._project_refs: dict[str, dict[str, ProjectEnvironmentReference]] = defaultdict(dict)
+        seed = _build_seed_environment()
+        self._environments[seed.id] = seed
 
     def list_environments(self) -> list[EnvironmentRegistryEntry]:
         return list(self._environments.values())
@@ -69,6 +104,7 @@ class InMemoryEnvironmentService:
             alias=alias,
             display_name=display_name,
             description=description,
+            is_seed=False,
             tags=list(tags or []),
             host=host,
             port=port,
@@ -148,6 +184,8 @@ class InMemoryEnvironmentService:
 
     def delete_environment(self, environment_id: str) -> None:
         environment = self.get_environment(environment_id)
+        if environment.is_seed:
+            raise DeleteSeedEnvironmentError(environment_id)
         refs = self.list_project_refs(environment.id)
         if refs:
             raise DeleteReferencedEnvironmentError(environment_id)
@@ -156,6 +194,32 @@ class InMemoryEnvironmentService:
 
     def detect_environment(self, environment_id: str) -> DetectionSnapshot:
         environment = self.get_environment(environment_id)
+        if environment.is_seed:
+            snapshot = DetectionSnapshot(
+                environment_id=environment.id,
+                detected_at=utc_now(),
+                status=DetectionStatus.FAILED,
+                summary="Localhost seed profile requires a reachable SSH service.",
+                errors=["localhost_seed_unreachable"],
+                warnings=["localhost_seed_unreachable"],
+                ssh_ok=False,
+                hostname=environment.host,
+                os_info="linux",
+                arch="x86_64",
+                workdir_exists=bool(environment.default_workdir),
+                python=ToolStatus(available=False),
+                conda=ToolStatus(available=False),
+                uv=ToolStatus(available=False),
+                pixi=ToolStatus(available=False),
+                torch=ToolStatus(available=False),
+                cuda=ToolStatus(available=False),
+                gpu_models=[],
+                gpu_count=0,
+                claude_cli=ToolStatus(available=False),
+                anthropic_env=AnthropicEnvStatus.UNKNOWN,
+            )
+            self._detections[environment.id].append(snapshot)
+            return snapshot
         preferred_python = environment.preferred_python or "python3"
         snapshot = DetectionSnapshot(
             environment_id=environment.id,

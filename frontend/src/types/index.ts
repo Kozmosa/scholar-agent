@@ -78,6 +78,7 @@ export interface EnvironmentRecord {
   alias: string;
   display_name: string;
   description: string | null;
+  is_seed: boolean;
   tags: string[];
   host: string;
   port: number;

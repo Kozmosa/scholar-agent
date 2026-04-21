@@ -38,7 +38,18 @@ function EnvironmentSelectorPanel({
             </p>
           </div>
           <div className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-sm font-medium text-gray-700">
-            {selectedEnvironment ? selectedEnvironment.alias : t('components.environmentSelector.selectedNone')}
+            {selectedEnvironment ? (
+              <span className="inline-flex items-center gap-2">
+                <span>{selectedEnvironment.alias}</span>
+                {selectedEnvironment.is_seed ? (
+                  <span className="rounded-full bg-[var(--accent)]/10 px-2 py-0.5 text-xs font-semibold text-[var(--accent)]">
+                    {t('common.default')}
+                  </span>
+                ) : null}
+              </span>
+            ) : (
+              t('components.environmentSelector.selectedNone')
+            )}
           </div>
         </div>
       </div>

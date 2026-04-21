@@ -52,6 +52,7 @@ const selectedEnvironment: EnvironmentRecord = {
   alias: 'gpu-lab',
   display_name: 'GPU Lab',
   description: null,
+  is_seed: false,
   tags: [],
   host: 'gpu.example.com',
   port: 22,
