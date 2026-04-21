@@ -14,6 +14,7 @@ import type {
   EnvironmentRecord,
   EnvironmentUpdateRequest,
 } from '../types';
+import { useLocale, useT } from '../i18n';
 
 const environmentsQueryKey = ['environments'] as const;
 const EMPTY_ENVIRONMENTS: EnvironmentRecord[] = [];
@@ -86,31 +87,40 @@ function parseTags(value: string): string[] {
     .filter((item) => item.length > 0);
 }
 
-function parseJsonObject(value: string): Record<string, string> {
+function parseJsonObject(
+  value: string,
+  objectErrorMessage: string,
+  valuesErrorMessage: string
+): Record<string, string> {
   const trimmed = value.trim();
   if (!trimmed) {
     return {};
   }
 
-  const parsed: unknown = JSON.parse(trimmed) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed) as unknown;
+  } catch {
+    throw new Error(objectErrorMessage);
+  }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('SSH options must be a JSON object');
+    throw new Error(objectErrorMessage);
   }
 
   const entries = Object.entries(parsed as Record<string, unknown>);
   const normalized: Record<string, string> = {};
   for (const [key, entryValue] of entries) {
     if (typeof entryValue !== 'string') {
-      throw new Error('SSH options values must be strings');
+      throw new Error(valuesErrorMessage);
     }
     normalized[key] = entryValue;
   }
   return normalized;
 }
 
-function formatTimestamp(value: string | null): string {
+function formatTimestamp(value: string | null, locale: string, neverLabel: string): string {
   if (!value) {
-    return 'never';
+    return neverLabel;
   }
 
   const parsed = new Date(value);
@@ -118,7 +128,7 @@ function formatTimestamp(value: string | null): string {
     return value;
   }
 
-  return parsed.toLocaleString();
+  return parsed.toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-US');
 }
 
 function mergeEnvironmentList(
@@ -162,13 +172,40 @@ function EnvironmentEditor({
   onSubmit,
   onCancel,
 }: EnvironmentEditorProps) {
+  const t = useT();
   const [values, setValues] = useState<EnvironmentFormValues>(() =>
     environment ? valuesFromEnvironment(environment) : emptyFormValues()
   );
   const [formError, setFormError] = useState<string | null>(null);
 
-  const title = mode === 'create' ? 'Create environment' : 'Edit environment';
-  const submitLabel = mode === 'create' ? 'Create environment' : 'Save changes';
+  const title =
+    mode === 'create'
+      ? t('components.environmentEditor.createTitle')
+      : t('components.environmentEditor.editTitle');
+  const submitLabel =
+    mode === 'create' ? t('components.environmentEditor.create') : t('components.environmentEditor.save');
+  const placeholders = {
+    alias: t('components.environmentEditor.placeholders.alias'),
+    displayName: t('components.environmentEditor.placeholders.displayName'),
+    description: t('components.environmentEditor.placeholders.description'),
+    host: t('components.environmentEditor.placeholders.host'),
+    port: t('components.environmentEditor.placeholders.port'),
+    user: t('components.environmentEditor.placeholders.user'),
+    identityFile: t('components.environmentEditor.placeholders.identityFile'),
+    proxyJump: t('components.environmentEditor.placeholders.proxyJump'),
+    proxyCommand: t('components.environmentEditor.placeholders.proxyCommand'),
+    tags: t('components.environmentEditor.placeholders.tags'),
+    defaultWorkdir: t('components.environmentEditor.placeholders.defaultWorkdir'),
+    preferredPython: t('components.environmentEditor.placeholders.preferredPython'),
+    preferredEnvManager: t('components.environmentEditor.placeholders.preferredEnvManager'),
+    preferredRuntimeNotes: t('components.environmentEditor.placeholders.preferredRuntimeNotes'),
+    sshOptionsJson: t('components.environmentEditor.placeholders.sshOptionsJson'),
+  };
+  const authKindLabels = {
+    ssh_key: t('components.environmentEditor.authKindOptions.ssh_key'),
+    password: t('components.environmentEditor.authKindOptions.password'),
+    agent: t('components.environmentEditor.authKindOptions.agent'),
+  };
 
   const updateField = (field: keyof EnvironmentFormValues, nextValue: string) => {
     setValues((current) => ({ ...current, [field]: nextValue }));
@@ -180,7 +217,7 @@ function EnvironmentEditor({
       setFormError(null);
       await onSubmit(values);
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'Unable to save environment');
+      setFormError(error instanceof Error ? error.message : t('components.environmentEditor.saveError'));
     }
   };
 
@@ -188,13 +225,10 @@ function EnvironmentEditor({
     <section className="space-y-5 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
       <div className="space-y-2">
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--accent)]">
-          Environment editor
+          {t('components.environmentEditor.eyebrow')}
         </p>
         <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
-        <p className="text-sm text-gray-600">
-          Define SSH target details, runtime preferences, and the minimal metadata that powers the
-          Containers control plane.
-        </p>
+        <p className="text-sm text-gray-600">{t('components.environmentEditor.description')}</p>
       </div>
 
       {activeEnvironment ? (
@@ -202,65 +236,68 @@ function EnvironmentEditor({
           data-testid="active-environment-banner"
           className="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700"
         >
-          Active environment: <span className="font-medium text-gray-900">{activeEnvironment.alias}</span>
+          {t('components.environmentEditor.activeLabel')}{' '}
+          <span className="font-medium text-gray-900">{activeEnvironment.alias}</span>
           <span className="ml-2 text-gray-500">({activeEnvironment.display_name})</span>
         </div>
       ) : (
         <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500">
-          No environment has been marked as active yet.
+          {t('components.environmentEditor.noActive')}
         </div>
       )}
 
       <form className="space-y-5" onSubmit={handleSubmit}>
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="space-y-2">
-            <span className="text-sm font-medium text-gray-900">Alias</span>
+            <span className="text-sm font-medium text-gray-900">{t('components.environmentEditor.alias')}</span>
             <input
               required
               value={values.alias}
               onChange={(event) => updateField('alias', event.target.value)}
               className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)]"
-              placeholder="gpu-lab"
+              placeholder={placeholders.alias}
             />
           </label>
 
           <label className="space-y-2">
-            <span className="text-sm font-medium text-gray-900">Display name</span>
+            <span className="text-sm font-medium text-gray-900">{t('components.environmentEditor.displayName')}</span>
             <input
               required
               value={values.display_name}
               onChange={(event) => updateField('display_name', event.target.value)}
               className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)]"
-              placeholder="GPU Lab"
+              placeholder={placeholders.displayName}
             />
           </label>
         </div>
 
         <label className="space-y-2">
-          <span className="text-sm font-medium text-gray-900">Description</span>
+          <span className="text-sm font-medium text-gray-900">
+            {t('components.environmentEditor.descriptionField')}
+          </span>
           <textarea
             value={values.description}
             onChange={(event) => updateField('description', event.target.value)}
             rows={3}
             className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)]"
-            placeholder="Primary training environment"
+            placeholder={placeholders.description}
           />
         </label>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="space-y-2">
-            <span className="text-sm font-medium text-gray-900">Host</span>
+            <span className="text-sm font-medium text-gray-900">{t('components.environmentEditor.host')}</span>
             <input
               required
               value={values.host}
               onChange={(event) => updateField('host', event.target.value)}
               className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)]"
-              placeholder="gpu.example.com"
+              placeholder={placeholders.host}
             />
           </label>
 
           <label className="space-y-2">
-            <span className="text-sm font-medium text-gray-900">Port</span>
+            <span className="text-sm font-medium text-gray-900">{t('components.environmentEditor.port')}</span>
             <input
               required
               type="number"
@@ -269,130 +306,149 @@ function EnvironmentEditor({
               value={values.port}
               onChange={(event) => updateField('port', event.target.value)}
               className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)]"
+              placeholder={placeholders.port}
             />
           </label>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="space-y-2">
-            <span className="text-sm font-medium text-gray-900">User</span>
+            <span className="text-sm font-medium text-gray-900">{t('components.environmentEditor.user')}</span>
             <input
               value={values.user}
               onChange={(event) => updateField('user', event.target.value)}
               className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)]"
-              placeholder="root"
+              placeholder={placeholders.user}
             />
           </label>
 
           <label className="space-y-2">
-            <span className="text-sm font-medium text-gray-900">Auth kind</span>
+            <span className="text-sm font-medium text-gray-900">
+              {t('components.environmentEditor.authKindLabel')}
+            </span>
             <select
               value={values.auth_kind}
               onChange={(event) => updateField('auth_kind', event.target.value as EnvironmentAuthKind)}
               className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)]"
             >
-              <option value="ssh_key">SSH key</option>
-              <option value="password">Password</option>
-              <option value="agent">Agent</option>
+              <option value="ssh_key">{authKindLabels.ssh_key}</option>
+              <option value="password">{authKindLabels.password}</option>
+              <option value="agent">{authKindLabels.agent}</option>
             </select>
           </label>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="space-y-2">
-            <span className="text-sm font-medium text-gray-900">Identity file</span>
+            <span className="text-sm font-medium text-gray-900">
+              {t('components.environmentEditor.identityFile')}
+            </span>
             <input
               value={values.identity_file}
               onChange={(event) => updateField('identity_file', event.target.value)}
               className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)]"
-              placeholder="/keys/gpu-lab"
+              placeholder={placeholders.identityFile}
             />
           </label>
 
           <label className="space-y-2">
-            <span className="text-sm font-medium text-gray-900">Proxy jump</span>
+            <span className="text-sm font-medium text-gray-900">
+              {t('components.environmentEditor.proxyJump')}
+            </span>
             <input
               value={values.proxy_jump}
               onChange={(event) => updateField('proxy_jump', event.target.value)}
               className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)]"
-              placeholder="bastion"
+              placeholder={placeholders.proxyJump}
             />
           </label>
         </div>
 
         <label className="space-y-2">
-          <span className="text-sm font-medium text-gray-900">Proxy command</span>
+          <span className="text-sm font-medium text-gray-900">
+            {t('components.environmentEditor.proxyCommand')}
+          </span>
           <input
             value={values.proxy_command}
             onChange={(event) => updateField('proxy_command', event.target.value)}
             className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)]"
-            placeholder="ssh -W %h:%p bastion"
+            placeholder={placeholders.proxyCommand}
           />
         </label>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="space-y-2">
-            <span className="text-sm font-medium text-gray-900">Tags</span>
+            <span className="text-sm font-medium text-gray-900">{t('components.environmentEditor.tags')}</span>
             <input
               value={values.tags}
               onChange={(event) => updateField('tags', event.target.value)}
               className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)]"
-              placeholder="gpu, research"
+              placeholder={placeholders.tags}
             />
           </label>
 
           <label className="space-y-2">
-            <span className="text-sm font-medium text-gray-900">Default workdir</span>
+            <span className="text-sm font-medium text-gray-900">
+              {t('components.environmentEditor.defaultWorkdir')}
+            </span>
             <input
               value={values.default_workdir}
               onChange={(event) => updateField('default_workdir', event.target.value)}
               className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)]"
-              placeholder="/workspace/project"
+              placeholder={placeholders.defaultWorkdir}
             />
           </label>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="space-y-2">
-            <span className="text-sm font-medium text-gray-900">Preferred Python</span>
+            <span className="text-sm font-medium text-gray-900">
+              {t('components.environmentEditor.preferredPython')}
+            </span>
             <input
               value={values.preferred_python}
               onChange={(event) => updateField('preferred_python', event.target.value)}
               className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)]"
-              placeholder="python3.13"
+              placeholder={placeholders.preferredPython}
             />
           </label>
 
           <label className="space-y-2">
-            <span className="text-sm font-medium text-gray-900">Preferred env manager</span>
+            <span className="text-sm font-medium text-gray-900">
+              {t('components.environmentEditor.preferredEnvManager')}
+            </span>
             <input
               value={values.preferred_env_manager}
               onChange={(event) => updateField('preferred_env_manager', event.target.value)}
               className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)]"
-              placeholder="uv"
+              placeholder={placeholders.preferredEnvManager}
             />
           </label>
         </div>
 
         <label className="space-y-2">
-          <span className="text-sm font-medium text-gray-900">Preferred runtime notes</span>
+          <span className="text-sm font-medium text-gray-900">
+            {t('components.environmentEditor.preferredRuntimeNotes')}
+          </span>
           <textarea
             value={values.preferred_runtime_notes}
             onChange={(event) => updateField('preferred_runtime_notes', event.target.value)}
             rows={3}
             className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)]"
-            placeholder="Use CUDA 12 image"
+            placeholder={placeholders.preferredRuntimeNotes}
           />
         </label>
 
         <label className="space-y-2">
-          <span className="text-sm font-medium text-gray-900">SSH options JSON</span>
+          <span className="text-sm font-medium text-gray-900">
+            {t('components.environmentEditor.sshOptionsJson')}
+          </span>
           <textarea
             value={values.ssh_options}
             onChange={(event) => updateField('ssh_options', event.target.value)}
             rows={4}
             className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 font-mono text-sm outline-none transition focus:border-[var(--accent)]"
-            placeholder='{"StrictHostKeyChecking":"no"}'
+            placeholder={placeholders.sshOptionsJson}
           />
         </label>
 
@@ -408,14 +464,14 @@ function EnvironmentEditor({
             disabled={isSaving}
             className="rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {isSaving ? 'Saving…' : submitLabel}
+            {isSaving ? t('components.environmentEditor.saving') : submitLabel}
           </button>
           <button
             type="button"
             onClick={onCancel}
             className="rounded-full border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:border-gray-400 hover:bg-gray-50"
           >
-            {mode === 'create' ? 'Reset' : 'Cancel edit'}
+            {mode === 'create' ? t('components.environmentEditor.reset') : t('components.environmentEditor.cancelEdit')}
           </button>
         </div>
       </form>
@@ -424,6 +480,8 @@ function EnvironmentEditor({
 }
 
 function ContainersPage() {
+  const t = useT();
+  const locale = useLocale();
   const queryClient = useQueryClient();
   const environmentsQuery = useQuery({
     queryKey: environmentsQueryKey,
@@ -462,7 +520,11 @@ function ContainersPage() {
         identity_file: values.identity_file.trim() || null,
         proxy_jump: values.proxy_jump.trim() || null,
         proxy_command: values.proxy_command.trim() || null,
-        ssh_options: parseJsonObject(values.ssh_options),
+        ssh_options: parseJsonObject(
+          values.ssh_options,
+          t('components.environmentEditor.sshOptionsObjectError'),
+          t('components.environmentEditor.sshOptionsValuesError')
+        ),
         default_workdir: values.default_workdir.trim() || null,
         preferred_python: values.preferred_python.trim() || null,
         preferred_env_manager: values.preferred_env_manager.trim() || null,
@@ -470,7 +532,7 @@ function ContainersPage() {
       } satisfies EnvironmentCreateRequest;
 
       if (!Number.isInteger(requestBase.port) || requestBase.port < 1 || requestBase.port > 65535) {
-        throw new Error('Port must be between 1 and 65535');
+        throw new Error(t('components.environmentEditor.portRangeError'));
       }
 
       if (editorMode === 'create') {
@@ -478,7 +540,7 @@ function ContainersPage() {
       }
 
       if (editorEnvironmentId === null) {
-        throw new Error('No environment is selected for editing');
+        throw new Error(t('components.environmentEditor.noEnvironmentSelectedForEditing'));
       }
 
       const request: EnvironmentUpdateRequest = requestBase;
@@ -519,35 +581,48 @@ function ContainersPage() {
   const requestError = environmentsQuery.error instanceof Error ? environmentsQuery.error.message : null;
   const activeEnvironmentSummary = activeEnvironment
     ? `${activeEnvironment.alias} · ${activeEnvironment.display_name}`
-    : 'No active environment selected yet';
+    : t('pages.containers.activeSelectionFallback');
+  const authKindLabels = {
+    ssh_key: t('pages.containers.authKind.ssh_key'),
+    password: t('pages.containers.authKind.password'),
+    agent: t('pages.containers.authKind.agent'),
+  };
+  const detectionStatusLabels = {
+    success: t('pages.containers.detectionStatus.success'),
+    partial: t('pages.containers.detectionStatus.partial'),
+    failed: t('pages.containers.detectionStatus.failed'),
+  };
+
+  const handleCreate = () => {
+    setEditorFormKey((value) => value + 1);
+    setEditorMode('create');
+    setEditorEnvironmentId(null);
+  };
 
   return (
     <div className="px-4 py-8 sm:px-6 lg:px-8">
       <section className="mb-8 space-y-3">
-        <p className="text-sm font-medium uppercase tracking-wide text-[var(--accent)]">Containers</p>
-        <h1 className="text-3xl font-semibold text-gray-900">Environment control plane</h1>
-        <p className="max-w-3xl text-sm text-gray-600 sm:text-base">
-          Manage SSH-backed runtime environments, trigger manual detection, and keep a single
-          active environment ready for the terminal and workspace surfaces.
+        <p className="text-sm font-medium uppercase tracking-wide text-[var(--accent)]">
+          {t('pages.containers.eyebrow')}
         </p>
+        <h1 className="text-3xl font-semibold text-gray-900">{t('pages.containers.title')}</h1>
+        <p className="max-w-3xl text-sm text-gray-600 sm:text-base">{t('pages.containers.description')}</p>
       </section>
 
       <section className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-medium uppercase tracking-wide text-[var(--accent)]">Current selection</p>
+            <p className="text-sm font-medium uppercase tracking-wide text-[var(--accent)]">
+              {t('pages.containers.currentSelection')}
+            </p>
             <p className="mt-1 text-sm text-gray-600">{activeEnvironmentSummary}</p>
           </div>
           <button
             type="button"
-            onClick={() => {
-              setEditorFormKey((value) => value + 1);
-              setEditorMode('create');
-              setEditorEnvironmentId(null);
-            }}
+            onClick={handleCreate}
             className="rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white transition hover:opacity-95"
           >
-            Add environment
+            {t('pages.containers.addEnvironment')}
           </button>
         </div>
       </section>
@@ -555,22 +630,19 @@ function ContainersPage() {
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
         <section className="space-y-4 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
           <div className="space-y-1">
-            <h2 className="text-xl font-semibold text-gray-900">Environment list</h2>
-            <p className="text-sm text-gray-600">
-              Use the list to inspect the current control-plane state, run detection, or mark an
-              environment active for downstream pages.
-            </p>
+            <h2 className="text-xl font-semibold text-gray-900">{t('pages.containers.listTitle')}</h2>
+            <p className="text-sm text-gray-600">{t('pages.containers.listDescription')}</p>
           </div>
 
           {environmentsQuery.isLoading ? (
-            <p className="text-sm text-gray-500">Loading environments...</p>
+            <p className="text-sm text-gray-500">{t('pages.containers.loading')}</p>
           ) : null}
 
           {requestError ? <p className="text-sm text-red-700">{requestError}</p> : null}
 
           {!environmentsQuery.isLoading && environments.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-500">
-              No environments have been created yet.
+              {t('pages.containers.empty')}
             </div>
           ) : null}
 
@@ -579,11 +651,11 @@ function ContainersPage() {
               <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
                 <thead className="bg-gray-50 text-gray-600">
                   <tr>
-                    <th className="px-4 py-3 font-medium">Alias</th>
-                    <th className="px-4 py-3 font-medium">Host</th>
-                    <th className="px-4 py-3 font-medium">Auth</th>
-                    <th className="px-4 py-3 font-medium">Detection</th>
-                    <th className="px-4 py-3 font-medium">Actions</th>
+                    <th className="px-4 py-3 font-medium">{t('pages.containers.alias')}</th>
+                    <th className="px-4 py-3 font-medium">{t('pages.containers.host')}</th>
+                    <th className="px-4 py-3 font-medium">{t('pages.containers.auth')}</th>
+                    <th className="px-4 py-3 font-medium">{t('pages.containers.detection')}</th>
+                    <th className="px-4 py-3 font-medium">{t('pages.containers.actions')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -602,17 +674,21 @@ function ContainersPage() {
                               {environment.display_name}
                               {isActive ? (
                                 <span className="ml-2 rounded-full bg-[var(--accent)]/10 px-2 py-0.5 text-xs font-semibold text-[var(--accent)]">
-                                  Active
+                                  {t('pages.containers.activeBadge')}
                                 </span>
                               ) : null}
                             </p>
                             <p className="text-xs text-gray-500">
                               <code className="rounded bg-gray-100 px-1.5 py-0.5">{environment.alias}</code>
                               {isEditing ? (
-                                <span className="ml-2 text-[var(--accent)]">Editing</span>
+                                <span className="ml-2 text-[var(--accent)]">
+                                  {t('pages.containers.editingBadge')}
+                                </span>
                               ) : null}
                             </p>
-                            <p className="text-xs text-gray-500">{environment.default_workdir ?? 'No default workdir'}</p>
+                            <p className="text-xs text-gray-500">
+                              {environment.default_workdir ?? t('pages.containers.defaultWorkdir')}
+                            </p>
                           </div>
                         </td>
                         <td className="px-4 py-4 text-gray-700">
@@ -622,23 +698,23 @@ function ContainersPage() {
                           </div>
                         </td>
                         <td className="px-4 py-4 text-gray-700">
-                          <div className="capitalize">{environment.auth_kind.replace('_', ' ')}</div>
+                          <div>{authKindLabels[environment.auth_kind]}</div>
                           <div className="text-xs text-gray-500">
-                            {environment.tags.length > 0 ? environment.tags.join(', ') : 'No tags'}
+                            {environment.tags.length > 0 ? environment.tags.join(', ') : t('common.noTags')}
                           </div>
                         </td>
                         <td className="px-4 py-4">
                           {detection ? (
                             <div className="space-y-1">
                               <div className="text-sm font-medium text-gray-900">
-                                {detection.status} · {detection.summary}
+                                {detectionStatusLabels[detection.status] ?? detection.status} · {detection.summary}
                               </div>
                               <div className="text-xs text-gray-500">
-                                Detected {formatTimestamp(detection.detected_at)}
+                                {t('pages.containers.detectedAt')} {formatTimestamp(detection.detected_at, locale, t('common.never'))}
                               </div>
                             </div>
                           ) : (
-                            <span className="text-sm text-gray-500">Not detected yet</span>
+                            <span className="text-sm text-gray-500">{t('pages.containers.notDetected')}</span>
                           )}
                         </td>
                         <td className="px-4 py-4">
@@ -648,7 +724,7 @@ function ContainersPage() {
                               onClick={() => setActiveEnvironmentId(environment.id)}
                               className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:border-gray-400 hover:bg-gray-50"
                             >
-                              Use
+                              {t('common.use')}
                             </button>
                             <button
                               type="button"
@@ -658,7 +734,7 @@ function ContainersPage() {
                               }}
                               className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:border-gray-400 hover:bg-gray-50"
                             >
-                              Edit
+                              {t('common.edit')}
                             </button>
                             <button
                               type="button"
@@ -668,19 +744,19 @@ function ContainersPage() {
                               disabled={detectMutation.isPending}
                               className="rounded-full border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-3 py-1.5 text-xs font-semibold text-[var(--accent)] transition hover:bg-[var(--accent)]/15 disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                              Detect
+                              {t('common.detect')}
                             </button>
                             <button
                               type="button"
                               onClick={() => {
-                                if (window.confirm(`Delete environment "${environment.alias}"?`)) {
+                                if (window.confirm(t('pages.containers.confirmDelete', { alias: environment.alias }))) {
                                   void deleteMutation.mutateAsync(environment.id);
                                 }
                               }}
                               disabled={deleteMutation.isPending}
                               className="rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                              Delete
+                              {t('common.delete')}
                             </button>
                           </div>
                         </td>

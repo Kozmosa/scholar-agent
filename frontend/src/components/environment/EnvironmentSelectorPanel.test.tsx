@@ -1,0 +1,96 @@
+import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { getEnvironments } from '../../api';
+import { renderWithProviders } from '../../test/render';
+import type { EnvironmentRecord } from '../../types';
+import EnvironmentSelectorPanel from './EnvironmentSelectorPanel';
+import { useEnvironmentSelection } from './useEnvironmentSelection';
+
+vi.mock('../../api', () => ({
+  getEnvironments: vi.fn(),
+}));
+
+const mockGetEnvironments = vi.mocked(getEnvironments);
+
+const baseEnvironment: EnvironmentRecord = {
+  id: 'env-1',
+  alias: 'gpu-lab',
+  display_name: 'GPU Lab',
+  description: 'Primary CUDA environment',
+  tags: ['gpu'],
+  host: 'gpu.example.com',
+  port: 22,
+  user: 'root',
+  auth_kind: 'ssh_key',
+  identity_file: '/keys/gpu-lab',
+  proxy_jump: null,
+  proxy_command: null,
+  ssh_options: {},
+  default_workdir: '/workspace/project',
+  preferred_python: 'python3.13',
+  preferred_env_manager: 'uv',
+  preferred_runtime_notes: 'Use CUDA 12 image',
+  created_at: '2026-04-21T00:00:00Z',
+  updated_at: '2026-04-21T00:00:00Z',
+  latest_detection: null,
+};
+
+const secondaryEnvironment: EnvironmentRecord = {
+  ...baseEnvironment,
+  id: 'env-2',
+  alias: 'cpu-lab',
+  display_name: 'CPU Lab',
+  host: 'cpu.example.com',
+};
+
+function EnvironmentSelectionHarness() {
+  const selection = useEnvironmentSelection();
+
+  return <EnvironmentSelectorPanel {...selection} />;
+}
+
+beforeEach(() => {
+  mockGetEnvironments.mockReset();
+  window.localStorage.clear();
+});
+
+describe('EnvironmentSelectorPanel', () => {
+  it('defaults to the first available environment and remembers the selection', async () => {
+    mockGetEnvironments.mockResolvedValue({ items: [baseEnvironment, secondaryEnvironment] });
+
+    renderWithProviders(<EnvironmentSelectionHarness />);
+
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: 'Active environment' })).toHaveValue('env-1')
+    );
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Active environment' }), {
+      target: { value: 'env-2' },
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: 'Active environment' })).toHaveValue('env-2')
+    );
+    expect(window.localStorage.getItem('scholar-agent:selected-environment-id')).toBe('env-2');
+  });
+
+  it('falls back to a live environment after the selected one disappears', async () => {
+    window.localStorage.setItem('scholar-agent:selected-environment-id', 'env-2');
+    mockGetEnvironments.mockResolvedValue({ items: [secondaryEnvironment, baseEnvironment] });
+
+    const firstRender = renderWithProviders(<EnvironmentSelectionHarness />);
+
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: 'Active environment' })).toHaveValue('env-2')
+    );
+    firstRender.unmount();
+
+    mockGetEnvironments.mockResolvedValue({ items: [baseEnvironment] });
+    renderWithProviders(<EnvironmentSelectionHarness />);
+
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: 'Active environment' })).toHaveValue('env-1')
+    );
+    expect(window.localStorage.getItem('scholar-agent:selected-environment-id')).toBe('env-1');
+  });
+});

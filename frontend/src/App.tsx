@@ -1,8 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ErrorBoundary, Layout, ToastProvider } from './components/common';
+import { useT } from './i18n';
 import DashboardPage from './pages/DashboardPage';
 import ContainersPage from './pages/ContainersPage';
+import WorkspacesPage from './pages/WorkspacesPage';
 import PlaceholderPage from './pages/PlaceholderPage';
 import './index.css';
 
@@ -16,6 +18,8 @@ const queryClient = new QueryClient({
 });
 
 function App() {
+  const t = useT();
+
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
@@ -25,27 +29,16 @@ function App() {
               <Routes>
                 <Route path="/" element={<Navigate replace to="/terminal" />} />
                 <Route path="/terminal" element={<DashboardPage />} />
-                <Route
-                  path="/workspaces"
-                  element={
-                    <PlaceholderPage
-                      eyebrow="Workspaces"
-                      title="Workspace orchestration is coming soon"
-                      description="This area will expose project-specific workspaces, task context, and execution entrypoints once the runtime shell expands beyond Terminal."
-                    />
-                  }
-                />
-                <Route
-                  path="/containers"
-                  element={<ContainersPage />}
-                />
+                <Route path="/workspaces" element={<WorkspacesPage />} />
+                <Route path="/containers" element={<ContainersPage />} />
                 <Route
                   path="/settings"
                   element={
                     <PlaceholderPage
-                      eyebrow="Settings"
-                      title="Settings are coming soon"
-                      description="This area will host environment preferences, runtime configuration, and WebUI behavior controls in a later slice."
+                      eyebrow={t('pages.placeholder.eyebrow')}
+                      title={t('pages.placeholder.title')}
+                      description={t('pages.placeholder.description')}
+                      badgeLabel={t('pages.placeholder.badge')}
                     />
                   }
                 />

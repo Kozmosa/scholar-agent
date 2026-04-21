@@ -5,7 +5,7 @@ vi.mock('./TerminalSessionConsole', () => ({
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import TerminalBenchCard from './TerminalBenchCard';
-import type { TerminalSession } from '../../types';
+import type { EnvironmentRecord, TerminalSession } from '../../types';
 import { renderWithProviders } from '../../test/render';
 import {
   createTerminalSession,
@@ -47,6 +47,29 @@ const runningSession: TerminalSession = {
   detail: null,
 };
 
+const selectedEnvironment: EnvironmentRecord = {
+  id: 'env-1',
+  alias: 'gpu-lab',
+  display_name: 'GPU Lab',
+  description: null,
+  tags: [],
+  host: 'gpu.example.com',
+  port: 22,
+  user: 'root',
+  auth_kind: 'ssh_key',
+  identity_file: null,
+  proxy_jump: null,
+  proxy_command: null,
+  ssh_options: {},
+  default_workdir: '/workspace/project',
+  preferred_python: null,
+  preferred_env_manager: null,
+  preferred_runtime_notes: null,
+  created_at: '2026-04-21T00:00:00Z',
+  updated_at: '2026-04-21T00:00:00Z',
+  latest_detection: null,
+};
+
 beforeEach(() => {
   mockGetTerminalSession.mockReset();
   mockCreateTerminalSession.mockReset();
@@ -57,7 +80,7 @@ describe('TerminalBenchCard', () => {
   it('renders the idle state from the backend', async () => {
     mockGetTerminalSession.mockResolvedValue(idleSession);
 
-    renderWithProviders(<TerminalBenchCard />);
+    renderWithProviders(<TerminalBenchCard selectedEnvironment={selectedEnvironment} />);
 
     expect(await screen.findByText('Status: Idle')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole('button', { name: 'Start terminal' })).not.toBeDisabled());
@@ -70,7 +93,7 @@ describe('TerminalBenchCard', () => {
     mockGetTerminalSession.mockResolvedValue(idleSession);
     mockCreateTerminalSession.mockResolvedValue(runningSession);
 
-    renderWithProviders(<TerminalBenchCard />);
+    renderWithProviders(<TerminalBenchCard selectedEnvironment={selectedEnvironment} />);
 
     await screen.findByText('Status: Idle');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Start terminal' })).not.toBeDisabled());
@@ -86,7 +109,7 @@ describe('TerminalBenchCard', () => {
     mockGetTerminalSession.mockResolvedValue(runningSession);
     mockDeleteTerminalSession.mockResolvedValue(idleSession);
 
-    renderWithProviders(<TerminalBenchCard />);
+    renderWithProviders(<TerminalBenchCard selectedEnvironment={selectedEnvironment} />);
 
     expect(await screen.findByText('Status: Running')).toBeInTheDocument();
     expect(screen.getByTestId('terminal-console')).toBeInTheDocument();
@@ -101,10 +124,20 @@ describe('TerminalBenchCard', () => {
   it('surfaces backend load errors', async () => {
     mockGetTerminalSession.mockRejectedValue(new Error('backend offline'));
 
-    renderWithProviders(<TerminalBenchCard />);
+    renderWithProviders(<TerminalBenchCard selectedEnvironment={selectedEnvironment} />);
 
     expect(await screen.findByText('Load error: backend offline')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Start terminal' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Stop terminal' })).toBeDisabled();
+  });
+
+  it('requires a selected environment before enabling the terminal', async () => {
+    mockGetTerminalSession.mockResolvedValue(idleSession);
+
+    renderWithProviders(<TerminalBenchCard selectedEnvironment={null} />);
+
+    expect(await screen.findByText('Status: Idle')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Start terminal' })).toBeDisabled();
+    expect(screen.getByText('Select an environment before starting the terminal session.')).toBeInTheDocument();
   });
 });

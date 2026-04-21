@@ -2,6 +2,8 @@ import { Boxes, ChevronLeft, ChevronRight, FolderKanban, Settings, SquareTermina
 import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 import { NavLink } from 'react-router-dom';
+import LocaleSwitcher from './LocaleSwitcher';
+import { useT } from '../../i18n';
 
 interface Props {
   children: ReactNode;
@@ -14,36 +16,36 @@ interface NavigationItem {
   icon: typeof SquareTerminal;
 }
 
-const navigationItems: NavigationItem[] = [
-  {
-    label: 'Terminal',
-    to: '/terminal',
-    description: 'Health checks and terminal bench access',
-    icon: SquareTerminal,
-  },
-  {
-    label: 'Workspaces',
-    to: '/workspaces',
-    description: 'Project workspaces and task context',
-    icon: FolderKanban,
-  },
-  {
-    label: 'Containers',
-    to: '/containers',
-    description: 'Runtime environments and container status',
-    icon: Boxes,
-  },
-  {
-    label: 'Settings',
-    to: '/settings',
-    description: 'Runtime and WebUI preferences',
-    icon: Settings,
-  },
-];
-
 function Layout({ children }: Props) {
+  const t = useT();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const asideWidth = useMemo(() => (isCollapsed ? 'w-20' : 'w-72'), [isCollapsed]);
+  const navigationItems: NavigationItem[] = [
+    {
+      label: t('navigation.terminal.label'),
+      to: '/terminal',
+      description: t('navigation.terminal.description'),
+      icon: SquareTerminal,
+    },
+    {
+      label: t('navigation.workspaces.label'),
+      to: '/workspaces',
+      description: t('navigation.workspaces.description'),
+      icon: FolderKanban,
+    },
+    {
+      label: t('navigation.containers.label'),
+      to: '/containers',
+      description: t('navigation.containers.description'),
+      icon: Boxes,
+    },
+    {
+      label: t('navigation.settings.label'),
+      to: '/settings',
+      description: t('navigation.settings.description'),
+      icon: Settings,
+    },
+  ];
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
@@ -53,17 +55,14 @@ function Layout({ children }: Props) {
         >
           <div className="flex items-start justify-between gap-3 px-2">
             <div className={isCollapsed ? 'hidden' : 'block'}>
-              <p className="text-lg font-semibold text-[var(--accent)]">Scholar Agent</p>
-              <p className="mt-1 text-sm text-gray-600">
-                Minimal frontend shell aligned to backend health checks, terminal bench controls,
-                the environment control plane, and the managed workspace browser.
-              </p>
+              <p className="text-lg font-semibold text-[var(--accent)]">{t('common.appName')}</p>
+              <p className="mt-1 text-sm text-gray-600">{t('layout.brandLine')}</p>
             </div>
             <button
               type="button"
               onClick={() => setIsCollapsed((value) => !value)}
               className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-gray-600 transition hover:border-[var(--accent)]/30 hover:text-[var(--accent)]"
-              aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              aria-label={isCollapsed ? t('layout.expandSidebar') : t('layout.collapseSidebar')}
             >
               {isCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
             </button>
@@ -105,13 +104,11 @@ function Layout({ children }: Props) {
             <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-6">
               <div>
                 <p className="text-sm font-medium uppercase tracking-wide text-[var(--accent)]">
-                  WebUI control surface
+                  {t('layout.headerEyebrow')}
                 </p>
-                <p className="mt-1 text-sm text-gray-600">
-                  Health, terminal bench, environment control plane, and workspace browser shell
-                  during backend realignment.
-                </p>
+                <p className="mt-1 text-sm text-gray-600">{t('layout.headerDescription')}</p>
               </div>
+              <LocaleSwitcher />
             </div>
           </header>
 
@@ -119,8 +116,7 @@ function Layout({ children }: Props) {
 
           <footer className="border-t border-gray-200 bg-white/80 px-4 py-4 text-sm text-gray-500 sm:px-6 lg:px-8">
             <div className="mx-auto w-full max-w-6xl">
-              Health, terminal bench, environment control plane, and workspace browser shell during
-              backend realignment.
+              {t('layout.footerDescription')}
             </div>
           </footer>
         </div>

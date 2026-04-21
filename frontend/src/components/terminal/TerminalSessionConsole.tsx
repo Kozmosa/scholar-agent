@@ -3,6 +3,7 @@ import { Terminal } from 'xterm';
 import 'xterm/css/xterm.css';
 import { useEffect, useRef, useState } from 'react';
 import type { TerminalSessionStatus } from '../../types';
+import { useT } from '../../i18n';
 
 type SocketStatus = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
 
@@ -54,8 +55,10 @@ function isSocketMessage(value: unknown): value is SocketMessage {
 }
 
 function TerminalSessionConsole({ sessionId, terminalWsUrl, status, onDisconnected }: Props) {
+  const t = useT();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const onDisconnectedRef = useRef(onDisconnected);
+  const translateRef = useRef(t);
   const disconnectNotifiedRef = useRef(false);
   const [socketStatus, setSocketStatus] = useState<SocketStatus>('idle');
   const displaySocketStatus =
@@ -64,10 +67,21 @@ function TerminalSessionConsole({ sessionId, terminalWsUrl, status, onDisconnect
       : socketStatus === 'idle'
         ? 'connecting'
         : socketStatus;
+  const connectionLabel: Record<SocketStatus, string> = {
+    idle: t('common.idle'),
+    connecting: t('common.connecting'),
+    connected: t('common.connected'),
+    disconnected: t('common.disconnected'),
+    error: t('common.error'),
+  };
 
   useEffect(() => {
     onDisconnectedRef.current = onDisconnected;
   }, [onDisconnected]);
+
+  useEffect(() => {
+    translateRef.current = t;
+  }, [t]);
 
   useEffect(() => {
     if (status !== 'running' || terminalWsUrl === null || containerRef.current === null) {
@@ -156,7 +170,7 @@ function TerminalSessionConsole({ sessionId, terminalWsUrl, status, onDisconnect
 
         if (payload.type === 'status' && payload.status === 'exited') {
           terminal.writeln('');
-          terminal.writeln(`Session exited with code ${payload.return_code}`);
+          terminal.writeln(translateRef.current('components.terminalConsole.exited', { code: payload.return_code }));
           setSocketStatus('disconnected');
           notifyDisconnected();
         }
@@ -196,7 +210,7 @@ function TerminalSessionConsole({ sessionId, terminalWsUrl, status, onDisconnect
   if (status !== 'running' || terminalWsUrl === null) {
     return (
       <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-500">
-        Start a terminal session to open the xterm console.
+        {t('components.terminalConsole.startPrompt')}
       </div>
     );
   }
@@ -206,14 +220,15 @@ function TerminalSessionConsole({ sessionId, terminalWsUrl, status, onDisconnect
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="space-y-1">
           <h3 className="text-sm font-semibold uppercase tracking-[0.24em] text-[var(--accent)]">
-            Interactive terminal
+            {t('components.terminalConsole.interactive')}
           </h3>
           <p className="text-sm text-gray-600">
-            WebSocket session: <code className="rounded bg-gray-100 px-1.5 py-0.5">{sessionId ?? 'n/a'}</code>
+            {t('components.terminalConsole.websocketSession')}{' '}
+            <code className="rounded bg-gray-100 px-1.5 py-0.5">{sessionId ?? 'n/a'}</code>
           </p>
         </div>
         <div className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-700">
-          Connection: {displaySocketStatus}
+          {t('components.terminalConsole.connection')} {connectionLabel[displaySocketStatus]}
         </div>
       </div>
 
