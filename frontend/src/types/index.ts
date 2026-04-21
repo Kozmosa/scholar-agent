@@ -20,13 +20,13 @@ export type TerminalSessionStatus = 'idle' | 'starting' | 'running' | 'stopping'
 
 export interface TerminalSession {
   session_id: string | null;
-  provider: 'ttyd';
+  provider: 'pty';
   target_kind: 'daemon-host';
   status: TerminalSessionStatus;
   created_at: string | null;
   started_at: string | null;
   closed_at: string | null;
-  terminal_url: string | null;
+  terminal_ws_url: string | null;
   detail: string | null;
 }
 

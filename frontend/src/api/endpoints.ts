@@ -8,7 +8,7 @@ import {
   mockGetTerminalSession,
 } from './mock';
 
-const USE_MOCK = import.meta.env.DEV;
+const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
 
 export const getHealth = (): Promise<SystemHealth> =>
   USE_MOCK ? Promise.resolve(mockGetHealth()) : api.get<SystemHealth>('/health');

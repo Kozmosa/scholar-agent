@@ -27,15 +27,17 @@ const mockCodeServerStatus: CodeServerStatus = {
 
 let mockTerminalSession: TerminalSession = {
   session_id: null,
-  provider: 'ttyd',
+  provider: 'pty',
   target_kind: 'daemon-host',
   status: 'idle',
   created_at: null,
   started_at: null,
   closed_at: null,
-  terminal_url: null,
+  terminal_ws_url: null,
   detail: null,
 };
+
+const initialTerminalSession: TerminalSession = mockTerminalSession;
 
 export function mockGetHealth(): SystemHealth {
   return mockHealth;
@@ -54,13 +56,13 @@ export function mockCreateTerminalSession(): TerminalSession {
 
   mockTerminalSession = {
     session_id: 'mock-terminal-session',
-    provider: 'ttyd',
+    provider: 'pty',
     target_kind: 'daemon-host',
     status: 'running',
     created_at: mockTerminalSession.created_at ?? timestamp,
     started_at: timestamp,
     closed_at: null,
-    terminal_url: 'http://127.0.0.1:7681',
+    terminal_ws_url: 'ws://127.0.0.1:8000/terminal/session/mock-terminal-session/ws?token=mock-token',
     detail: null,
   };
 
@@ -70,15 +72,20 @@ export function mockCreateTerminalSession(): TerminalSession {
 export function mockDeleteTerminalSession(): TerminalSession {
   mockTerminalSession = {
     session_id: null,
-    provider: 'ttyd',
+    provider: 'pty',
     target_kind: 'daemon-host',
     status: 'idle',
     created_at: mockTerminalSession.created_at,
     started_at: mockTerminalSession.started_at,
     closed_at: new Date().toISOString(),
-    terminal_url: null,
+    terminal_ws_url: null,
     detail: null,
   };
 
+  return mockTerminalSession;
+}
+
+export function resetMockTerminalSession(): TerminalSession {
+  mockTerminalSession = { ...initialTerminalSession };
   return mockTerminalSession;
 }
