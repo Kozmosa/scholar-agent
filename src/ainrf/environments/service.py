@@ -1,0 +1,232 @@
+from __future__ import annotations
+
+from collections import defaultdict
+from uuid import uuid4
+
+from ainrf.environments.models import (
+    AnthropicEnvStatus,
+    DetectionSnapshot,
+    DetectionStatus,
+    EnvironmentAuthKind,
+    EnvironmentRegistryEntry,
+    ProjectEnvironmentReference,
+    ToolStatus,
+    utc_now,
+)
+
+
+class EnvironmentNotFoundError(LookupError):
+    pass
+
+
+class AliasConflictError(ValueError):
+    pass
+
+
+class DeleteReferencedEnvironmentError(ValueError):
+    pass
+
+
+class InMemoryEnvironmentService:
+    def __init__(self) -> None:
+        self._environments: dict[str, EnvironmentRegistryEntry] = {}
+        self._detections: dict[str, list[DetectionSnapshot]] = defaultdict(list)
+        self._project_refs: dict[str, dict[str, ProjectEnvironmentReference]] = defaultdict(dict)
+
+    def list_environments(self) -> list[EnvironmentRegistryEntry]:
+        return list(self._environments.values())
+
+    def get_environment(self, environment_id: str) -> EnvironmentRegistryEntry:
+        try:
+            return self._environments[environment_id]
+        except KeyError as exc:
+            raise EnvironmentNotFoundError(environment_id) from exc
+
+    def create_environment(
+        self,
+        *,
+        alias: str,
+        display_name: str,
+        host: str,
+        description: str | None = None,
+        tags: list[str] | None = None,
+        port: int = 22,
+        user: str = "root",
+        auth_kind: EnvironmentAuthKind = EnvironmentAuthKind.SSH_KEY,
+        identity_file: str | None = None,
+        proxy_jump: str | None = None,
+        proxy_command: str | None = None,
+        ssh_options: dict[str, str] | None = None,
+        default_workdir: str | None = None,
+        preferred_python: str | None = None,
+        preferred_env_manager: str | None = None,
+        preferred_runtime_notes: str | None = None,
+    ) -> EnvironmentRegistryEntry:
+        self._ensure_alias_available(alias)
+        now = utc_now()
+        environment = EnvironmentRegistryEntry(
+            id=f"env-{uuid4().hex}",
+            alias=alias,
+            display_name=display_name,
+            description=description,
+            tags=list(tags or []),
+            host=host,
+            port=port,
+            user=user,
+            auth_kind=auth_kind,
+            identity_file=identity_file,
+            proxy_jump=proxy_jump,
+            proxy_command=proxy_command,
+            ssh_options=dict(ssh_options or {}),
+            default_workdir=default_workdir,
+            preferred_python=preferred_python,
+            preferred_env_manager=preferred_env_manager,
+            preferred_runtime_notes=preferred_runtime_notes,
+            created_at=now,
+            updated_at=now,
+        )
+        self._environments[environment.id] = environment
+        return environment
+
+    def update_environment(
+        self,
+        environment_id: str,
+        *,
+        alias: str | None = None,
+        display_name: str | None = None,
+        description: str | None = None,
+        tags: list[str] | None = None,
+        host: str | None = None,
+        port: int | None = None,
+        user: str | None = None,
+        auth_kind: EnvironmentAuthKind | None = None,
+        identity_file: str | None = None,
+        proxy_jump: str | None = None,
+        proxy_command: str | None = None,
+        ssh_options: dict[str, str] | None = None,
+        default_workdir: str | None = None,
+        preferred_python: str | None = None,
+        preferred_env_manager: str | None = None,
+        preferred_runtime_notes: str | None = None,
+    ) -> EnvironmentRegistryEntry:
+        environment = self.get_environment(environment_id)
+        if alias is not None and alias != environment.alias:
+            self._ensure_alias_available(alias)
+            environment.alias = alias
+        if display_name is not None:
+            environment.display_name = display_name
+        if description is not None:
+            environment.description = description
+        if tags is not None:
+            environment.tags = list(tags)
+        if host is not None:
+            environment.host = host
+        if port is not None:
+            environment.port = port
+        if user is not None:
+            environment.user = user
+        if auth_kind is not None:
+            environment.auth_kind = auth_kind
+        if identity_file is not None:
+            environment.identity_file = identity_file
+        if proxy_jump is not None:
+            environment.proxy_jump = proxy_jump
+        if proxy_command is not None:
+            environment.proxy_command = proxy_command
+        if ssh_options is not None:
+            environment.ssh_options = dict(ssh_options)
+        if default_workdir is not None:
+            environment.default_workdir = default_workdir
+        if preferred_python is not None:
+            environment.preferred_python = preferred_python
+        if preferred_env_manager is not None:
+            environment.preferred_env_manager = preferred_env_manager
+        if preferred_runtime_notes is not None:
+            environment.preferred_runtime_notes = preferred_runtime_notes
+        environment.updated_at = utc_now()
+        return environment
+
+    def delete_environment(self, environment_id: str) -> None:
+        environment = self.get_environment(environment_id)
+        refs = self.list_project_refs(environment.id)
+        if refs:
+            raise DeleteReferencedEnvironmentError(environment_id)
+        del self._environments[environment.id]
+        self._detections.pop(environment.id, None)
+
+    def detect_environment(self, environment_id: str) -> DetectionSnapshot:
+        environment = self.get_environment(environment_id)
+        preferred_python = environment.preferred_python or "python3"
+        snapshot = DetectionSnapshot(
+            environment_id=environment.id,
+            detected_at=utc_now(),
+            status=DetectionStatus.SUCCESS,
+            summary=f"Manual detection completed for {environment.alias}.",
+            ssh_ok=True,
+            hostname=environment.host,
+            os_info="linux",
+            arch="x86_64",
+            workdir_exists=bool(environment.default_workdir),
+            python=ToolStatus(
+                available=True, version=preferred_python, path=f"/usr/bin/{preferred_python}"
+            ),
+            conda=ToolStatus(available=False),
+            uv=ToolStatus(available=True, version="stub", path="/usr/bin/uv"),
+            pixi=ToolStatus(available=False),
+            torch=ToolStatus(available=False),
+            cuda=ToolStatus(available=False),
+            gpu_models=[],
+            gpu_count=0,
+            claude_cli=ToolStatus(available=True, version="stub", path="/usr/bin/claude"),
+            anthropic_env=AnthropicEnvStatus.UNKNOWN,
+        )
+        self._detections[environment.id].append(snapshot)
+        return snapshot
+
+    def get_latest_detection(self, environment_id: str) -> DetectionSnapshot | None:
+        self.get_environment(environment_id)
+        snapshots = self._detections.get(environment_id)
+        if not snapshots:
+            return None
+        return snapshots[-1]
+
+    def upsert_project_reference(
+        self,
+        *,
+        project_id: str,
+        environment_id: str,
+        is_default: bool = False,
+        override_workdir: str | None = None,
+        override_env_name: str | None = None,
+        override_env_manager: str | None = None,
+        override_runtime_notes: str | None = None,
+    ) -> ProjectEnvironmentReference:
+        self.get_environment(environment_id)
+        if is_default:
+            for ref in self._project_refs[project_id].values():
+                ref.is_default = False
+        reference = ProjectEnvironmentReference(
+            project_id=project_id,
+            environment_id=environment_id,
+            is_default=is_default,
+            override_workdir=override_workdir,
+            override_env_name=override_env_name,
+            override_env_manager=override_env_manager,
+            override_runtime_notes=override_runtime_notes,
+            updated_at=utc_now(),
+        )
+        self._project_refs[project_id][environment_id] = reference
+        return reference
+
+    def list_project_refs(self, environment_id: str) -> list[ProjectEnvironmentReference]:
+        refs: list[ProjectEnvironmentReference] = []
+        for project_refs in self._project_refs.values():
+            reference = project_refs.get(environment_id)
+            if reference is not None:
+                refs.append(reference)
+        return refs
+
+    def _ensure_alias_available(self, alias: str) -> None:
+        for environment in self._environments.values():
+            if environment.alias == alias:
+                raise AliasConflictError(alias)

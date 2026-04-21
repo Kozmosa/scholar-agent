@@ -61,4 +61,25 @@ describe('api client', () => {
       );
     }
   });
+
+  it('supports PATCH requests', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: 'env-1' }), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { api } = await import('./client');
+    await expect(api.patch<{ id: string }>('/environments/env-1', { display_name: 'GPU Lab' })).resolves.toEqual({
+      id: 'env-1',
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    expect(init?.method).toBe('PATCH');
+  });
 });

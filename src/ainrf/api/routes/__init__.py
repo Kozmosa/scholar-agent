@@ -1,5 +1,5 @@
 from __future__ import annotations
 
-from . import health, terminal
+from . import environments, health, terminal
 
-__all__ = ["health", "terminal"]
+__all__ = ["environments", "health", "terminal"]

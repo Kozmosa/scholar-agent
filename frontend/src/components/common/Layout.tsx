@@ -56,7 +56,7 @@ function Layout({ children }: Props) {
               <p className="text-lg font-semibold text-[var(--accent)]">Scholar Agent</p>
               <p className="mt-1 text-sm text-gray-600">
                 Minimal frontend shell aligned to backend health checks, terminal bench controls,
-                and the managed workspace browser.
+                the environment control plane, and the managed workspace browser.
               </p>
             </div>
             <button
@@ -108,7 +108,8 @@ function Layout({ children }: Props) {
                   WebUI control surface
                 </p>
                 <p className="mt-1 text-sm text-gray-600">
-                  Health, terminal bench, and workspace browser shell during backend realignment.
+                  Health, terminal bench, environment control plane, and workspace browser shell
+                  during backend realignment.
                 </p>
               </div>
             </div>
@@ -118,7 +119,8 @@ function Layout({ children }: Props) {
 
           <footer className="border-t border-gray-200 bg-white/80 px-4 py-4 text-sm text-gray-500 sm:px-6 lg:px-8">
             <div className="mx-auto w-full max-w-6xl">
-              Health, terminal bench, and workspace browser shell during backend realignment.
+              Health, terminal bench, environment control plane, and workspace browser shell during
+              backend realignment.
             </div>
           </footer>
         </div>
@@ -128,4 +130,3 @@ function Layout({ children }: Props) {
 }
 
 export default Layout;
-

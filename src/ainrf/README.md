@@ -12,6 +12,7 @@
 - CLI 入口（`ainrf` 命令）
 - FastAPI 服务（仅健康检查与 API key 中间件）
 - 容器连接配置持久化（`ainrf container add`）
+- environments 控制面（环境 CRUD、手动探测、最近结果展示）
 - SSH 容器健康探测与远端命令执行
 - API daemon 启停支持
 
@@ -142,6 +143,19 @@ code-server --version
 - 公共健康检查路径：
   - `GET /health`
   - `GET /v1/health`
+- environment 控制面路径（均受 API key 中间件保护）：
+  - `GET /environments`
+  - `POST /environments`
+  - `GET /environments/{id}`
+  - `PATCH /environments/{id}`
+  - `DELETE /environments/{id}`
+  - `POST /environments/{id}/detect`
+  - `GET /v1/environments`
+  - `POST /v1/environments`
+  - `GET /v1/environments/{id}`
+  - `PATCH /v1/environments/{id}`
+  - `DELETE /v1/environments/{id}`
+  - `POST /v1/environments/{id}/detect`
 - Terminal Bench MVP 路径（均受 API key 中间件保护）：
   - `GET /terminal/session`
   - `POST /terminal/session`

@@ -12,9 +12,9 @@ function DashboardPage() {
         <h1 className="text-3xl font-semibold text-gray-900">Scholar Agent runtime shell</h1>
         <p className="max-w-3xl text-sm text-gray-600 sm:text-base">
           The frontend now exposes the cleaned runtime shell: health checks, the single-session
-          terminal bench control surface, and the managed workspace browser panel. Use this page
-          to confirm API, SSH, workspace readiness, terminal session state, and code-server
-          availability.
+          terminal bench control surface, the environment control plane, and the managed workspace
+          browser panel. Use this page to confirm API, SSH, workspace readiness, terminal session
+          state, environment readiness, and code-server availability.
         </p>
       </section>
 
@@ -24,6 +24,8 @@ function DashboardPage() {
           <p className="text-sm text-gray-600">
             Available endpoints: <code className="rounded bg-gray-100 px-1.5 py-0.5">/health</code>,{' '}
             <code className="rounded bg-gray-100 px-1.5 py-0.5">/v1/health</code>,{' '}
+            <code className="rounded bg-gray-100 px-1.5 py-0.5">/environments</code>,{' '}
+            <code className="rounded bg-gray-100 px-1.5 py-0.5">/v1/environments</code>,{' '}
             <code className="rounded bg-gray-100 px-1.5 py-0.5">/terminal/session</code>,{' '}
             <code className="rounded bg-gray-100 px-1.5 py-0.5">/v1/terminal/session</code>,{' '}
             <code className="rounded bg-gray-100 px-1.5 py-0.5">/code/status</code>, and{' '}

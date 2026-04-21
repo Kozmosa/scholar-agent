@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ErrorBoundary, Layout, ToastProvider } from './components/common';
 import DashboardPage from './pages/DashboardPage';
+import ContainersPage from './pages/ContainersPage';
 import PlaceholderPage from './pages/PlaceholderPage';
 import './index.css';
 
@@ -36,13 +37,7 @@ function App() {
                 />
                 <Route
                   path="/containers"
-                  element={
-                    <PlaceholderPage
-                      eyebrow="Containers"
-                      title="Container management is coming soon"
-                      description="This area will surface runtime container state, environment preparation, and related controls after the terminal shell stabilizes."
-                    />
-                  }
+                  element={<ContainersPage />}
                 />
                 <Route
                   path="/settings"

@@ -8,10 +8,12 @@ from fastapi import FastAPI
 
 from ainrf.api.config import ApiConfig
 from ainrf.api.middleware import build_api_key_middleware
+from ainrf.api.routes.environments import router as environments_router
 from ainrf.api.routes.code import router as code_router
 from ainrf.api.routes.health import router as health_router
 from ainrf.api.routes.terminal import router as terminal_router
 from ainrf.code_server import CodeServerSupervisor
+from ainrf.environments import InMemoryEnvironmentService
 
 
 def _run_sync_in_lifespan(callback: Callable[[], None]) -> Awaitable[None]:
@@ -39,11 +41,14 @@ def create_app(config: ApiConfig | None = None) -> FastAPI:
     api_config = config or ApiConfig.from_env()
     app = FastAPI(title="AINRF API", version="0.1.0", lifespan=lifespan)
     app.state.api_config = api_config
+    app.state.environment_service = InMemoryEnvironmentService()
     app.middleware("http")(build_api_key_middleware(api_config))
     app.include_router(health_router)
+    app.include_router(environments_router)
     app.include_router(terminal_router)
     app.include_router(code_router)
     app.include_router(health_router, prefix="/v1")
+    app.include_router(environments_router, prefix="/v1")
     app.include_router(terminal_router, prefix="/v1")
     app.include_router(code_router, prefix="/v1")
     return app
