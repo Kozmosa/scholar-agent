@@ -1,10 +1,11 @@
+import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   createTerminalSession,
   deleteTerminalSession,
   getTerminalSession,
 } from '../../api';
-import type { TerminalSessionStatus } from '../../types';
+import type { EnvironmentRecord, TerminalSession, TerminalSessionStatus } from '../../types';
 
 const terminalSessionQueryKey = ['terminal-session'] as const;
 
@@ -28,26 +29,68 @@ function getErrorMessage(error: unknown): string | null {
   return error instanceof Error ? error.message : null;
 }
 
-export function useTerminalBenchSession(): TerminalBenchSessionState {
+export function useTerminalBenchSession(
+  selectedEnvironment: EnvironmentRecord | null
+): TerminalBenchSessionState {
   const queryClient = useQueryClient();
+  const selectedEnvironmentId = selectedEnvironment?.id ?? null;
+  const previousEnvironmentIdRef = useRef<string | null>(selectedEnvironmentId);
   const terminalQuery = useQuery({
-    queryKey: terminalSessionQueryKey,
-    queryFn: getTerminalSession,
+    queryKey: [...terminalSessionQueryKey, selectedEnvironmentId],
+    queryFn: () => {
+      if (selectedEnvironmentId === null) {
+        return Promise.resolve<TerminalSession>({
+          session_id: null,
+          provider: 'pty',
+          target_kind: 'daemon-host',
+          environment_id: null,
+          environment_alias: null,
+          working_directory: null,
+          status: 'idle',
+          created_at: null,
+          started_at: null,
+          closed_at: null,
+          terminal_ws_url: null,
+          detail: null,
+        });
+      }
+      return getTerminalSession(selectedEnvironmentId);
+    },
   });
 
   const startMutation = useMutation({
-    mutationFn: createTerminalSession,
-    onSuccess: (session) => {
-      queryClient.setQueryData(terminalSessionQueryKey, session);
+    mutationFn: (environmentId: string) => createTerminalSession(environmentId),
+    onSuccess: (session, environmentId) => {
+      queryClient.setQueryData([...terminalSessionQueryKey, environmentId], session);
     },
   });
 
   const stopMutation = useMutation({
     mutationFn: deleteTerminalSession,
     onSuccess: (session) => {
-      queryClient.setQueryData(terminalSessionQueryKey, session);
+      if (selectedEnvironmentId !== null) {
+        queryClient.setQueryData([...terminalSessionQueryKey, selectedEnvironmentId], session);
+      }
     },
   });
+
+  useEffect(() => {
+    const previousEnvironmentId = previousEnvironmentIdRef.current;
+    if (
+      previousEnvironmentId !== null &&
+      previousEnvironmentId !== selectedEnvironmentId &&
+      selectedEnvironmentId !== null
+    ) {
+      const previousSession = queryClient.getQueryData<TerminalSession>([
+        ...terminalSessionQueryKey,
+        previousEnvironmentId,
+      ]);
+      if (previousSession?.status === 'running' || previousSession?.status === 'starting') {
+        startMutation.mutate(selectedEnvironmentId);
+      }
+    }
+    previousEnvironmentIdRef.current = selectedEnvironmentId;
+  }, [queryClient, selectedEnvironmentId, startMutation]);
 
   const session = terminalQuery.data;
   const status = session?.status ?? 'idle';
@@ -58,6 +101,7 @@ export function useTerminalBenchSession(): TerminalBenchSessionState {
   const isStarting = startMutation.isPending;
   const isStopping = stopMutation.isPending;
   const canStart =
+    selectedEnvironmentId !== null &&
     !isLoading &&
     loadError === null &&
     !isStarting &&
@@ -83,7 +127,11 @@ export function useTerminalBenchSession(): TerminalBenchSessionState {
     isStopping,
     canStart,
     canStop,
-    onStart: () => startMutation.mutate(),
+    onStart: () => {
+      if (selectedEnvironmentId !== null) {
+        startMutation.mutate(selectedEnvironmentId);
+      }
+    },
     onStop: () => stopMutation.mutate(),
     onTerminalDisconnected: () => {
       queryClient.invalidateQueries({ queryKey: terminalSessionQueryKey });

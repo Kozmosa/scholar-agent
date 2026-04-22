@@ -27,6 +27,9 @@ const idleSession: TerminalSession = {
   session_id: null,
   provider: 'pty',
   target_kind: 'daemon-host',
+  environment_id: 'env-1',
+  environment_alias: 'gpu-lab',
+  working_directory: '/workspace/project',
   status: 'idle',
   created_at: null,
   started_at: null,
@@ -38,7 +41,10 @@ const idleSession: TerminalSession = {
 const runningSession: TerminalSession = {
   session_id: 'term-1',
   provider: 'pty',
-  target_kind: 'daemon-host',
+  target_kind: 'environment-ssh',
+  environment_id: 'env-1',
+  environment_alias: 'gpu-lab',
+  working_directory: '/workspace/project',
   status: 'running',
   created_at: '2026-04-21T00:00:00Z',
   started_at: '2026-04-21T00:00:01Z',
@@ -84,6 +90,7 @@ describe('TerminalBenchCard', () => {
     renderWithProviders(<TerminalBenchCard selectedEnvironment={selectedEnvironment} />);
 
     expect(await screen.findByText('Status: Idle')).toBeInTheDocument();
+    expect(mockGetTerminalSession).toHaveBeenCalledWith('env-1');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Start terminal' })).not.toBeDisabled());
     expect(screen.getByRole('button', { name: 'Stop terminal' })).toBeDisabled();
     expect(screen.getByText('No terminal session is running.')).toBeInTheDocument();
@@ -100,7 +107,7 @@ describe('TerminalBenchCard', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Start terminal' })).not.toBeDisabled());
     fireEvent.click(screen.getByRole('button', { name: 'Start terminal' }));
 
-    await waitFor(() => expect(mockCreateTerminalSession).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockCreateTerminalSession).toHaveBeenCalledWith('env-1'));
     expect(await screen.findByText('Status: Running')).toBeInTheDocument();
     expect(screen.getByTestId('terminal-console')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Stop terminal' })).toBeEnabled();
@@ -133,12 +140,11 @@ describe('TerminalBenchCard', () => {
   });
 
   it('requires a selected environment before enabling the terminal', async () => {
-    mockGetTerminalSession.mockResolvedValue(idleSession);
-
     renderWithProviders(<TerminalBenchCard selectedEnvironment={null} />);
 
     expect(await screen.findByText('Status: Idle')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Start terminal' })).toBeDisabled();
     expect(screen.getByText('Select an environment before starting the terminal session.')).toBeInTheDocument();
+    expect(mockGetTerminalSession).not.toHaveBeenCalled();
   });
 });

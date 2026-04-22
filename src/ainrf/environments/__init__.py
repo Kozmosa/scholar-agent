@@ -13,6 +13,8 @@ from ainrf.environments.service import (
     DeleteSeedEnvironmentError,
     EnvironmentNotFoundError,
     InMemoryEnvironmentService,
+    ProjectReferenceConflictError,
+    ProjectReferenceNotFoundError,
 )
 
 __all__ = [
@@ -27,5 +29,7 @@ __all__ = [
     "EnvironmentRegistryEntry",
     "InMemoryEnvironmentService",
     "ProjectEnvironmentReference",
+    "ProjectReferenceConflictError",
+    "ProjectReferenceNotFoundError",
     "ToolStatus",
 ]

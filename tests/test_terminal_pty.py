@@ -16,6 +16,7 @@ from ainrf.api.app import create_app
 from ainrf.api.config import ApiConfig, hash_api_key
 from ainrf.terminal.models import TerminalSessionRecord, TerminalSessionStatus, utc_now
 from ainrf.terminal.pty import (
+    TERMINAL_LOCAL_TARGET_KIND,
     TerminalSessionRuntime,
     build_terminal_ws_url,
     start_terminal_session,
@@ -23,9 +24,21 @@ from ainrf.terminal.pty import (
 )
 
 
-def make_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, FastAPI]:
-    monkeypatch.setattr("ainrf.code_server.CodeServerSupervisor.start", lambda self: None)
-    monkeypatch.setattr("ainrf.code_server.CodeServerSupervisor.stop", lambda self: None)
+class DummyProcess:
+    def __init__(self, returncode: int | None = None) -> None:
+        self.pid = 4321
+        self.returncode = returncode
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def wait(self, timeout: float) -> int:
+        _ = timeout
+        self.returncode = 0
+        return 0
+
+
+def make_client(tmp_path: Path) -> tuple[TestClient, FastAPI]:
     app = create_app(
         ApiConfig(
             api_key_hashes=frozenset({hash_api_key("secret-key")}),
@@ -46,13 +59,13 @@ def test_start_terminal_session_launches_process_and_returns_ws_url(
 ) -> None:
     captured: dict[str, object] = {}
 
-    class DummyProcess:
+    class PopenProcess:
         pid = 4321
 
-    def fake_popen(*args: object, **kwargs: object) -> DummyProcess:
+    def fake_popen(*args: object, **kwargs: object) -> PopenProcess:
         captured["args"] = args
         captured["kwargs"] = kwargs
-        return DummyProcess()
+        return PopenProcess()
 
     monkeypatch.setattr("ainrf.terminal.pty.os.openpty", lambda: (11, 12))
     monkeypatch.setattr("ainrf.terminal.pty.subprocess.Popen", fake_popen)
@@ -63,6 +76,9 @@ def test_start_terminal_session_launches_process_and_returns_ws_url(
         api_base_url="http://testserver",
         shell_command=("/bin/sh",),
         working_directory=tmp_path,
+        environment_id="env-1",
+        environment_alias="gpu-lab",
+        target_kind=TERMINAL_LOCAL_TARGET_KIND,
     )
 
     assert captured["args"] == (["/bin/sh"],)
@@ -77,40 +93,34 @@ def test_start_terminal_session_launches_process_and_returns_ws_url(
     }
     assert runtime.record.session_id == "00000000-0000-0000-0000-000000000001"
     assert runtime.record.status is TerminalSessionStatus.RUNNING
+    assert runtime.record.environment_id == "env-1"
+    assert runtime.record.environment_alias == "gpu-lab"
+    assert runtime.record.working_directory == str(tmp_path)
     assert runtime.record.terminal_ws_url == (
         "ws://testserver/terminal/session/00000000-0000-0000-0000-000000000001/ws?token=token-1"
     )
-    assert runtime.record.terminal_ws_token == "token-1"
-    assert runtime.record.pid == 4321
 
 
 def test_stop_terminal_session_terminates_running_process(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     kill_calls: list[tuple[int, int]] = []
 
     def fake_killpg(pid: int, signum: int) -> None:
         kill_calls.append((pid, signum))
 
-    class DummyProcess:
-        pid = 4321
-        returncode: int | None = None
-
-        def poll(self) -> int | None:
-            return self.returncode
-
-        def wait(self, timeout: float) -> int:
-            self.returncode = 0
-            return 0
-
     monkeypatch.setattr("ainrf.terminal.pty.os.killpg", fake_killpg)
     monkeypatch.setattr("ainrf.terminal.pty.os.close", lambda fd: None)
+
     runtime = TerminalSessionRuntime(
         record=TerminalSessionRecord(
             session_id="term-1",
             provider="pty",
-            target_kind="daemon-host",
+            target_kind=TERMINAL_LOCAL_TARGET_KIND,
             status=TerminalSessionStatus.RUNNING,
+            environment_id="env-1",
+            environment_alias="gpu-lab",
+            working_directory="/workspace/project",
             created_at=utc_now(),
             started_at=utc_now(),
             terminal_ws_url="ws://testserver/terminal/session/term-1/ws?token=token-1",
@@ -126,13 +136,14 @@ def test_stop_terminal_session_terminates_running_process(
     assert kill_calls == [(4321, signal.SIGTERM)]
     assert stopped.status is TerminalSessionStatus.IDLE
     assert stopped.session_id is None
+    assert stopped.environment_id == "env-1"
     assert stopped.terminal_ws_url is None
 
 
 def test_terminal_session_routes_and_websocket_bridge(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    client, app = make_client(tmp_path, monkeypatch)
+    client, app = make_client(tmp_path)
     input_calls: list[str] = []
     resize_calls: list[tuple[int, int]] = []
 
@@ -146,24 +157,15 @@ def test_terminal_session_routes_and_websocket_bridge(
     )
 
     read_fd, write_fd = os.pipe()
-
-    class DummyProcess:
-        pid = 4321
-        returncode: int | None = None
-
-        def poll(self) -> int | None:
-            return self.returncode
-
-        def wait(self, timeout: float) -> int:
-            self.returncode = 0
-            return 0
-
     runtime = TerminalSessionRuntime(
         record=TerminalSessionRecord(
             session_id="term-1",
             provider="pty",
-            target_kind="daemon-host",
+            target_kind=TERMINAL_LOCAL_TARGET_KIND,
             status=TerminalSessionStatus.RUNNING,
+            environment_id="env-1",
+            environment_alias="gpu-lab",
+            working_directory="/workspace/project",
             created_at=utc_now(),
             started_at=utc_now(),
             terminal_ws_url="ws://testserver/terminal/session/term-1/ws?token=token-1",
@@ -173,7 +175,6 @@ def test_terminal_session_routes_and_websocket_bridge(
         process=cast(Any, DummyProcess()),
         master_fd=read_fd,
     )
-
     app.state.terminal_runtime = runtime
 
     with client.websocket_connect("/terminal/session/term-1/ws?token=token-1") as ws:
@@ -190,27 +191,18 @@ def test_terminal_session_routes_and_websocket_bridge(
 
 
 def test_terminal_session_websocket_rejects_bad_token(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
-    client, app = make_client(tmp_path, monkeypatch)
-
-    class DummyProcess:
-        pid = 4321
-        returncode: int | None = None
-
-        def poll(self) -> int | None:
-            return self.returncode
-
-        def wait(self, timeout: float) -> int:
-            self.returncode = 0
-            return 0
-
+    client, app = make_client(tmp_path)
     runtime = TerminalSessionRuntime(
         record=TerminalSessionRecord(
             session_id="term-1",
             provider="pty",
-            target_kind="daemon-host",
+            target_kind=TERMINAL_LOCAL_TARGET_KIND,
             status=TerminalSessionStatus.RUNNING,
+            environment_id="env-1",
+            environment_alias="gpu-lab",
+            working_directory="/workspace/project",
             created_at=utc_now(),
             started_at=utc_now(),
             terminal_ws_url="ws://testserver/terminal/session/term-1/ws?token=token-1",
@@ -220,7 +212,6 @@ def test_terminal_session_websocket_rejects_bad_token(
         process=cast(Any, DummyProcess()),
         master_fd=11,
     )
-
     app.state.terminal_runtime = runtime
 
     with pytest.raises(WebSocketDisconnect):

@@ -10,13 +10,15 @@ from dataclasses import dataclass, replace
 from datetime import timedelta
 from pathlib import Path
 from secrets import token_urlsafe
-from uuid import uuid4
 from typing import Any
+from uuid import uuid4
 
 from ainrf.terminal.models import TerminalSessionRecord, TerminalSessionStatus, utc_now
 
 TERMINAL_PROVIDER = "pty"
-TERMINAL_TARGET_KIND = "daemon-host"
+TERMINAL_IDLE_TARGET_KIND = "daemon-host"
+TERMINAL_LOCAL_TARGET_KIND = "environment-local"
+TERMINAL_SSH_TARGET_KIND = "environment-ssh"
 TERMINAL_WS_TOKEN_TTL = timedelta(minutes=30)
 _TERMINAL_READ_SIZE = 4096
 _TERMINAL_CLOSE_TIMEOUT_SECONDS = 5.0
@@ -82,10 +84,24 @@ def _spawn_terminal_process(
 def start_terminal_session(
     api_base_url: str,
     shell_command: tuple[str, ...],
-    working_directory: Path,
+    spawn_working_directory: Path | None = None,
+    *,
+    environment_id: str = "",
+    environment_alias: str = "",
+    working_directory: str | Path | None = None,
+    target_kind: str = TERMINAL_LOCAL_TARGET_KIND,
 ) -> TerminalSessionRuntime:
-    working_directory.mkdir(parents=True, exist_ok=True)
-    normalized_working_directory = working_directory.resolve(strict=True)
+    if spawn_working_directory is None:
+        if isinstance(working_directory, Path):
+            spawn_working_directory = working_directory
+            working_directory = str(working_directory)
+        else:
+            raise TypeError("spawn_working_directory is required when working_directory is not a Path")
+    elif isinstance(working_directory, Path):
+        working_directory = str(working_directory)
+
+    spawn_working_directory.mkdir(parents=True, exist_ok=True)
+    normalized_working_directory = spawn_working_directory.resolve(strict=True)
     process, master_fd = _spawn_terminal_process(shell_command, normalized_working_directory)
     started_at = utc_now()
     session_id = str(uuid4())
@@ -93,7 +109,10 @@ def start_terminal_session(
     record = TerminalSessionRecord(
         session_id=session_id,
         provider=TERMINAL_PROVIDER,
-        target_kind=TERMINAL_TARGET_KIND,
+        target_kind=target_kind,
+        environment_id=environment_id,
+        environment_alias=environment_alias,
+        working_directory=working_directory,
         status=TerminalSessionStatus.RUNNING,
         created_at=started_at,
         started_at=started_at,
@@ -144,7 +163,10 @@ def stop_terminal_session(runtime: TerminalSessionRuntime | None) -> TerminalSes
         return TerminalSessionRecord(
             session_id=None,
             provider=TERMINAL_PROVIDER,
-            target_kind=TERMINAL_TARGET_KIND,
+            target_kind=TERMINAL_IDLE_TARGET_KIND,
+            environment_id=None,
+            environment_alias=None,
+            working_directory=None,
             status=TerminalSessionStatus.IDLE,
             closed_at=utc_now(),
         )
@@ -169,7 +191,10 @@ def stop_terminal_session(runtime: TerminalSessionRuntime | None) -> TerminalSes
     runtime.record = TerminalSessionRecord(
         session_id=None,
         provider=TERMINAL_PROVIDER,
-        target_kind=TERMINAL_TARGET_KIND,
+        target_kind=TERMINAL_IDLE_TARGET_KIND,
+        environment_id=runtime.record.environment_id,
+        environment_alias=runtime.record.environment_alias,
+        working_directory=runtime.record.working_directory,
         status=TerminalSessionStatus.IDLE,
         closed_at=utc_now(),
     )

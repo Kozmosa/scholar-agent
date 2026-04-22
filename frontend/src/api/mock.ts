@@ -5,13 +5,20 @@ import type {
   EnvironmentListResponse,
   EnvironmentRecord,
   EnvironmentUpdateRequest,
+  ProjectEnvironmentReference,
+  ProjectEnvironmentReferenceCreateRequest,
+  ProjectEnvironmentReferenceListResponse,
+  ProjectEnvironmentReferenceUpdateRequest,
   SystemHealth,
   TerminalSession,
 } from '../types';
 
+const DEFAULT_PROJECT_ID = 'default';
+const MOCK_STATE_ROOT = '.ainrf';
+
 const mockHealth: SystemHealth = {
   status: 'ok',
-  state_root: '.ainrf',
+  state_root: MOCK_STATE_ROOT,
   container_configured: true,
   container_health: {
     ssh_ok: true,
@@ -27,15 +34,13 @@ const mockHealth: SystemHealth = {
   detail: null,
 };
 
-const mockCodeServerStatus: CodeServerStatus = {
-  status: 'ready',
-  workspace_dir: '/workspace/projects/demo',
-  detail: null,
-  managed: true,
-};
-
 let mockEnvironmentCounter = 0;
 let mockEnvironments: EnvironmentRecord[] = [];
+let mockProjectEnvironmentReferences: Record<string, ProjectEnvironmentReference[]> = {
+  [DEFAULT_PROJECT_ID]: [],
+};
+let mockTerminalSession: TerminalSession = createIdleTerminalSession();
+let mockCodeServerStatus: CodeServerStatus = createUnavailableCodeServerStatus();
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -88,6 +93,103 @@ function cloneEnvironment(environment: EnvironmentRecord): EnvironmentRecord {
           claude_cli: { ...environment.latest_detection.claude_cli },
         }
       : null,
+  };
+}
+
+function cloneProjectReference(reference: ProjectEnvironmentReference): ProjectEnvironmentReference {
+  return { ...reference };
+}
+
+function findEnvironment(environmentId: string): EnvironmentRecord {
+  const environment = mockEnvironments.find((item) => item.id === environmentId);
+  if (!environment) {
+    throw new Error(`Environment not found: ${environmentId}`);
+  }
+  return environment;
+}
+
+function findProjectReference(
+  projectId: string,
+  environmentId: string
+): ProjectEnvironmentReference | null {
+  return (
+    mockProjectEnvironmentReferences[projectId]?.find(
+      (reference) => reference.environment_id === environmentId
+    ) ?? null
+  );
+}
+
+function getProjectReferences(projectId: string): ProjectEnvironmentReference[] {
+  return mockProjectEnvironmentReferences[projectId] ?? [];
+}
+
+function replaceProjectReference(
+  projectId: string,
+  reference: ProjectEnvironmentReference
+): ProjectEnvironmentReference {
+  const current = getProjectReferences(projectId);
+  const next = current
+    .filter((item) => item.environment_id !== reference.environment_id)
+    .map((item) => (reference.is_default ? { ...item, is_default: false } : item));
+  next.push(reference);
+  mockProjectEnvironmentReferences = {
+    ...mockProjectEnvironmentReferences,
+    [projectId]: next,
+  };
+  return reference;
+}
+
+function removeProjectReference(projectId: string, environmentId: string): void {
+  const current = getProjectReferences(projectId);
+  mockProjectEnvironmentReferences = {
+    ...mockProjectEnvironmentReferences,
+    [projectId]: current.filter((reference) => reference.environment_id !== environmentId),
+  };
+}
+
+function buildEffectiveWorkdir(environmentId: string, projectId: string = DEFAULT_PROJECT_ID): string {
+  const reference = findProjectReference(projectId, environmentId);
+  if (reference?.override_workdir) {
+    return reference.override_workdir;
+  }
+  const environment = findEnvironment(environmentId);
+  return environment.default_workdir ?? MOCK_STATE_ROOT;
+}
+
+function createIdleTerminalSession(
+  environmentId: string | null = null,
+  environmentAlias: string | null = null,
+  workingDirectory: string | null = null
+): TerminalSession {
+  return {
+    session_id: null,
+    provider: 'pty',
+    target_kind: 'daemon-host',
+    environment_id: environmentId,
+    environment_alias: environmentAlias,
+    working_directory: workingDirectory,
+    status: 'idle',
+    created_at: null,
+    started_at: null,
+    closed_at: null,
+    terminal_ws_url: null,
+    detail: null,
+  };
+}
+
+function createUnavailableCodeServerStatus(
+  environmentId: string | null = null,
+  environmentAlias: string | null = null,
+  workspaceDir: string | null = null,
+  detail: string | null = 'code-server session not started'
+): CodeServerStatus {
+  return {
+    status: 'unavailable',
+    environment_id: environmentId,
+    environment_alias: environmentAlias,
+    workspace_dir: workspaceDir,
+    detail,
+    managed: true,
   };
 }
 
@@ -152,7 +254,11 @@ function createMockDetection(environment: EnvironmentRecord): EnvironmentRecord[
       environment.is_seed ? null : '/usr/bin/python3'
     ),
     conda: createToolStatus(false),
-    uv: createToolStatus(!environment.is_seed, environment.is_seed ? null : 'mock', environment.is_seed ? null : '/usr/bin/uv'),
+    uv: createToolStatus(
+      !environment.is_seed,
+      environment.is_seed ? null : 'mock',
+      environment.is_seed ? null : '/usr/bin/uv'
+    ),
     pixi: createToolStatus(false),
     torch: createToolStatus(false),
     cuda: createToolStatus(false),
@@ -167,19 +273,6 @@ function createMockDetection(environment: EnvironmentRecord): EnvironmentRecord[
   };
 }
 
-let mockTerminalSession: TerminalSession = {
-  session_id: null,
-  provider: 'pty',
-  target_kind: 'daemon-host',
-  status: 'idle',
-  created_at: null,
-  started_at: null,
-  closed_at: null,
-  terminal_ws_url: null,
-  detail: null,
-};
-
-const initialTerminalSession: TerminalSession = mockTerminalSession;
 const initialMockEnvironments: EnvironmentRecord[] = [createSeedEnvironment()];
 mockEnvironments = [...initialMockEnvironments];
 
@@ -187,51 +280,93 @@ export function mockGetHealth(): SystemHealth {
   return mockHealth;
 }
 
-export function mockGetCodeServerStatus(): CodeServerStatus {
-  return mockCodeServerStatus;
+export function mockGetTerminalSession(environmentId?: string): TerminalSession {
+  if (!environmentId) {
+    return { ...mockTerminalSession };
+  }
+  if (mockTerminalSession.environment_id === environmentId) {
+    return { ...mockTerminalSession };
+  }
+  const environment = findEnvironment(environmentId);
+  return createIdleTerminalSession(environment.id, environment.alias, buildEffectiveWorkdir(environmentId));
 }
 
-export function mockGetTerminalSession(): TerminalSession {
-  return mockTerminalSession;
-}
-
-export function mockCreateTerminalSession(): TerminalSession {
-  const timestamp = new Date().toISOString();
-
+export function mockCreateTerminalSession(environmentId: string): TerminalSession {
+  const environment = findEnvironment(environmentId);
+  const timestamp = nowIso();
+  const workingDirectory = buildEffectiveWorkdir(environmentId);
   mockTerminalSession = {
-    session_id: 'mock-terminal-session',
+    session_id: `mock-terminal-session-${environmentId}`,
     provider: 'pty',
-    target_kind: 'daemon-host',
+    target_kind:
+      environment.host === '127.0.0.1' || environment.host === 'localhost'
+        ? 'environment-local'
+        : 'environment-ssh',
+    environment_id: environment.id,
+    environment_alias: environment.alias,
+    working_directory: workingDirectory,
     status: 'running',
     created_at: mockTerminalSession.created_at ?? timestamp,
     started_at: timestamp,
     closed_at: null,
-    terminal_ws_url: 'ws://127.0.0.1:8000/terminal/session/mock-terminal-session/ws?token=mock-token',
+    terminal_ws_url: `ws://127.0.0.1:8000/terminal/session/mock-terminal-session-${environmentId}/ws?token=mock-token`,
     detail: null,
   };
-
-  return mockTerminalSession;
+  return { ...mockTerminalSession };
 }
 
 export function mockDeleteTerminalSession(): TerminalSession {
   mockTerminalSession = {
+    ...mockTerminalSession,
     session_id: null,
-    provider: 'pty',
     target_kind: 'daemon-host',
     status: 'idle',
-    created_at: mockTerminalSession.created_at,
-    started_at: mockTerminalSession.started_at,
-    closed_at: new Date().toISOString(),
+    closed_at: nowIso(),
     terminal_ws_url: null,
     detail: null,
   };
-
-  return mockTerminalSession;
+  return { ...mockTerminalSession };
 }
 
-export function resetMockTerminalSession(): TerminalSession {
-  mockTerminalSession = { ...initialTerminalSession };
-  return mockTerminalSession;
+export function mockGetCodeServerStatus(environmentId?: string): CodeServerStatus {
+  if (!environmentId) {
+    return { ...mockCodeServerStatus };
+  }
+  if (mockCodeServerStatus.environment_id === environmentId) {
+    return { ...mockCodeServerStatus };
+  }
+  const environment = findEnvironment(environmentId);
+  return createUnavailableCodeServerStatus(
+    environment.id,
+    environment.alias,
+    buildEffectiveWorkdir(environmentId)
+  );
+}
+
+export function mockCreateCodeServerSession(environmentId: string): CodeServerStatus {
+  const environment = findEnvironment(environmentId);
+  if (environment.auth_kind === 'password') {
+    throw new Error('Workspace does not support password-auth environments');
+  }
+  mockCodeServerStatus = {
+    status: 'ready',
+    environment_id: environment.id,
+    environment_alias: environment.alias,
+    workspace_dir: buildEffectiveWorkdir(environmentId),
+    detail: null,
+    managed: true,
+  };
+  return { ...mockCodeServerStatus };
+}
+
+export function mockDeleteCodeServerSession(): CodeServerStatus {
+  mockCodeServerStatus = createUnavailableCodeServerStatus(
+    mockCodeServerStatus.environment_id,
+    mockCodeServerStatus.environment_alias,
+    mockCodeServerStatus.workspace_dir,
+    'code-server stopped'
+  );
+  return { ...mockCodeServerStatus };
 }
 
 export function mockGetEnvironments(): EnvironmentListResponse {
@@ -241,11 +376,7 @@ export function mockGetEnvironments(): EnvironmentListResponse {
 }
 
 export function mockGetEnvironment(environmentId: string): EnvironmentRecord {
-  const environment = mockEnvironments.find((item) => item.id === environmentId);
-  if (!environment) {
-    throw new Error(`Environment not found: ${environmentId}`);
-  }
-  return cloneEnvironment(environment);
+  return cloneEnvironment(findEnvironment(environmentId));
 }
 
 export function mockCreateEnvironment(payload: EnvironmentCreateRequest): EnvironmentRecord {
@@ -258,10 +389,7 @@ export function mockUpdateEnvironment(
   environmentId: string,
   payload: EnvironmentUpdateRequest
 ): EnvironmentRecord {
-  const current = mockEnvironments.find((environment) => environment.id === environmentId);
-  if (!current) {
-    throw new Error(`Environment not found: ${environmentId}`);
-  }
+  const current = findEnvironment(environmentId);
   const updated = createMockEnvironment(payload, current);
   mockEnvironments = mockEnvironments.map((environment) =>
     environment.id === environmentId ? updated : environment
@@ -270,18 +398,19 @@ export function mockUpdateEnvironment(
 }
 
 export function mockDeleteEnvironment(environmentId: string): void {
-  const current = mockEnvironments.find((environment) => environment.id === environmentId);
-  if (current?.is_seed) {
+  const current = findEnvironment(environmentId);
+  if (current.is_seed) {
     throw new Error(`Environment cannot be deleted: ${environmentId}`);
+  }
+  const references = Object.values(mockProjectEnvironmentReferences).flat();
+  if (references.some((reference) => reference.environment_id === environmentId)) {
+    throw new Error(`Environment is still referenced by a project: ${environmentId}`);
   }
   mockEnvironments = mockEnvironments.filter((environment) => environment.id !== environmentId);
 }
 
 export function mockDetectEnvironment(environmentId: string): EnvironmentRecord {
-  const current = mockEnvironments.find((environment) => environment.id === environmentId);
-  if (!current) {
-    throw new Error(`Environment not found: ${environmentId}`);
-  }
+  const current = findEnvironment(environmentId);
   const updated = {
     ...current,
     latest_detection: createMockDetection(current),
@@ -293,8 +422,84 @@ export function mockDetectEnvironment(environmentId: string): EnvironmentRecord 
   return cloneEnvironment(updated);
 }
 
+export function mockGetProjectEnvironmentReferences(
+  projectId: string = DEFAULT_PROJECT_ID
+): ProjectEnvironmentReferenceListResponse {
+  return {
+    items: getProjectReferences(projectId).map((reference) => cloneProjectReference(reference)),
+  };
+}
+
+export function mockCreateProjectEnvironmentReference(
+  projectId: string,
+  payload: ProjectEnvironmentReferenceCreateRequest
+): ProjectEnvironmentReference {
+  findEnvironment(payload.environment_id);
+  if (findProjectReference(projectId, payload.environment_id)) {
+    throw new Error(`Environment is already referenced by this project: ${payload.environment_id}`);
+  }
+  const reference: ProjectEnvironmentReference = {
+    environment_id: payload.environment_id,
+    is_default: payload.is_default ?? false,
+    override_workdir: payload.override_workdir ?? null,
+    override_env_name: payload.override_env_name ?? null,
+    override_env_manager: payload.override_env_manager ?? null,
+    override_runtime_notes: payload.override_runtime_notes ?? null,
+    updated_at: nowIso(),
+  };
+  return cloneProjectReference(replaceProjectReference(projectId, reference));
+}
+
+export function mockUpdateProjectEnvironmentReference(
+  projectId: string,
+  environmentId: string,
+  payload: ProjectEnvironmentReferenceUpdateRequest
+): ProjectEnvironmentReference {
+  const current = findProjectReference(projectId, environmentId);
+  if (!current) {
+    throw new Error(`Project environment reference not found: ${environmentId}`);
+  }
+  const next: ProjectEnvironmentReference = {
+    environment_id: environmentId,
+    is_default: payload.is_default ?? current.is_default,
+    override_workdir:
+      payload.override_workdir !== undefined ? payload.override_workdir : current.override_workdir,
+    override_env_name:
+      payload.override_env_name !== undefined ? payload.override_env_name : current.override_env_name,
+    override_env_manager:
+      payload.override_env_manager !== undefined
+        ? payload.override_env_manager
+        : current.override_env_manager,
+    override_runtime_notes:
+      payload.override_runtime_notes !== undefined
+        ? payload.override_runtime_notes
+        : current.override_runtime_notes,
+    updated_at: nowIso(),
+  };
+  return cloneProjectReference(replaceProjectReference(projectId, next));
+}
+
+export function mockDeleteProjectEnvironmentReference(
+  projectId: string,
+  environmentId: string
+): void {
+  const current = findProjectReference(projectId, environmentId);
+  if (!current) {
+    throw new Error(`Project environment reference not found: ${environmentId}`);
+  }
+  removeProjectReference(projectId, environmentId);
+}
+
+export function resetMockTerminalSession(): TerminalSession {
+  mockTerminalSession = createIdleTerminalSession();
+  return { ...mockTerminalSession };
+}
+
 export function resetMockEnvironmentState(): EnvironmentListResponse {
   mockEnvironmentCounter = 0;
   mockEnvironments = [...initialMockEnvironments];
+  mockProjectEnvironmentReferences = { [DEFAULT_PROJECT_ID]: [] };
+  mockTerminalSession = createIdleTerminalSession();
+  mockCodeServerStatus = createUnavailableCodeServerStatus();
   return mockGetEnvironments();
 }

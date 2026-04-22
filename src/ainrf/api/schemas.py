@@ -44,6 +44,9 @@ class TerminalSessionResponse(BaseModel):
     session_id: str | None = None
     provider: str = "pty"
     target_kind: str = "daemon-host"
+    environment_id: str | None = None
+    environment_alias: str | None = None
+    working_directory: str | None = None
     status: TerminalSessionStatus
     created_at: str | None = None
     started_at: str | None = None
@@ -56,6 +59,8 @@ class CodeServerStatusResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: CodeServerLifecycleStatus
+    environment_id: str | None = None
+    environment_alias: str | None = None
     workspace_dir: str | None = None
     detail: str | None = None
     managed: bool = True
@@ -127,6 +132,24 @@ class EnvironmentListResponse(BaseModel):
     items: list[EnvironmentResponse]
 
 
+class ProjectEnvironmentReferenceResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    environment_id: str
+    is_default: bool = False
+    override_workdir: str | None = None
+    override_env_name: str | None = None
+    override_env_manager: str | None = None
+    override_runtime_notes: str | None = None
+    updated_at: datetime | None = None
+
+
+class ProjectEnvironmentReferenceListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ProjectEnvironmentReferenceResponse]
+
+
 class EnvironmentCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -167,3 +190,36 @@ class EnvironmentUpdateRequest(BaseModel):
     preferred_python: str | None = None
     preferred_env_manager: str | None = None
     preferred_runtime_notes: str | None = None
+
+
+class ProjectEnvironmentReferenceCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    environment_id: str
+    is_default: bool = False
+    override_workdir: str | None = None
+    override_env_name: str | None = None
+    override_env_manager: str | None = None
+    override_runtime_notes: str | None = None
+
+
+class ProjectEnvironmentReferenceUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    is_default: bool | None = None
+    override_workdir: str | None = None
+    override_env_name: str | None = None
+    override_env_manager: str | None = None
+    override_runtime_notes: str | None = None
+
+
+class TerminalSessionCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    environment_id: str
+
+
+class CodeServerSessionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    environment_id: str

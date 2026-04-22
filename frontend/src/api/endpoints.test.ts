@@ -13,13 +13,13 @@ describe('api endpoints', () => {
     vi.stubEnv('VITE_USE_MOCK', 'true');
 
     const { createTerminalSession, getTerminalSession } = await import('./endpoints');
-    const session = await getTerminalSession();
-    const created = await createTerminalSession();
+    const session = await getTerminalSession('env-localhost');
+    const created = await createTerminalSession('env-localhost');
 
     expect(session.status).toBe('idle');
     expect(created.status).toBe('running');
     expect(created.terminal_ws_url).toBe(
-      'ws://127.0.0.1:8000/terminal/session/mock-terminal-session/ws?token=mock-token'
+      'ws://127.0.0.1:8000/terminal/session/mock-terminal-session-env-localhost/ws?token=mock-token'
     );
   });
 

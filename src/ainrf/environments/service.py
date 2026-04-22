@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from getpass import getuser
+from pathlib import Path
 from uuid import uuid4
 
 from ainrf.environments.models import (
@@ -29,6 +30,14 @@ class DeleteReferencedEnvironmentError(ValueError):
 
 
 class DeleteSeedEnvironmentError(ValueError):
+    pass
+
+
+class ProjectReferenceNotFoundError(LookupError):
+    pass
+
+
+class ProjectReferenceConflictError(ValueError):
     pass
 
 
@@ -186,7 +195,7 @@ class InMemoryEnvironmentService:
         environment = self.get_environment(environment_id)
         if environment.is_seed:
             raise DeleteSeedEnvironmentError(environment_id)
-        refs = self.list_project_refs(environment.id)
+        refs = self.list_environment_references(environment.id)
         if refs:
             raise DeleteReferencedEnvironmentError(environment_id)
         del self._environments[environment.id]
@@ -254,6 +263,29 @@ class InMemoryEnvironmentService:
             return None
         return snapshots[-1]
 
+    def create_project_reference(
+        self,
+        *,
+        project_id: str,
+        environment_id: str,
+        is_default: bool = False,
+        override_workdir: str | None = None,
+        override_env_name: str | None = None,
+        override_env_manager: str | None = None,
+        override_runtime_notes: str | None = None,
+    ) -> ProjectEnvironmentReference:
+        if environment_id in self._project_refs[project_id]:
+            raise ProjectReferenceConflictError(environment_id)
+        return self.upsert_project_reference(
+            project_id=project_id,
+            environment_id=environment_id,
+            is_default=is_default,
+            override_workdir=override_workdir,
+            override_env_name=override_env_name,
+            override_env_manager=override_env_manager,
+            override_runtime_notes=override_runtime_notes,
+        )
+
     def upsert_project_reference(
         self,
         *,
@@ -282,13 +314,44 @@ class InMemoryEnvironmentService:
         self._project_refs[project_id][environment_id] = reference
         return reference
 
-    def list_project_refs(self, environment_id: str) -> list[ProjectEnvironmentReference]:
+    def get_project_reference(
+        self,
+        project_id: str,
+        environment_id: str,
+    ) -> ProjectEnvironmentReference:
+        try:
+            return self._project_refs[project_id][environment_id]
+        except KeyError as exc:
+            raise ProjectReferenceNotFoundError(environment_id) from exc
+
+    def list_project_references(self, project_id: str) -> list[ProjectEnvironmentReference]:
+        return list(self._project_refs[project_id].values())
+
+    def list_environment_references(self, environment_id: str) -> list[ProjectEnvironmentReference]:
         refs: list[ProjectEnvironmentReference] = []
         for project_refs in self._project_refs.values():
             reference = project_refs.get(environment_id)
             if reference is not None:
                 refs.append(reference)
         return refs
+
+    def delete_project_reference(self, project_id: str, environment_id: str) -> None:
+        self.get_project_reference(project_id, environment_id)
+        del self._project_refs[project_id][environment_id]
+
+    def resolve_effective_workdir(
+        self,
+        project_id: str,
+        environment_id: str,
+        fallback_root: Path,
+    ) -> str:
+        reference = self._project_refs.get(project_id, {}).get(environment_id)
+        if reference is not None and reference.override_workdir:
+            return reference.override_workdir
+        environment = self.get_environment(environment_id)
+        if environment.default_workdir:
+            return environment.default_workdir
+        return str(fallback_root)
 
     def _ensure_alias_available(self, alias: str) -> None:
         for environment in self._environments.values():

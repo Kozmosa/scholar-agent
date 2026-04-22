@@ -132,7 +132,9 @@ export AINRF_API_KEY_HASHES=<hash1>,<hash2>
 Terminal Bench MVP 现已切换为 `xterm.js + PTY/WebSocket`，不再依赖 `ttyd` 二进制。
 联调时只需要确保后端 API 服务可启动，并且前端能访问同源 WebSocket 地址即可。
 
-Workspace Browser 依赖本机可执行的 `code-server` 二进制；联调前请先确认：
+Terminal 与 Workspace 现均绑定到选中的 `environment`。当前项目在这一轮固定为隐式项目键 `default`，并可通过 project environment refs API 声明默认环境与 runtime-only overrides。
+
+Workspace Browser 在本地环境下依赖本机可执行的 `code-server` 二进制；联调前请先确认：
 
 ```bash
 code-server --version
@@ -156,37 +158,57 @@ code-server --version
   - `PATCH /v1/environments/{id}`
   - `DELETE /v1/environments/{id}`
   - `POST /v1/environments/{id}/detect`
+- project environment refs 路径（均受 API key 中间件保护）：
+  - `GET /projects/{project_id}/environment-refs`
+  - `POST /projects/{project_id}/environment-refs`
+  - `PATCH /projects/{project_id}/environment-refs/{environment_id}`
+  - `DELETE /projects/{project_id}/environment-refs/{environment_id}`
+  - `GET /v1/projects/{project_id}/environment-refs`
+  - `POST /v1/projects/{project_id}/environment-refs`
+  - `PATCH /v1/projects/{project_id}/environment-refs/{environment_id}`
+  - `DELETE /v1/projects/{project_id}/environment-refs/{environment_id}`
 - Terminal Bench MVP 路径（均受 API key 中间件保护）：
-  - `GET /terminal/session`
+  - `GET /terminal/session?environment_id=...`
   - `POST /terminal/session`
   - `DELETE /terminal/session`
-  - `GET /v1/terminal/session`
+  - `GET /v1/terminal/session?environment_id=...`
   - `POST /v1/terminal/session`
   - `DELETE /v1/terminal/session`
 - code-server 状态路径（均受 API key 中间件保护）：
-  - `GET /code/status`
-  - `GET /v1/code/status`
+  - `GET /code/status?environment_id=...`
+  - `GET /v1/code/status?environment_id=...`
+- code-server session 控制路径（均受 API key 中间件保护）：
+  - `POST /code/session`
+  - `DELETE /code/session`
+  - `POST /v1/code/session`
+  - `DELETE /v1/code/session`
 - managed code-server browser 路径（均受 API key 中间件保护）：
   - `GET /code/`
   - `GET /v1/code/`
   - `GET /code/...` 与 `GET /v1/code/...` 下的嵌套静态资源 / 子路径，均由 API 反向代理到受管 `code-server`
 
-其中 terminal session API 只控制单个单会话 PTY terminal session：
+其中 terminal session API 只控制单个按 environment 绑定的 PTY terminal session：
 
-- `GET /terminal/session`：读取当前终端 session 状态
-- `POST /terminal/session`：创建当前终端 session，并返回 `terminal_ws_url`
+- `GET /terminal/session?environment_id=...`：读取当前所选 environment 对应的终端 session 状态；若活跃 session 绑定到其他 environment，则返回 `idle`
+- `POST /terminal/session`：按 `environment_id` 执行 idempotent ensure，并返回 `terminal_ws_url`
 - `DELETE /terminal/session`：关闭当前终端 session
 - `GET /terminal/session/{session_id}/ws?token=...`：终端数据通道
 
 `/v1/terminal/session` 提供相同语义的版本化镜像路径。
 
+`auth_kind=password` 的 environment 只支持 terminal 内交互式输入密码；不会通过 API 注入 secret。
+
 code-server 相关路径只暴露当前 daemon 受管的单实例 workspace browser：
 
-- `GET /code/status`：读取当前 code-server supervisor 状态
+- `GET /code/status?environment_id=...`：读取当前所选 environment 对应的 workspace 状态
+- `POST /code/session`：按 `environment_id` 执行 idempotent ensure
+- `DELETE /code/session`：关闭当前受管 workspace session
 - `GET /code/`：通过 API 代理访问 browser 入口
 - `/v1/code/status` 与 `/v1/code/` 提供相同语义的版本化镜像路径
 
-如果本机未安装 `code-server`，或者当前 `project_dir` 缺失 / 不可用，API 仍会正常启动；此时 `/code/status` 会返回 `unavailable`，`/code/` 会返回不可用错误，而不会阻断主服务启动。
+`auth_kind=password` 的 environment 对 `/code/session` 固定返回 `409`，因为受管 workspace 不支持非交互 password-auth。
+
+如果本机未安装 `code-server`，或受管 session 尚未 ensure，API 仍会正常启动；此时 `/code/status` 会返回 `unavailable`，`/code/` 会返回不可用错误，而不会阻断主服务启动。
 
 已移除的旧 task 路径不会再由应用注册；在提供有效 API key 后会返回 `404`。
 

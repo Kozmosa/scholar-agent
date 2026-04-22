@@ -225,3 +225,114 @@ async def test_localhost_environment_is_present_and_cannot_be_deleted(tmp_path: 
     assert list_response.json()["items"][0]["alias"] == "localhost"
     assert delete_response.status_code == 409
     assert "cannot be deleted" in delete_response.json()["detail"].lower()
+
+
+@pytest.mark.anyio
+async def test_project_environment_reference_crud_and_delete_protection(tmp_path: Path) -> None:
+    app = make_app(tmp_path)
+    payload = {
+        "alias": "gpu-lab",
+        "display_name": "GPU Lab",
+        "host": "gpu.example.com",
+        "port": 22,
+        "user": "root",
+    }
+
+    async with make_client(app) as client:
+        create_environment_response = await client.post(
+            "/environments",
+            headers={"X-API-Key": "secret-key"},
+            json=payload,
+        )
+        environment_id = create_environment_response.json()["id"]
+
+        create_reference_response = await client.post(
+            "/projects/default/environment-refs",
+            headers={"X-API-Key": "secret-key"},
+            json={
+                "environment_id": environment_id,
+                "is_default": True,
+                "override_workdir": "/workspace/project-a",
+            },
+        )
+        update_reference_response = await client.patch(
+            f"/projects/default/environment-refs/{environment_id}",
+            headers={"X-API-Key": "secret-key"},
+            json={
+                "override_env_name": "research-env",
+                "override_env_manager": "conda",
+                "override_runtime_notes": "Prefer the project runtime image",
+            },
+        )
+        list_reference_response = await client.get(
+            "/projects/default/environment-refs",
+            headers={"X-API-Key": "secret-key"},
+        )
+        delete_environment_response = await client.delete(
+            f"/environments/{environment_id}",
+            headers={"X-API-Key": "secret-key"},
+        )
+        delete_reference_response = await client.delete(
+            f"/projects/default/environment-refs/{environment_id}",
+            headers={"X-API-Key": "secret-key"},
+        )
+        delete_environment_after_unbind = await client.delete(
+            f"/environments/{environment_id}",
+            headers={"X-API-Key": "secret-key"},
+        )
+
+    assert create_reference_response.status_code == 201
+    assert create_reference_response.json()["environment_id"] == environment_id
+    assert create_reference_response.json()["is_default"] is True
+    assert create_reference_response.json()["override_workdir"] == "/workspace/project-a"
+
+    assert update_reference_response.status_code == 200
+    assert update_reference_response.json()["override_env_name"] == "research-env"
+    assert update_reference_response.json()["override_env_manager"] == "conda"
+    assert (
+        update_reference_response.json()["override_runtime_notes"]
+        == "Prefer the project runtime image"
+    )
+
+    assert list_reference_response.status_code == 200
+    assert list_reference_response.json()["items"] == [update_reference_response.json()]
+
+    assert delete_environment_response.status_code == 409
+    assert "referenced" in delete_environment_response.json()["detail"].lower()
+    assert delete_reference_response.status_code == 204
+    assert delete_environment_after_unbind.status_code == 204
+
+
+@pytest.mark.anyio
+async def test_project_environment_reference_routes_are_mirrored_under_v1(tmp_path: Path) -> None:
+    app = make_app(tmp_path)
+    payload = {
+        "alias": "cpu-lab",
+        "display_name": "CPU Lab",
+        "host": "cpu.example.com",
+        "port": 22,
+        "user": "root",
+    }
+
+    async with make_client(app) as client:
+        create_environment_response = await client.post(
+            "/environments",
+            headers={"X-API-Key": "secret-key"},
+            json=payload,
+        )
+        environment_id = create_environment_response.json()["id"]
+
+        create_reference_response = await client.post(
+            "/v1/projects/default/environment-refs",
+            headers={"X-API-Key": "secret-key"},
+            json={"environment_id": environment_id},
+        )
+        list_reference_response = await client.get(
+            "/v1/projects/default/environment-refs",
+            headers={"X-API-Key": "secret-key"},
+        )
+
+    assert create_reference_response.status_code == 201
+    assert create_reference_response.json()["environment_id"] == environment_id
+    assert list_reference_response.status_code == 200
+    assert list_reference_response.json()["items"] == [create_reference_response.json()]

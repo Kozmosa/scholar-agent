@@ -1,78 +1,18 @@
 from __future__ import annotations
 
 import errno
-import subprocess
 from pathlib import Path
 
 import pytest
 
 from ainrf.code_server import (
     CodeServerLifecycleStatus,
-    CodeServerSupervisor,
+    EnvironmentCodeServerManager,
+    UnsupportedWorkspaceEnvironmentError,
     build_code_server_command,
+    build_remote_code_server_command,
 )
-
-
-def test_build_code_server_command_uses_workspace_and_loopback(tmp_path: Path) -> None:
-    command = build_code_server_command(
-        host="127.0.0.1",
-        port=18080,
-        workspace_dir=tmp_path,
-    )
-
-    assert command == [
-        "code-server",
-        "--bind-addr",
-        "127.0.0.1:18080",
-        "--auth",
-        "none",
-        str(tmp_path),
-    ]
-
-
-def test_supervisor_without_workspace_is_unavailable(tmp_path: Path) -> None:
-    supervisor = CodeServerSupervisor(
-        host="127.0.0.1",
-        port=18080,
-        workspace_dir=None,
-        state_root=tmp_path,
-    )
-
-    supervisor.start()
-
-    assert supervisor.status().status is CodeServerLifecycleStatus.UNAVAILABLE
-    assert supervisor.status().detail == "workspace directory is not configured"
-
-
-def test_supervisor_missing_workspace_path_is_unavailable(tmp_path: Path) -> None:
-    supervisor = CodeServerSupervisor(
-        host="127.0.0.1",
-        port=18080,
-        workspace_dir=tmp_path / "missing",
-        state_root=tmp_path,
-    )
-
-    supervisor.start()
-
-    assert supervisor.status().status is CodeServerLifecycleStatus.UNAVAILABLE
-    assert "does not exist" in (supervisor.status().detail or "")
-
-
-def test_supervisor_file_workspace_path_is_unavailable(tmp_path: Path) -> None:
-    workspace_file = tmp_path / "workspace.txt"
-    workspace_file.write_text("not a directory", encoding="utf-8")
-
-    supervisor = CodeServerSupervisor(
-        host="127.0.0.1",
-        port=18080,
-        workspace_dir=workspace_file,
-        state_root=tmp_path,
-    )
-
-    supervisor.start()
-
-    assert supervisor.status().status is CodeServerLifecycleStatus.UNAVAILABLE
-    assert "is not a directory" in (supervisor.status().detail or "")
+from ainrf.environments import EnvironmentAuthKind, InMemoryEnvironmentService
 
 
 class FakeProcess:
@@ -101,144 +41,267 @@ class FakeProcess:
         return self.returncode
 
 
-def test_supervisor_marks_ready_after_successful_probe(
+class FakeRemoteProcess:
+    def __init__(self, returncode: int | None = None) -> None:
+        self.returncode = returncode
+        self.terminated = False
+        self.killed = False
+        self.wait_closed_calls = 0
+
+    def terminate(self) -> None:
+        self.terminated = True
+        self.returncode = 0
+
+    def kill(self) -> None:
+        self.killed = True
+        self.returncode = -9
+
+    async def wait_closed(self) -> None:
+        self.wait_closed_calls += 1
+
+
+class FakeTunnel:
+    def __init__(self, port: int = 19090) -> None:
+        self._port = port
+        self.closed = False
+
+    def get_port(self) -> int:
+        return self._port
+
+    def close(self) -> None:
+        self.closed = True
+
+    async def wait_closed(self) -> None:
+        return None
+
+
+class FakeConnection:
+    def __init__(self, process: FakeRemoteProcess, tunnel: FakeTunnel) -> None:
+        self._process = process
+        self._tunnel = tunnel
+        self.commands: list[str] = []
+        self.forward_calls: list[tuple[str, int, str, int]] = []
+        self.closed = False
+
+    async def create_process(self, command: str, **kwargs: object) -> FakeRemoteProcess:
+        self.commands.append(command)
+        self.process_kwargs = kwargs
+        return self._process
+
+    async def forward_local_port(
+        self,
+        listen_host: str,
+        listen_port: int,
+        dest_host: str,
+        dest_port: int,
+    ) -> FakeTunnel:
+        self.forward_calls.append((listen_host, listen_port, dest_host, dest_port))
+        return self._tunnel
+
+    def close(self) -> None:
+        self.closed = True
+
+    async def wait_closed(self) -> None:
+        return None
+
+
+def _make_manager(tmp_path: Path) -> tuple[EnvironmentCodeServerManager, InMemoryEnvironmentService]:
+    service = InMemoryEnvironmentService()
+    manager = EnvironmentCodeServerManager(state_root=tmp_path, environment_service=service)
+    return manager, service
+
+
+def test_build_code_server_command_uses_workspace_and_loopback(tmp_path: Path) -> None:
+    command = build_code_server_command("127.0.0.1", 18080, tmp_path)
+
+    assert command == [
+        "code-server",
+        "--bind-addr",
+        "127.0.0.1:18080",
+        "--auth",
+        "none",
+        str(tmp_path),
+    ]
+
+
+def test_build_remote_code_server_command_wraps_bash_login_shell() -> None:
+    command = build_remote_code_server_command("/workspace/project")
+
+    assert "bash -lc" in command
+    assert "code-server" in command
+    assert "127.0.0.1:18080" in command
+    assert "/workspace/project" in command
+
+
+@pytest.mark.anyio
+async def test_manager_ensure_local_environment_reuses_existing_process(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        "ainrf.code_server.subprocess.Popen", lambda *args, **kwargs: FakeProcess(4321)
-    )
-    monkeypatch.setattr("ainrf.code_server._wait_until_ready", lambda host, port: True)
-
-    supervisor = CodeServerSupervisor(
+    manager, service = _make_manager(tmp_path)
+    environment = service.create_environment(
+        alias="localhost-2",
+        display_name="Localhost 2",
         host="127.0.0.1",
-        port=18080,
-        workspace_dir=tmp_path,
-        state_root=tmp_path,
+        default_workdir="workspace/project",
     )
-    supervisor.start()
+    popen_calls: list[FakeProcess] = []
 
-    assert supervisor.status().status is CodeServerLifecycleStatus.READY
-    assert supervisor.status().pid == 4321
+    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+        _ = args, kwargs
+        process = FakeProcess(pid=4321)
+        popen_calls.append(process)
+        return process
+
+    async def fake_wait_until_ready(host: str, port: int, timeout_seconds: float = 10.0) -> bool:
+        _ = host, port, timeout_seconds
+        return True
+
+    monkeypatch.setattr("ainrf.code_server.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("ainrf.code_server._wait_until_ready", fake_wait_until_ready)
+
+    first = await manager.ensure(environment.id)
+    second = await manager.ensure(environment.id)
+
+    assert len(popen_calls) == 1
+    assert first.status is CodeServerLifecycleStatus.READY
+    assert first.environment_id == environment.id
+    assert first.workspace_dir == str(tmp_path / "workspace" / "project")
+    assert second.status is CodeServerLifecycleStatus.READY
+    assert manager.base_url == "http://127.0.0.1:18080"
 
 
-def test_supervisor_degrades_when_spawn_fails(
+@pytest.mark.anyio
+async def test_manager_ensure_remote_environment_starts_tunnel(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def raise_spawn_error(*args, **kwargs):
+    manager, service = _make_manager(tmp_path)
+    environment = service.create_environment(
+        alias="remote-lab",
+        display_name="Remote Lab",
+        host="gpu.example.com",
+        port=2222,
+        user="researcher",
+        identity_file="/keys/id_ed25519",
+        default_workdir="/workspace/project",
+    )
+    remote_process = FakeRemoteProcess()
+    tunnel = FakeTunnel(port=19090)
+    connection = FakeConnection(remote_process, tunnel)
+    captured_connect_kwargs: dict[str, object] = {}
+
+    async def fake_connect(**kwargs: object) -> FakeConnection:
+        captured_connect_kwargs.update(kwargs)
+        return connection
+
+    async def fake_wait_until_ready(host: str, port: int, timeout_seconds: float = 10.0) -> bool:
+        _ = timeout_seconds
+        return host == "127.0.0.1" and port == 19090
+
+    monkeypatch.setattr("ainrf.code_server.asyncssh.connect", fake_connect)
+    monkeypatch.setattr("ainrf.code_server._wait_until_ready", fake_wait_until_ready)
+
+    state = await manager.ensure(environment.id)
+
+    assert state.status is CodeServerLifecycleStatus.READY
+    assert state.environment_id == environment.id
+    assert state.workspace_dir == "/workspace/project"
+    assert captured_connect_kwargs["host"] == "gpu.example.com"
+    assert captured_connect_kwargs["port"] == 2222
+    assert captured_connect_kwargs["username"] == "researcher"
+    assert captured_connect_kwargs["client_keys"] == ["/keys/id_ed25519"]
+    assert connection.forward_calls == [("127.0.0.1", 0, "127.0.0.1", 18080)]
+    assert connection.commands
+    assert "code-server" in connection.commands[0]
+    assert manager.base_url == "http://127.0.0.1:19090"
+
+
+@pytest.mark.anyio
+async def test_manager_switching_environments_tears_down_previous_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager, service = _make_manager(tmp_path)
+    first_environment = service.create_environment(
+        alias="local-a",
+        display_name="Local A",
+        host="127.0.0.1",
+        default_workdir="workspace/a",
+    )
+    second_environment = service.create_environment(
+        alias="local-b",
+        display_name="Local B",
+        host="127.0.0.1",
+        default_workdir="workspace/b",
+    )
+    first_process = FakeProcess(pid=1001)
+    second_process = FakeProcess(pid=1002)
+    processes = [first_process, second_process]
+
+    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+        _ = args, kwargs
+        return processes.pop(0)
+
+    async def fake_wait_until_ready(host: str, port: int, timeout_seconds: float = 10.0) -> bool:
+        _ = host, port, timeout_seconds
+        return True
+
+    monkeypatch.setattr("ainrf.code_server.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("ainrf.code_server._wait_until_ready", fake_wait_until_ready)
+
+    first_state = await manager.ensure(first_environment.id)
+    second_state = await manager.ensure(second_environment.id)
+
+    assert first_state.environment_id == first_environment.id
+    assert second_state.environment_id == second_environment.id
+    assert processes == []
+    assert first_state.status is CodeServerLifecycleStatus.READY
+    assert second_state.status is CodeServerLifecycleStatus.READY
+    assert first_process.actions == ["terminate"]
+    assert second_process.actions == []
+
+
+@pytest.mark.anyio
+async def test_manager_rejects_password_authenticated_workspace(
+    tmp_path: Path,
+) -> None:
+    manager, service = _make_manager(tmp_path)
+    environment = service.create_environment(
+        alias="password-lab",
+        display_name="Password Lab",
+        host="gpu.example.com",
+        auth_kind=EnvironmentAuthKind.PASSWORD,
+    )
+
+    with pytest.raises(UnsupportedWorkspaceEnvironmentError):
+        await manager.ensure(environment.id)
+
+    state = await manager.status(environment.id)
+    assert state.status is CodeServerLifecycleStatus.UNAVAILABLE
+    assert state.detail == "Workspace does not support password-auth environments"
+
+
+@pytest.mark.anyio
+async def test_manager_reports_start_failure_when_local_spawn_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager, service = _make_manager(tmp_path)
+    environment = service.create_environment(
+        alias="local-a",
+        display_name="Local A",
+        host="127.0.0.1",
+        default_workdir="workspace/a",
+    )
+
+    def raise_spawn_error(*args: object, **kwargs: object) -> FakeProcess:
+        _ = args, kwargs
         raise OSError(errno.ENOENT, "code-server not found")
 
     monkeypatch.setattr("ainrf.code_server.subprocess.Popen", raise_spawn_error)
 
-    supervisor = CodeServerSupervisor(
-        host="127.0.0.1",
-        port=18080,
-        workspace_dir=tmp_path,
-        state_root=tmp_path,
-    )
+    state = await manager.ensure(environment.id)
 
-    supervisor.start()
-
-    assert supervisor.status().status is CodeServerLifecycleStatus.UNAVAILABLE
-    assert supervisor.status().pid is None
-    assert "failed to start code-server" in (supervisor.status().detail or "")
-    assert "code-server not found" in (supervisor.status().detail or "")
-
-
-def test_supervisor_degrades_when_probe_fails(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    process = FakeProcess(4321)
-    monkeypatch.setattr("ainrf.code_server.subprocess.Popen", lambda *args, **kwargs: process)
-    monkeypatch.setattr("ainrf.code_server._wait_until_ready", lambda host, port: False)
-
-    supervisor = CodeServerSupervisor(
-        host="127.0.0.1",
-        port=18080,
-        workspace_dir=tmp_path,
-        state_root=tmp_path,
-    )
-    supervisor.start()
-
-    assert supervisor.status().status is CodeServerLifecycleStatus.UNAVAILABLE
-    assert process.actions == ["terminate"]
-    assert process.wait_timeouts == [5.0]
-
-
-def test_supervisor_stop_terminates_and_reaps_process(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    process = FakeProcess(4321)
-    monkeypatch.setattr("ainrf.code_server.subprocess.Popen", lambda *args, **kwargs: process)
-    monkeypatch.setattr("ainrf.code_server._wait_until_ready", lambda host, port: True)
-
-    supervisor = CodeServerSupervisor(
-        host="127.0.0.1",
-        port=18080,
-        workspace_dir=tmp_path,
-        state_root=tmp_path,
-    )
-    supervisor.start()
-    supervisor.stop()
-
-    assert process.actions == ["terminate"]
-    assert process.wait_timeouts == [5.0]
-    assert supervisor.status().status is CodeServerLifecycleStatus.UNAVAILABLE
-    assert supervisor.status().detail == "code-server stopped"
-
-
-def test_supervisor_stop_kills_after_terminate_timeout(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    process = FakeProcess(4321)
-    process.wait_side_effects = [subprocess.TimeoutExpired(cmd="code-server", timeout=5.0)]
-    monkeypatch.setattr("ainrf.code_server.subprocess.Popen", lambda *args, **kwargs: process)
-    monkeypatch.setattr("ainrf.code_server._wait_until_ready", lambda host, port: True)
-
-    supervisor = CodeServerSupervisor(
-        host="127.0.0.1",
-        port=18080,
-        workspace_dir=tmp_path,
-        state_root=tmp_path,
-    )
-    supervisor.start()
-    supervisor.stop()
-
-    assert process.actions == ["terminate", "kill"]
-    assert process.wait_timeouts == [5.0, 5.0]
-
-
-def test_supervisor_reuses_existing_running_process_on_repeated_start(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    popen_calls = 0
-
-    def fake_popen(*args, **kwargs) -> FakeProcess:
-        nonlocal popen_calls
-        popen_calls += 1
-        return FakeProcess(4321)
-
-    monkeypatch.setattr("ainrf.code_server.subprocess.Popen", fake_popen)
-    monkeypatch.setattr("ainrf.code_server._wait_until_ready", lambda host, port: True)
-
-    supervisor = CodeServerSupervisor(
-        host="127.0.0.1",
-        port=18080,
-        workspace_dir=tmp_path,
-        state_root=tmp_path,
-    )
-
-    supervisor.start()
-    first_status = supervisor.status()
-    supervisor.start()
-    second_status = supervisor.status()
-
-    assert popen_calls == 1
-    assert first_status.status is CodeServerLifecycleStatus.READY
-    assert second_status.status is CodeServerLifecycleStatus.READY
-    assert second_status.pid == 4321
+    assert state.status is CodeServerLifecycleStatus.UNAVAILABLE
+    assert "failed to start code-server" in (state.detail or "")

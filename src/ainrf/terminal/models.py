@@ -19,6 +19,9 @@ class TerminalSessionRecord:
     provider: str
     target_kind: str
     status: TerminalSessionStatus
+    environment_id: str | None = None
+    environment_alias: str | None = None
+    working_directory: str | None = None
     created_at: datetime | None = None
     started_at: datetime | None = None
     closed_at: datetime | None = None

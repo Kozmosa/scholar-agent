@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getEnvironments } from '../../api';
+import { getEnvironments, getProjectEnvironmentReferences } from '../../api';
 import { renderWithProviders } from '../../test/render';
 import type { EnvironmentRecord } from '../../types';
 import EnvironmentSelectorPanel from './EnvironmentSelectorPanel';
@@ -8,9 +8,11 @@ import { useEnvironmentSelection } from './useEnvironmentSelection';
 
 vi.mock('../../api', () => ({
   getEnvironments: vi.fn(),
+  getProjectEnvironmentReferences: vi.fn(),
 }));
 
 const mockGetEnvironments = vi.mocked(getEnvironments);
+const mockGetProjectEnvironmentReferences = vi.mocked(getProjectEnvironmentReferences);
 
 const baseEnvironment: EnvironmentRecord = {
   id: 'env-1',
@@ -62,11 +64,39 @@ function EnvironmentSelectionHarness() {
 
 beforeEach(() => {
   mockGetEnvironments.mockReset();
+  mockGetProjectEnvironmentReferences.mockReset();
+  mockGetProjectEnvironmentReferences.mockResolvedValue({ items: [] });
   window.localStorage.clear();
 });
 
 describe('EnvironmentSelectorPanel', () => {
-  it('defaults to the seed environment and remembers the selection', async () => {
+  it('prioritizes the project default over the remembered selection', async () => {
+    window.localStorage.setItem('scholar-agent:selected-environment-id', 'env-2');
+    mockGetEnvironments.mockResolvedValue({
+      items: [baseEnvironment, defaultEnvironment, secondaryEnvironment],
+    });
+    mockGetProjectEnvironmentReferences.mockResolvedValue({
+      items: [
+        {
+          environment_id: 'env-1',
+          is_default: true,
+          override_workdir: null,
+          override_env_name: null,
+          override_env_manager: null,
+          override_runtime_notes: null,
+          updated_at: '2026-04-21T00:00:00Z',
+        },
+      ],
+    });
+
+    renderWithProviders(<EnvironmentSelectionHarness />);
+
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: 'Active environment' })).toHaveValue('env-1')
+    );
+  });
+
+  it('falls back to the seed environment and remembers the explicit selection', async () => {
     mockGetEnvironments.mockResolvedValue({
       items: [baseEnvironment, defaultEnvironment, secondaryEnvironment],
     });
@@ -108,6 +138,8 @@ describe('EnvironmentSelectorPanel', () => {
     await waitFor(() =>
       expect(screen.getByRole('combobox', { name: 'Active environment' })).toHaveValue('env-1')
     );
-    expect(window.localStorage.getItem('scholar-agent:selected-environment-id')).toBe('env-1');
+    await waitFor(() =>
+      expect(window.localStorage.getItem('scholar-agent:selected-environment-id')).toBe('env-1')
+    );
   });
 });

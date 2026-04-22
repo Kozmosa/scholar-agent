@@ -1,10 +1,12 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState, type FormEvent } from 'react';
 import {
+  createProjectEnvironmentReference,
   createEnvironment,
+  deleteProjectEnvironmentReference,
   deleteEnvironment,
   detectEnvironment,
-  getEnvironments,
+  updateProjectEnvironmentReference,
   updateEnvironment,
 } from '../api';
 import type {
@@ -13,11 +15,18 @@ import type {
   EnvironmentListResponse,
   EnvironmentRecord,
   EnvironmentUpdateRequest,
+  ProjectEnvironmentReference,
+  ProjectEnvironmentReferenceListResponse,
+  ProjectEnvironmentReferenceUpdateRequest,
 } from '../types';
 import { useLocale, useT } from '../i18n';
+import { useEnvironmentSelection } from '../components';
 
 const environmentsQueryKey = ['environments'] as const;
+const projectEnvironmentRefsQueryKey = ['project-environment-refs', 'default'] as const;
 const EMPTY_ENVIRONMENTS: EnvironmentRecord[] = [];
+const EMPTY_PROJECT_REFS: ProjectEnvironmentReference[] = [];
+const defaultProjectId = 'default';
 
 type EnvironmentEditorMode = 'create' | 'edit';
 
@@ -152,6 +161,25 @@ function removeEnvironmentFromList(
 ): EnvironmentListResponse {
   return {
     items: (current?.items ?? []).filter((item) => item.id !== environmentId),
+  };
+}
+
+function mergeProjectReferenceList(
+  current: ProjectEnvironmentReferenceListResponse | undefined,
+  reference: ProjectEnvironmentReference
+): ProjectEnvironmentReferenceListResponse {
+  const items = (current?.items ?? [])
+    .filter((item) => item.environment_id !== reference.environment_id)
+    .map((item) => (reference.is_default ? { ...item, is_default: false } : item));
+  return { items: [...items, reference] };
+}
+
+function removeProjectReferenceFromList(
+  current: ProjectEnvironmentReferenceListResponse | undefined,
+  environmentId: string
+): ProjectEnvironmentReferenceListResponse {
+  return {
+    items: (current?.items ?? []).filter((item) => item.environment_id !== environmentId),
   };
 }
 
@@ -479,31 +507,285 @@ function EnvironmentEditor({
   );
 }
 
+interface ProjectRefFormValues {
+  override_workdir: string;
+  override_env_name: string;
+  override_env_manager: string;
+  override_runtime_notes: string;
+}
+
+function valuesFromProjectReference(
+  reference: ProjectEnvironmentReference | null
+): ProjectRefFormValues {
+  return {
+    override_workdir: reference?.override_workdir ?? '',
+    override_env_name: reference?.override_env_name ?? '',
+    override_env_manager: reference?.override_env_manager ?? '',
+    override_runtime_notes: reference?.override_runtime_notes ?? '',
+  };
+}
+
+interface ProjectReferenceEditorProps {
+  selectedEnvironment: EnvironmentRecord | null;
+  projectReference: ProjectEnvironmentReference | null;
+  isSaving: boolean;
+  isRemoving: boolean;
+  onSave: (values: ProjectRefFormValues) => Promise<void>;
+  onSetDefault: () => Promise<void>;
+  onClearDefault: () => Promise<void>;
+  onRemove: () => Promise<void>;
+}
+
+function ProjectReferenceEditor({
+  selectedEnvironment,
+  projectReference,
+  isSaving,
+  isRemoving,
+  onSave,
+  onSetDefault,
+  onClearDefault,
+  onRemove,
+}: ProjectReferenceEditorProps) {
+  const t = useT();
+  const [values, setValues] = useState<ProjectRefFormValues>(() =>
+    valuesFromProjectReference(projectReference)
+  );
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const updateField = (field: keyof ProjectRefFormValues, nextValue: string) => {
+    setValues((current) => ({ ...current, [field]: nextValue }));
+  };
+
+  if (selectedEnvironment === null) {
+    return (
+      <section className="space-y-4 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="space-y-1">
+          <h2 className="text-xl font-semibold text-gray-900">
+            {t('pages.containers.projectReferenceTitle')}
+          </h2>
+          <p className="text-sm text-gray-600">
+            {t('pages.containers.projectReferenceDescription')}
+          </p>
+        </div>
+        <p className="text-sm text-gray-500">
+          {t('pages.containers.projectReferenceNoSelection')}
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="space-y-5 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+      <div className="space-y-1">
+        <h2 className="text-xl font-semibold text-gray-900">
+          {t('pages.containers.projectReferenceTitle')}
+        </h2>
+        <p className="text-sm text-gray-600">
+          {t('pages.containers.projectReferenceDescription')}
+        </p>
+        <p className="text-sm text-gray-600">
+          <span className="font-medium text-gray-900">{selectedEnvironment.alias}</span>
+          <span className="ml-2 text-gray-500">({selectedEnvironment.display_name})</span>
+        </p>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {projectReference ? (
+          <span className="rounded-full bg-[var(--accent)]/10 px-3 py-1 text-xs font-semibold text-[var(--accent)]">
+            {t('pages.containers.projectReferencedBadge')}
+          </span>
+        ) : (
+          <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">
+            {t('pages.containers.projectUnreferencedBadge')}
+          </span>
+        )}
+        {projectReference?.is_default ? (
+          <span className="rounded-full bg-[var(--accent)]/10 px-3 py-1 text-xs font-semibold text-[var(--accent)]">
+            {t('pages.containers.projectDefaultBadge')}
+          </span>
+        ) : null}
+      </div>
+
+      <div className="flex flex-wrap gap-3">
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              setFormError(null);
+              await onSetDefault();
+            } catch (error) {
+              setFormError(
+                error instanceof Error ? error.message : t('pages.containers.projectReferenceSaveError')
+              );
+            }
+          }}
+          disabled={isSaving || isRemoving || projectReference?.is_default === true}
+          className="rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {projectReference?.is_default
+            ? t('pages.containers.setProjectDefaultDisabled')
+            : t('pages.containers.setProjectDefault')}
+        </button>
+        {projectReference?.is_default ? (
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                setFormError(null);
+                await onClearDefault();
+              } catch (error) {
+                setFormError(
+                  error instanceof Error ? error.message : t('pages.containers.projectReferenceSaveError')
+                );
+              }
+            }}
+            disabled={isSaving || isRemoving}
+            className="rounded-full border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:border-gray-400 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {t('pages.containers.clearProjectDefault')}
+          </button>
+        ) : null}
+        {projectReference ? (
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                setFormError(null);
+                await onRemove();
+              } catch (error) {
+                setFormError(
+                  error instanceof Error ? error.message : t('pages.containers.projectReferenceSaveError')
+                );
+              }
+            }}
+            disabled={isSaving || isRemoving}
+            className="rounded-full border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {t('pages.containers.removeProjectReference')}
+          </button>
+        ) : null}
+      </div>
+
+      <form
+        className="space-y-4"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          try {
+            setFormError(null);
+            await onSave(values);
+          } catch (error) {
+            setFormError(
+              error instanceof Error ? error.message : t('pages.containers.projectReferenceSaveError')
+            );
+          }
+        }}
+      >
+        <label className="space-y-2">
+          <span className="text-sm font-medium text-gray-900">
+            {t('pages.containers.projectOverrideWorkdir')}
+          </span>
+          <input
+            value={values.override_workdir}
+            onChange={(event) => updateField('override_workdir', event.target.value)}
+            className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)]"
+            placeholder={t('pages.containers.projectOverrideWorkdirPlaceholder')}
+          />
+        </label>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-gray-900">
+              {t('pages.containers.projectOverrideEnvName')}
+            </span>
+            <input
+              value={values.override_env_name}
+              onChange={(event) => updateField('override_env_name', event.target.value)}
+              className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)]"
+              placeholder={t('pages.containers.projectOverrideEnvNamePlaceholder')}
+            />
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-gray-900">
+              {t('pages.containers.projectOverrideEnvManager')}
+            </span>
+            <input
+              value={values.override_env_manager}
+              onChange={(event) => updateField('override_env_manager', event.target.value)}
+              className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)]"
+              placeholder={t('pages.containers.projectOverrideEnvManagerPlaceholder')}
+            />
+          </label>
+        </div>
+
+        <label className="space-y-2">
+          <span className="text-sm font-medium text-gray-900">
+            {t('pages.containers.projectOverrideRuntimeNotes')}
+          </span>
+          <textarea
+            value={values.override_runtime_notes}
+            onChange={(event) => updateField('override_runtime_notes', event.target.value)}
+            rows={4}
+            className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)]"
+            placeholder={t('pages.containers.projectOverrideRuntimeNotesPlaceholder')}
+          />
+        </label>
+
+        {formError ? (
+          <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {formError}
+          </p>
+        ) : null}
+
+        <button
+          type="submit"
+          disabled={isSaving || isRemoving}
+          className="rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {isSaving
+            ? t('pages.containers.projectReferenceSaving')
+            : projectReference
+              ? t('pages.containers.updateProjectReference')
+              : t('pages.containers.attachProjectReference')}
+        </button>
+      </form>
+    </section>
+  );
+}
+
 function ContainersPage() {
   const t = useT();
   const locale = useLocale();
   const queryClient = useQueryClient();
-  const environmentsQuery = useQuery({
-    queryKey: environmentsQueryKey,
-    queryFn: getEnvironments,
-  });
+  const environmentSelection = useEnvironmentSelection();
   const [editorMode, setEditorMode] = useState<EnvironmentEditorMode>('create');
   const [editorEnvironmentId, setEditorEnvironmentId] = useState<string | null>(null);
-  const [activeEnvironmentId, setActiveEnvironmentId] = useState<string | null>(null);
   const [editorFormKey, setEditorFormKey] = useState(0);
 
-  const environments = environmentsQuery.data?.items ?? EMPTY_ENVIRONMENTS;
+  const environments = environmentSelection.environments ?? EMPTY_ENVIRONMENTS;
+  const projectReferences = environmentSelection.projectReferences ?? EMPTY_PROJECT_REFS;
+  const selectedEnvironment = environmentSelection.selectedEnvironment;
   const editorEnvironment = useMemo(
     () => environments.find((environment) => environment.id === editorEnvironmentId) ?? null,
     [environments, editorEnvironmentId]
   );
-  const activeEnvironment = useMemo(
-    () => environments.find((environment) => environment.id === activeEnvironmentId) ?? null,
-    [environments, activeEnvironmentId]
+  const projectReferenceByEnvironmentId = useMemo(
+    () =>
+      Object.fromEntries(
+        projectReferences.map((reference) => [reference.environment_id, reference] as const)
+      ),
+    [projectReferences]
   );
+  const selectedProjectReference =
+    selectedEnvironment !== null
+      ? projectReferenceByEnvironmentId[selectedEnvironment.id] ?? null
+      : null;
 
   const syncEnvironmentList = (next: EnvironmentListResponse) => {
     queryClient.setQueryData(environmentsQueryKey, next);
+  };
+  const syncProjectReferenceList = (next: ProjectEnvironmentReferenceListResponse) => {
+    queryClient.setQueryData(projectEnvironmentRefsQueryKey, next);
   };
 
   const saveMutation = useMutation({
@@ -549,7 +831,7 @@ function ContainersPage() {
     onSuccess: (environment) => {
       const current = queryClient.getQueryData<EnvironmentListResponse>(environmentsQueryKey);
       syncEnvironmentList(mergeEnvironmentList(current, environment));
-      setActiveEnvironmentId(environment.id);
+      environmentSelection.onSelectEnvironment(environment.id);
       setEditorEnvironmentId(environment.id);
       setEditorMode('edit');
     },
@@ -560,9 +842,6 @@ function ContainersPage() {
     onSuccess: (_, environmentId) => {
       const current = queryClient.getQueryData<EnvironmentListResponse>(environmentsQueryKey);
       syncEnvironmentList(removeEnvironmentFromList(current, environmentId));
-      if (activeEnvironmentId === environmentId) {
-        setActiveEnvironmentId(null);
-      }
       if (editorEnvironmentId === environmentId) {
         setEditorEnvironmentId(null);
         setEditorMode('create');
@@ -578,9 +857,70 @@ function ContainersPage() {
     },
   });
 
-  const requestError = environmentsQuery.error instanceof Error ? environmentsQuery.error.message : null;
-  const activeEnvironmentSummary = activeEnvironment
-    ? `${activeEnvironment.alias} · ${activeEnvironment.display_name}`
+  const saveProjectReferenceMutation = useMutation({
+    mutationFn: async (payload: ProjectEnvironmentReferenceUpdateRequest) => {
+      if (selectedEnvironment === null) {
+        throw new Error(t('pages.containers.projectReferenceNoSelection'));
+      }
+
+      if (selectedProjectReference) {
+        return updateProjectEnvironmentReference(
+          selectedEnvironment.id,
+          payload,
+          defaultProjectId
+        );
+      }
+
+      return createProjectEnvironmentReference(
+        {
+          environment_id: selectedEnvironment.id,
+          is_default: payload.is_default ?? false,
+          override_workdir: payload.override_workdir ?? null,
+          override_env_name: payload.override_env_name ?? null,
+          override_env_manager: payload.override_env_manager ?? null,
+          override_runtime_notes: payload.override_runtime_notes ?? null,
+        },
+        defaultProjectId
+      );
+    },
+    onSuccess: (reference) => {
+      const current = queryClient.getQueryData<ProjectEnvironmentReferenceListResponse>(
+        projectEnvironmentRefsQueryKey
+      );
+      syncProjectReferenceList(mergeProjectReferenceList(current, reference));
+    },
+  });
+
+  const removeProjectReferenceMutation = useMutation({
+    mutationFn: async () => {
+      if (selectedEnvironment === null || selectedProjectReference === null) {
+        throw new Error(t('pages.containers.projectReferenceNoSelection'));
+      }
+      return deleteProjectEnvironmentReference(selectedEnvironment.id, defaultProjectId);
+    },
+    onSuccess: () => {
+      if (selectedEnvironment === null) {
+        return;
+      }
+      const current = queryClient.getQueryData<ProjectEnvironmentReferenceListResponse>(
+        projectEnvironmentRefsQueryKey
+      );
+      syncProjectReferenceList(removeProjectReferenceFromList(current, selectedEnvironment.id));
+    },
+  });
+
+  const requestError = environmentSelection.loadError;
+  const mutationError =
+    (deleteMutation.error instanceof Error ? deleteMutation.error.message : null) ??
+    (detectMutation.error instanceof Error ? detectMutation.error.message : null) ??
+    (saveProjectReferenceMutation.error instanceof Error
+      ? saveProjectReferenceMutation.error.message
+      : null) ??
+    (removeProjectReferenceMutation.error instanceof Error
+      ? removeProjectReferenceMutation.error.message
+      : null);
+  const activeEnvironmentSummary = selectedEnvironment
+    ? `${selectedEnvironment.alias} · ${selectedEnvironment.display_name}`
     : t('pages.containers.activeSelectionFallback');
   const authKindLabels = {
     ssh_key: t('pages.containers.authKind.ssh_key'),
@@ -634,13 +974,14 @@ function ContainersPage() {
             <p className="text-sm text-gray-600">{t('pages.containers.listDescription')}</p>
           </div>
 
-          {environmentsQuery.isLoading ? (
+          {environmentSelection.isLoading ? (
             <p className="text-sm text-gray-500">{t('pages.containers.loading')}</p>
           ) : null}
 
           {requestError ? <p className="text-sm text-red-700">{requestError}</p> : null}
+          {mutationError ? <p className="text-sm text-red-700">{mutationError}</p> : null}
 
-          {!environmentsQuery.isLoading && environments.length === 0 ? (
+          {!environmentSelection.isLoading && environments.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-500">
               {t('pages.containers.empty')}
             </div>
@@ -661,7 +1002,9 @@ function ContainersPage() {
                 <tbody className="divide-y divide-gray-100">
                   {environments.map((environment) => {
                     const detection = environment.latest_detection;
-                    const isActive = environment.id === activeEnvironmentId;
+                    const projectReference =
+                      projectReferenceByEnvironmentId[environment.id] ?? null;
+                    const isActive = environment.id === environmentSelection.selectedEnvironmentId;
                     const isEditing = environment.id === editorEnvironmentId;
                     return (
                       <tr
@@ -675,6 +1018,16 @@ function ContainersPage() {
                               {environment.is_seed ? (
                                 <span className="ml-2 rounded-full bg-[var(--accent)]/10 px-2 py-0.5 text-xs font-semibold text-[var(--accent)]">
                                   {t('common.default')}
+                                </span>
+                              ) : null}
+                              {projectReference ? (
+                                <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-600">
+                                  {t('pages.containers.projectReferencedBadge')}
+                                </span>
+                              ) : null}
+                              {projectReference?.is_default ? (
+                                <span className="ml-2 rounded-full bg-[var(--accent)]/10 px-2 py-0.5 text-xs font-semibold text-[var(--accent)]">
+                                  {t('pages.containers.projectDefaultBadge')}
                                 </span>
                               ) : null}
                               {isActive ? (
@@ -726,7 +1079,7 @@ function ContainersPage() {
                           <div className="flex flex-wrap gap-2">
                             <button
                               type="button"
-                              onClick={() => setActiveEnvironmentId(environment.id)}
+                              onClick={() => environmentSelection.onSelectEnvironment(environment.id)}
                               className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:border-gray-400 hover:bg-gray-50"
                             >
                               {t('common.use')}
@@ -744,7 +1097,7 @@ function ContainersPage() {
                             <button
                               type="button"
                               onClick={() => {
-                                void detectMutation.mutateAsync(environment.id);
+                                detectMutation.mutate(environment.id);
                               }}
                               disabled={detectMutation.isPending}
                               className="rounded-full border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-3 py-1.5 text-xs font-semibold text-[var(--accent)] transition hover:bg-[var(--accent)]/15 disabled:cursor-not-allowed disabled:opacity-50"
@@ -755,7 +1108,7 @@ function ContainersPage() {
                               type="button"
                               onClick={() => {
                                 if (window.confirm(t('pages.containers.confirmDelete', { alias: environment.alias }))) {
-                                  void deleteMutation.mutateAsync(environment.id);
+                                  deleteMutation.mutate(environment.id);
                                 }
                               }}
                               disabled={deleteMutation.isPending || environment.is_seed}
@@ -779,26 +1132,53 @@ function ContainersPage() {
           ) : null}
         </section>
 
-        <EnvironmentEditor
-          key={`${editorMode}-${editorEnvironmentId ?? 'new'}-${editorFormKey}`}
-          mode={editorMode}
-          environment={editorEnvironment}
-          activeEnvironment={activeEnvironment}
-          isSaving={saveMutation.isPending}
-          onSubmit={async (values) => {
-            await saveMutation.mutateAsync(values);
-          }}
-          onCancel={() => {
-            if (editorMode === 'edit') {
+        <div className="space-y-6">
+          <EnvironmentEditor
+            key={`${editorMode}-${editorEnvironmentId ?? 'new'}-${editorFormKey}`}
+            mode={editorMode}
+            environment={editorEnvironment}
+            activeEnvironment={selectedEnvironment}
+            isSaving={saveMutation.isPending}
+            onSubmit={async (values) => {
+              await saveMutation.mutateAsync(values);
+            }}
+            onCancel={() => {
+              if (editorMode === 'edit') {
+                setEditorFormKey((value) => value + 1);
+                setEditorMode('create');
+                setEditorEnvironmentId(null);
+                return;
+              }
               setEditorFormKey((value) => value + 1);
-              setEditorMode('create');
               setEditorEnvironmentId(null);
-              return;
-            }
-            setEditorFormKey((value) => value + 1);
-            setEditorEnvironmentId(null);
-          }}
-        />
+            }}
+          />
+
+          <ProjectReferenceEditor
+            key={`${selectedEnvironment?.id ?? 'none'}-${selectedProjectReference?.updated_at ?? 'new'}`}
+            selectedEnvironment={selectedEnvironment}
+            projectReference={selectedProjectReference}
+            isSaving={saveProjectReferenceMutation.isPending}
+            isRemoving={removeProjectReferenceMutation.isPending}
+            onSave={async (values) => {
+              await saveProjectReferenceMutation.mutateAsync({
+                override_workdir: values.override_workdir.trim() || null,
+                override_env_name: values.override_env_name.trim() || null,
+                override_env_manager: values.override_env_manager.trim() || null,
+                override_runtime_notes: values.override_runtime_notes.trim() || null,
+              });
+            }}
+            onSetDefault={async () => {
+              await saveProjectReferenceMutation.mutateAsync({ is_default: true });
+            }}
+            onClearDefault={async () => {
+              await saveProjectReferenceMutation.mutateAsync({ is_default: false });
+            }}
+            onRemove={async () => {
+              await removeProjectReferenceMutation.mutateAsync();
+            }}
+          />
+        </div>
       </div>
     </div>
   );

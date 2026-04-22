@@ -4,9 +4,6 @@ import { useT } from '../i18n';
 function WorkspacesPage() {
   const t = useT();
   const environmentSelection = useEnvironmentSelection();
-  const selectedEnvironmentSummary = environmentSelection.selectedEnvironment
-    ? `${environmentSelection.selectedEnvironment.alias} · ${environmentSelection.selectedEnvironment.display_name}`
-    : null;
 
   return (
     <div className="px-4 py-8 sm:px-6 lg:px-8">
@@ -22,7 +19,7 @@ function WorkspacesPage() {
 
       <section className="space-y-4 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
         <EnvironmentSelectorPanel {...environmentSelection} />
-        <CodeServerCard selectedEnvironmentSummary={selectedEnvironmentSummary} />
+        <CodeServerCard selectedEnvironment={environmentSelection.selectedEnvironment} />
       </section>
     </div>
   );

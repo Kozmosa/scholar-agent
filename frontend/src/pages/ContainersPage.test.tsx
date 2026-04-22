@@ -1,24 +1,31 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ContainersPage from './ContainersPage';
-import type { EnvironmentListResponse, EnvironmentRecord } from '../types';
+import type { EnvironmentListResponse, EnvironmentRecord, ProjectEnvironmentReference } from '../types';
 import { renderWithProviders } from '../test/render';
 import {
+  createProjectEnvironmentReference,
   createEnvironment,
   deleteEnvironment,
   detectEnvironment,
   getEnvironments,
+  getProjectEnvironmentReferences,
 } from '../api';
 
 vi.mock('../api', () => ({
+  createProjectEnvironmentReference: vi.fn(),
   createEnvironment: vi.fn(),
   deleteEnvironment: vi.fn(),
   detectEnvironment: vi.fn(),
   getEnvironments: vi.fn(),
+  getProjectEnvironmentReferences: vi.fn(),
   updateEnvironment: vi.fn(),
+  updateProjectEnvironmentReference: vi.fn(),
 }));
 
 const mockGetEnvironments = vi.mocked(getEnvironments);
+const mockGetProjectEnvironmentReferences = vi.mocked(getProjectEnvironmentReferences);
+const mockCreateProjectEnvironmentReference = vi.mocked(createProjectEnvironmentReference);
 const mockCreateEnvironment = vi.mocked(createEnvironment);
 const mockDeleteEnvironment = vi.mocked(deleteEnvironment);
 const mockDetectEnvironment = vi.mocked(detectEnvironment);
@@ -76,9 +83,13 @@ const detectedEnvironment: EnvironmentRecord = {
 
 beforeEach(() => {
   mockGetEnvironments.mockReset();
+  mockGetProjectEnvironmentReferences.mockReset();
+  mockCreateProjectEnvironmentReference.mockReset();
   mockCreateEnvironment.mockReset();
   mockDeleteEnvironment.mockReset();
   mockDetectEnvironment.mockReset();
+  mockGetProjectEnvironmentReferences.mockResolvedValue({ items: [] });
+  window.localStorage.clear();
 });
 
 afterEach(() => {
@@ -96,6 +107,7 @@ describe('ContainersPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Use' }));
 
     expect(screen.getByTestId('active-environment-banner')).toHaveTextContent('gpu-lab');
+    expect(window.localStorage.getItem('scholar-agent:selected-environment-id')).toBe('env-1');
   });
 
   it('creates a new environment through the form', async () => {
@@ -123,6 +135,37 @@ describe('ContainersPage', () => {
     expect(await screen.findByText('GPU Lab')).toBeInTheDocument();
   });
 
+  it('sets the selected environment as the current project default', async () => {
+    const projectReference: ProjectEnvironmentReference = {
+      environment_id: 'env-1',
+      is_default: true,
+      override_workdir: null,
+      override_env_name: null,
+      override_env_manager: null,
+      override_runtime_notes: null,
+      updated_at: '2026-04-21T00:02:00Z',
+    };
+    mockGetEnvironments.mockResolvedValue({ items: [baseEnvironment] });
+    mockCreateProjectEnvironmentReference.mockResolvedValue(projectReference);
+
+    renderWithProviders(<ContainersPage />);
+
+    expect(await screen.findByText('GPU Lab')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Use' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Set project default' }));
+
+    await waitFor(() =>
+      expect(mockCreateProjectEnvironmentReference).toHaveBeenCalledWith(
+        expect.objectContaining({
+          environment_id: 'env-1',
+          is_default: true,
+        }),
+        'default'
+      )
+    );
+    expect(await screen.findAllByText('Project default')).not.toHaveLength(0);
+  });
+
   it('detects and deletes an environment from the list', async () => {
     mockGetEnvironments.mockResolvedValue({ items: [baseEnvironment] });
     mockDetectEnvironment.mockResolvedValue(detectedEnvironment);
@@ -138,5 +181,24 @@ describe('ContainersPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
     await waitFor(() => expect(mockDeleteEnvironment).toHaveBeenCalledWith('env-1'));
+  });
+
+  it('shows a backend conflict when deleting a referenced environment', async () => {
+    mockGetEnvironments.mockResolvedValue({ items: [baseEnvironment] });
+    mockDeleteEnvironment.mockRejectedValue(
+      new Error('Request to /environments/env-1 failed with 409 Conflict: Environment is still referenced by a project')
+    );
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    renderWithProviders(<ContainersPage />);
+
+    expect(await screen.findByText('GPU Lab')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    expect(
+      await screen.findByText(
+        /Environment is still referenced by a project/
+      )
+    ).toBeInTheDocument();
   });
 });

@@ -21,7 +21,10 @@ export type TerminalSessionStatus = 'idle' | 'starting' | 'running' | 'stopping'
 export interface TerminalSession {
   session_id: string | null;
   provider: 'pty';
-  target_kind: 'daemon-host';
+  target_kind: string;
+  environment_id: string | null;
+  environment_alias: string | null;
+  working_directory: string | null;
   status: TerminalSessionStatus;
   created_at: string | null;
   started_at: string | null;
@@ -34,6 +37,8 @@ export type CodeServerLifecycleStatus = 'starting' | 'ready' | 'unavailable';
 
 export interface CodeServerStatus {
   status: CodeServerLifecycleStatus;
+  environment_id: string | null;
+  environment_alias: string | null;
   workspace_dir: string | null;
   detail: string | null;
   managed: boolean;
@@ -101,6 +106,20 @@ export interface EnvironmentListResponse {
   items: EnvironmentRecord[];
 }
 
+export interface ProjectEnvironmentReference {
+  environment_id: string;
+  is_default: boolean;
+  override_workdir: string | null;
+  override_env_name: string | null;
+  override_env_manager: string | null;
+  override_runtime_notes: string | null;
+  updated_at: string | null;
+}
+
+export interface ProjectEnvironmentReferenceListResponse {
+  items: ProjectEnvironmentReference[];
+}
+
 export interface EnvironmentCreateRequest {
   alias: string;
   display_name: string;
@@ -137,4 +156,21 @@ export interface EnvironmentUpdateRequest {
   preferred_python?: string | null;
   preferred_env_manager?: string | null;
   preferred_runtime_notes?: string | null;
+}
+
+export interface ProjectEnvironmentReferenceCreateRequest {
+  environment_id: string;
+  is_default?: boolean;
+  override_workdir?: string | null;
+  override_env_name?: string | null;
+  override_env_manager?: string | null;
+  override_runtime_notes?: string | null;
+}
+
+export interface ProjectEnvironmentReferenceUpdateRequest {
+  is_default?: boolean | null;
+  override_workdir?: string | null;
+  override_env_name?: string | null;
+  override_env_manager?: string | null;
+  override_runtime_notes?: string | null;
 }

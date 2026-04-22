@@ -7,7 +7,7 @@ interface Props {
 }
 
 function TerminalBenchCard({ selectedEnvironment }: Props) {
-  const state = useTerminalBenchSession();
+  const state = useTerminalBenchSession(selectedEnvironment);
 
   return (
     <TerminalBenchCardView
@@ -15,7 +15,7 @@ function TerminalBenchCard({ selectedEnvironment }: Props) {
       selectedEnvironmentSummary={
         selectedEnvironment ? `${selectedEnvironment.alias} · ${selectedEnvironment.display_name}` : null
       }
-      canStart={state.canStart && selectedEnvironment !== null}
+      canStart={state.canStart}
     />
   );
 }

@@ -8,12 +8,14 @@ from fastapi import FastAPI
 
 from ainrf.api.config import ApiConfig
 from ainrf.api.middleware import build_api_key_middleware
-from ainrf.api.routes.environments import router as environments_router
 from ainrf.api.routes.code import router as code_router
+from ainrf.api.routes.environments import router as environments_router
 from ainrf.api.routes.health import router as health_router
+from ainrf.api.routes.projects import router as projects_router
 from ainrf.api.routes.terminal import router as terminal_router
 from ainrf.code_server import CodeServerSupervisor
 from ainrf.environments import InMemoryEnvironmentService
+from ainrf.terminal.pty import stop_terminal_session
 
 
 def _run_sync_in_lifespan(callback: Callable[[], None]) -> Awaitable[None]:
@@ -22,19 +24,22 @@ def _run_sync_in_lifespan(callback: Callable[[], None]) -> Awaitable[None]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    config = app.state.api_config
-    supervisor = CodeServerSupervisor(
-        host=config.code_server_host,
-        port=config.code_server_port,
-        workspace_dir=config.code_server_workspace_dir,
-        state_root=config.state_root,
+    environment_service = app.state.environment_service
+    manager = CodeServerSupervisor(
+        state_root=app.state.api_config.state_root,
+        environment_service=environment_service,
+        local_host=app.state.api_config.code_server_host,
+        local_port=app.state.api_config.code_server_port,
     )
-    app.state.code_server_supervisor = supervisor
-    await _run_sync_in_lifespan(supervisor.start)
+    app.state.code_server_manager = manager
+    app.state.code_server_supervisor = manager
     try:
         yield
     finally:
-        await _run_sync_in_lifespan(supervisor.stop)
+        terminal_runtime = getattr(app.state, "terminal_runtime", None)
+        if terminal_runtime is not None:
+            await _run_sync_in_lifespan(lambda: stop_terminal_session(terminal_runtime))
+        await manager.stop()
 
 
 def create_app(config: ApiConfig | None = None) -> FastAPI:
@@ -45,10 +50,12 @@ def create_app(config: ApiConfig | None = None) -> FastAPI:
     app.middleware("http")(build_api_key_middleware(api_config))
     app.include_router(health_router)
     app.include_router(environments_router)
+    app.include_router(projects_router)
     app.include_router(terminal_router)
     app.include_router(code_router)
     app.include_router(health_router, prefix="/v1")
     app.include_router(environments_router, prefix="/v1")
+    app.include_router(projects_router, prefix="/v1")
     app.include_router(terminal_router, prefix="/v1")
     app.include_router(code_router, prefix="/v1")
     return app

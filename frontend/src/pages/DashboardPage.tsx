@@ -13,9 +13,6 @@ function DashboardPage() {
   const t = useT();
   const healthQuery = useQuery({ queryKey: ['health'], queryFn: getHealth });
   const environmentSelection = useEnvironmentSelection();
-  const selectedEnvironmentSummary = environmentSelection.selectedEnvironment
-    ? `${environmentSelection.selectedEnvironment.alias} · ${environmentSelection.selectedEnvironment.display_name}`
-    : null;
 
   return (
     <div className="px-4 py-8 sm:px-6 lg:px-8">
@@ -37,10 +34,14 @@ function DashboardPage() {
             <code className="rounded bg-gray-100 px-1.5 py-0.5">/v1/health</code>,{' '}
             <code className="rounded bg-gray-100 px-1.5 py-0.5">/environments</code>,{' '}
             <code className="rounded bg-gray-100 px-1.5 py-0.5">/v1/environments</code>,{' '}
+            <code className="rounded bg-gray-100 px-1.5 py-0.5">/projects/default/environment-refs</code>,{' '}
+            <code className="rounded bg-gray-100 px-1.5 py-0.5">/v1/projects/default/environment-refs</code>,{' '}
             <code className="rounded bg-gray-100 px-1.5 py-0.5">/terminal/session</code>,{' '}
             <code className="rounded bg-gray-100 px-1.5 py-0.5">/v1/terminal/session</code>,{' '}
-            <code className="rounded bg-gray-100 px-1.5 py-0.5">/code/status</code>, and{' '}
-            <code className="rounded bg-gray-100 px-1.5 py-0.5">/v1/code/status</code>.
+            <code className="rounded bg-gray-100 px-1.5 py-0.5">/code/status</code>,{' '}
+            <code className="rounded bg-gray-100 px-1.5 py-0.5">/code/session</code>,{' '}
+            <code className="rounded bg-gray-100 px-1.5 py-0.5">/v1/code/status</code>, and{' '}
+            <code className="rounded bg-gray-100 px-1.5 py-0.5">/v1/code/session</code>.
           </p>
           <p className="text-sm text-gray-600">
             {t('pages.dashboard.stateRootLabel')}{' '}
@@ -55,7 +56,7 @@ function DashboardPage() {
         <HealthStatusBar health={healthQuery.data} isLoading={healthQuery.isLoading} />
         <EnvironmentSelectorPanel {...environmentSelection} />
         <TerminalBenchCard selectedEnvironment={environmentSelection.selectedEnvironment} />
-        <CodeServerCard selectedEnvironmentSummary={selectedEnvironmentSummary} />
+        <CodeServerCard selectedEnvironment={environmentSelection.selectedEnvironment} />
       </section>
     </div>
   );

@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createCodeServerSession,
   createTerminalSession,
+  deleteCodeServerSession,
   deleteTerminalSession,
   getCodeServerStatus,
   getTerminalSession,
 } from './api/endpoints';
 import {
+  mockCreateCodeServerSession,
   mockCreateTerminalSession,
+  mockDeleteCodeServerSession,
   mockDeleteTerminalSession,
   mockGetCodeServerStatus,
   mockGetTerminalSession,
@@ -16,17 +20,25 @@ import type { CodeServerStatus, TerminalSession } from './types';
 describe('terminal contract smoke test', () => {
   it('preserves terminal session and code-server shapes', () => {
     const terminalSessionLoaders: Array<() => Promise<TerminalSession>> = [
-      getTerminalSession,
-      createTerminalSession,
+      () => getTerminalSession('env-1'),
+      () => createTerminalSession('env-1'),
       deleteTerminalSession,
     ];
     const mockTerminalSessionLoaders: Array<() => TerminalSession> = [
-      mockGetTerminalSession,
-      mockCreateTerminalSession,
+      () => mockGetTerminalSession('env-1'),
+      () => mockCreateTerminalSession('env-1'),
       mockDeleteTerminalSession,
     ];
-    const codeServerLoader: () => Promise<CodeServerStatus> = getCodeServerStatus;
-    const mockCodeServerLoader: () => CodeServerStatus = mockGetCodeServerStatus;
+    const codeServerLoaders: Array<() => Promise<CodeServerStatus>> = [
+      () => getCodeServerStatus('env-1'),
+      () => createCodeServerSession('env-1'),
+      deleteCodeServerSession,
+    ];
+    const mockCodeServerLoaders: Array<() => CodeServerStatus> = [
+      () => mockGetCodeServerStatus('env-1'),
+      () => mockCreateCodeServerSession('env-1'),
+      mockDeleteCodeServerSession,
+    ];
 
     const terminalSessionStatusValues: TerminalSession['status'][] = [
       'idle',
@@ -38,7 +50,10 @@ describe('terminal contract smoke test', () => {
     const terminalSessionContract: TerminalSession = {
       session_id: 'term-1',
       provider: 'pty',
-      target_kind: 'daemon-host',
+      target_kind: 'environment-ssh',
+      environment_id: 'env-1',
+      environment_alias: 'gpu-lab',
+      working_directory: '/workspace/project-a',
       status: 'running',
       created_at: '2026-04-13T16:00:00Z',
       started_at: '2026-04-13T16:00:01Z',
@@ -50,6 +65,8 @@ describe('terminal contract smoke test', () => {
     const codeServerStatuses: CodeServerStatus['status'][] = ['starting', 'ready', 'unavailable'];
     const codeServerContract: CodeServerStatus = {
       status: 'ready',
+      environment_id: 'env-1',
+      environment_alias: 'gpu-lab',
       workspace_dir: '/workspace/project-a',
       detail: null,
       managed: true,
@@ -57,8 +74,8 @@ describe('terminal contract smoke test', () => {
 
     expect(terminalSessionLoaders).toHaveLength(3);
     expect(mockTerminalSessionLoaders).toHaveLength(3);
-    expect(codeServerLoader).toBeTypeOf('function');
-    expect(mockCodeServerLoader).toBeTypeOf('function');
+    expect(codeServerLoaders).toHaveLength(3);
+    expect(mockCodeServerLoaders).toHaveLength(3);
     expect(terminalSessionStatusValues).toEqual([
       'idle',
       'starting',

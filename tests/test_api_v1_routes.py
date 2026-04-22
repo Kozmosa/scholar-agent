@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import threading
 from pathlib import Path
 
 import httpx
@@ -34,45 +33,24 @@ async def test_health_routes_are_public(tmp_path: Path, path: str) -> None:
 
 
 @pytest.mark.anyio
-async def test_openapi_registers_health_terminal_and_code_routes_and_removes_tasks(
-    tmp_path: Path,
-) -> None:
+async def test_openapi_registers_projects_terminal_and_code_session_routes(tmp_path: Path) -> None:
     async with make_client(tmp_path) as client:
         response = await client.get("/openapi.json")
 
     assert response.status_code == 200
     payload = response.json()
-    assert "/health" in payload["paths"]
-    assert "/v1/health" in payload["paths"]
+    assert "/projects/{project_id}/environment-refs" in payload["paths"]
+    assert "/v1/projects/{project_id}/environment-refs" in payload["paths"]
     assert "/terminal/session" in payload["paths"]
     assert "/v1/terminal/session" in payload["paths"]
-    assert "/code/status" in payload["paths"]
-    assert "/v1/code/status" in payload["paths"]
+    assert "/code/session" in payload["paths"]
+    assert "/v1/code/session" in payload["paths"]
     assert "/tasks" not in payload["paths"]
     assert "/v1/tasks" not in payload["paths"]
 
 
 @pytest.mark.anyio
-async def test_lifespan_attaches_supervisor_and_runs_sync_hooks_off_event_loop(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    events: list[tuple[str, int]] = []
-    main_thread_id = threading.get_ident()
-
-    class SupervisorSpy:
-        def __init__(self, **_: object) -> None:
-            self.started = False
-            self.stopped = False
-
-        def start(self) -> None:
-            self.started = True
-            events.append(("start", threading.get_ident()))
-
-        def stop(self) -> None:
-            self.stopped = True
-            events.append(("stop", threading.get_ident()))
-
-    monkeypatch.setattr("ainrf.api.app.CodeServerSupervisor", SupervisorSpy)
+async def test_lifespan_attaches_environment_aware_code_server_manager(tmp_path: Path) -> None:
     app = create_app(
         ApiConfig(
             api_key_hashes=frozenset({hash_api_key("secret-key")}),
@@ -81,12 +59,9 @@ async def test_lifespan_attaches_supervisor_and_runs_sync_hooks_off_event_loop(
     )
 
     async with app.router.lifespan_context(app):
-        supervisor = app.state.code_server_supervisor
-        assert isinstance(supervisor, SupervisorSpy)
-        assert supervisor.started is True
-        assert supervisor.stopped is False
+        manager = app.state.code_server_manager
+        assert manager is app.state.code_server_supervisor
+        assert manager.base_url is None
 
-    assert supervisor.stopped is True
-    assert events == [("start", events[0][1]), ("stop", events[1][1])]
-    assert events[0][1] != main_thread_id
-    assert events[1][1] != main_thread_id
+    stopped_state = await app.state.code_server_manager.stop()
+    assert stopped_state.status.value == "unavailable"
