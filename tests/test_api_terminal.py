@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from ainrf.api.app import create_app
 from ainrf.api.config import ApiConfig, hash_api_key
 from ainrf.terminal.models import TerminalSessionRecord, TerminalSessionStatus, utc_now
-from ainrf.terminal.pty import TerminalSessionRuntime
+from ainrf.terminal.pty import TerminalSessionRuntime, build_terminal_ws_url
 
 
 class DummyProcess:
@@ -37,7 +37,9 @@ def _make_app(tmp_path: Path) -> FastAPI:
     )
 
 
-def _runtime_for(environment_id: str, environment_alias: str, target_kind: str) -> TerminalSessionRuntime:
+def _runtime_for(
+    environment_id: str, environment_alias: str, target_kind: str
+) -> TerminalSessionRuntime:
     return TerminalSessionRuntime(
         record=TerminalSessionRecord(
             session_id=f"term-{environment_id}",
@@ -119,7 +121,9 @@ async def test_terminal_session_post_uses_project_override_for_local_environment
         captured["target_kind"] = target_kind
         return running
 
-    monkeypatch.setattr("ainrf.api.routes.terminal.start_terminal_session", fake_start_terminal_session)
+    monkeypatch.setattr(
+        "ainrf.api.routes.terminal.start_terminal_session", fake_start_terminal_session
+    )
 
     app = _make_app(tmp_path)
     environment = app.state.environment_service.create_environment(
@@ -154,6 +158,79 @@ async def test_terminal_session_post_uses_project_override_for_local_environment
         "working_directory": "/workspace/override",
         "target_kind": "environment-local",
     }
+
+
+@pytest.mark.anyio
+async def test_terminal_session_post_returns_webui_origin_terminal_ws_url(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_start_terminal_session(
+        api_base_url: str,
+        shell_command: tuple[str, ...],
+        spawn_working_directory: Path,
+        *,
+        environment_id: str,
+        environment_alias: str,
+        working_directory: str | None,
+        target_kind: str,
+    ) -> TerminalSessionRuntime:
+        captured["api_base_url"] = api_base_url
+        captured["shell_command"] = shell_command
+        captured["spawn_working_directory"] = spawn_working_directory
+        return TerminalSessionRuntime(
+            record=TerminalSessionRecord(
+                session_id=f"term-{environment_id}",
+                provider="pty",
+                target_kind=target_kind,
+                status=TerminalSessionStatus.RUNNING,
+                environment_id=environment_id,
+                environment_alias=environment_alias,
+                working_directory=working_directory,
+                created_at=utc_now(),
+                started_at=utc_now(),
+                terminal_ws_url=build_terminal_ws_url(
+                    api_base_url,
+                    f"term-{environment_id}",
+                    "token",
+                ),
+                terminal_ws_token="token",
+                pid=4321,
+            ),
+            process=cast(Any, DummyProcess()),
+            master_fd=11,
+        )
+
+    monkeypatch.setattr(
+        "ainrf.api.routes.terminal.start_terminal_session", fake_start_terminal_session
+    )
+
+    app = _make_app(tmp_path)
+    environment = app.state.environment_service.create_environment(
+        alias="localhost-2",
+        display_name="Localhost 2",
+        host="127.0.0.1",
+        default_workdir="/workspace/override",
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://lab.internal:5173",
+    ) as client:
+        response = await client.post(
+            "/terminal/session",
+            headers={"X-API-Key": "secret-key"},
+            json={"environment_id": environment.id},
+        )
+
+    assert response.status_code == 200
+    assert captured["api_base_url"] == "http://lab.internal:5173/"
+    assert captured["shell_command"] == ("/bin/bash", "-l")
+    assert captured["spawn_working_directory"] == Path("/workspace/override")
+    assert response.json()["terminal_ws_url"] == (
+        f"ws://lab.internal:5173/terminal/session/term-{environment.id}/ws?token=token"
+    )
 
 
 @pytest.mark.anyio
@@ -228,8 +305,12 @@ async def test_terminal_session_post_replaces_existing_session_for_different_env
     (home_dir / ".ssh").mkdir(parents=True)
     (home_dir / ".ssh" / "config").write_text("Host *\n", encoding="utf-8")
     monkeypatch.setattr("ainrf.api.routes.terminal.Path.home", lambda: home_dir)
-    monkeypatch.setattr("ainrf.api.routes.terminal.start_terminal_session", fake_start_terminal_session)
-    monkeypatch.setattr("ainrf.api.routes.terminal.stop_terminal_session", fake_stop_terminal_session)
+    monkeypatch.setattr(
+        "ainrf.api.routes.terminal.start_terminal_session", fake_start_terminal_session
+    )
+    monkeypatch.setattr(
+        "ainrf.api.routes.terminal.stop_terminal_session", fake_stop_terminal_session
+    )
 
     app = _make_app(tmp_path)
     old_environment = app.state.environment_service.create_environment(
