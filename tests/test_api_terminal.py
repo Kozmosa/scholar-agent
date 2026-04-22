@@ -21,7 +21,9 @@ def make_app(tmp_path: Path) -> FastAPI:
 
 
 @pytest.mark.anyio
-async def test_terminal_session_get_returns_idle_summary_for_selected_environment(tmp_path: Path) -> None:
+async def test_terminal_session_get_returns_idle_summary_for_selected_environment(
+    tmp_path: Path,
+) -> None:
     app = make_app(tmp_path)
     environment = app.state.environment_service.create_environment(
         alias="gpu-lab",
@@ -109,6 +111,40 @@ async def test_terminal_session_post_creates_personal_session_and_attachment(
         == f"ws://testserver/terminal/attachments/{payload['attachment_id']}/ws?token="
         f"{app.state.terminal_attachment_broker._attachments[payload['attachment_id']].token}"
     )
+
+
+@pytest.mark.anyio
+async def test_terminal_session_post_returns_webui_origin_attachment_ws_url(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app = make_app(tmp_path)
+    environment = app.state.environment_service.create_environment(
+        alias="localhost-2",
+        display_name="Localhost 2",
+        host="127.0.0.1",
+        default_workdir="/workspace/override",
+    )
+    monkeypatch.setattr(
+        app.state.terminal_session_manager._tmux_adapter,
+        "ensure_personal_session",
+        lambda *args, **kwargs: None,
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://lab.internal:5173",
+    ) as client:
+        response = await client.post(
+            "/terminal/session",
+            headers={"X-API-Key": "secret-key"},
+            json={"environment_id": environment.id},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["terminal_ws_url"] is not None
+    ws_url = response.json()["terminal_ws_url"]
+    assert ws_url.startswith("ws://lab.internal:5173/terminal/attachments/")
+    assert "/ws?token=" in ws_url
 
 
 @pytest.mark.anyio

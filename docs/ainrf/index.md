@@ -20,13 +20,15 @@ last_local_commit: workspace aggregate
 
 AINRF 是 `scholar-agent` 仓库里当前可见的命令入口与运行时壳层，主要覆盖两类表面：
 
+- WebUI 前后端一键启动入口。
 - 文档站点的本地预览与构建入口。
 - `uv run ainrf serve` 对应的 API 服务入口，以及初始化、容器配置等 CLI 子命令。
 
 当前如果把它拆成“前后端”来理解，较准确的说法是：
 
-- 当前“frontend”更接近文档站点预览。
-- 当前“backend”更接近 `uv run ainrf serve` 启动的 API 服务。
+- 当前 WebUI frontend 通过 `scripts/webui.sh` 启动，并统一代理后端 `/api`、`/code`、`/terminal`。
+- 当前 backend 仍然是 `uv run ainrf serve` 启动的 API 服务。
+- 文档站点预览依然是单独的 `scripts/serve.sh` / `uv run python scripts/build_html_notes.py serve` 流程。
 
 这里不把历史设计文档中的更大目标、RFC 术语或运行时愿景表述成已经完成的现实能力。
 
@@ -39,7 +41,34 @@ uv run ainrf --version
 uv run ainrf --help
 ```
 
-如果你的目标是阅读与预览仓库知识库，优先使用文档站点命令；如果你的目标是查看当前 AINRF 服务入口，再使用 `serve` 与相关帮助命令。
+如果你的目标是直接使用当前 WebUI，优先使用一键启动脚本；如果你的目标是阅读与预览仓库知识库，则使用文档站点命令；如果你只想单独查看底层 API 服务入口，再使用 `serve` 与相关帮助命令。
+
+## WebUI 一键启动
+
+当前推荐入口：
+
+```bash
+scripts/webui.sh
+scripts/webui.sh dev
+scripts/webui.sh preview
+scripts/webui.sh dev --backend-public
+scripts/webui.sh preview --backend-public
+```
+
+这个入口会自动处理：
+
+- 默认 `UV_CACHE_DIR=/tmp/uv-cache`
+- 本地 `./.ainrf/` 状态目录
+- `./.ainrf/webui.env` 中的 WebUI service key 生成或复用
+- `./.ainrf/config.json` 的 `api_key_hashes` 补齐
+- 后端 `ainrf serve` 与前端 dev/preview server 的联合启动
+
+默认暴露策略是：
+
+- 前端对内网可见：`0.0.0.0`
+- 后端默认仅本机：`127.0.0.1`
+
+此时浏览器通过前端同源代理访问后端，不再需要手动输入 `UV_CACHE_DIR`、`AINRF_API_KEY_HASHES` 或 `VITE_AINRF_API_KEY`。只有在你明确需要让后端 API 也对内网开放时，才加 `--backend-public`。
 
 ## 启动文档预览
 
@@ -87,7 +116,7 @@ uv run ainrf serve
 uv run ainrf serve --help
 ```
 
-从现有代码看，`serve` 对应的是 API server 入口，因此这里更接近当前仓库的后端服务面，而不是完整研究系统的全部运行时能力。
+从现有代码看，`serve` 对应的是低层 API server 入口，因此这里更接近当前仓库的后端服务面，而不是完整研究系统的全部运行时能力。对大多数 WebUI 场景，优先回到 `scripts/webui.sh`。
 
 ## 首次初始化
 
@@ -127,7 +156,8 @@ uv run ruff format --check .
 - 本页只描述当前代码与脚本已经暴露出来的命令表面。
 - `scripts/serve.sh` 与 `uv run python scripts/build_html_notes.py serve` 主要服务于文档站点预览。
 - `scripts/build.sh` 与 `uv run python scripts/build_html_notes.py build` 主要服务于文档站点构建。
-- `uv run ainrf serve` 是当前更接近后端 API 服务的入口。
+- `scripts/webui.sh` 是当前 WebUI 前后端联调与内网使用的推荐入口。
+- `uv run ainrf serve` 是当前更接近后端 API 服务的低层入口。
 - `uv run ainrf onboard` 与 `uv run ainrf container add` 是当前已经存在的初始化/配置型 CLI 入口。
 - 不应把历史 RFC、路线图或更大运行时 ambition 直接表述为当前已经交付的命令能力。
 

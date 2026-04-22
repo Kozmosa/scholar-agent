@@ -62,7 +62,7 @@ describe('terminal contract smoke test', () => {
       created_at: '2026-04-13T16:00:00Z',
       started_at: '2026-04-13T16:00:01Z',
       closed_at: null,
-      terminal_ws_url: 'ws://127.0.0.1:8000/terminal/attachments/attach-1/ws?token=test-token',
+      terminal_ws_url: 'ws://lab.internal:5173/terminal/attachments/attach-1/ws?token=test-token',
       detail: null,
       binding_id: 'binding-1',
       session_name: 'ainrf:u:mock-daemon:e:env-1:personal',
@@ -91,6 +91,10 @@ describe('terminal contract smoke test', () => {
       'stopping',
       'failed',
     ]);
+    expect(new URL(terminalSessionContract.terminal_ws_url ?? '').host).toBe('lab.internal:5173');
+    expect(new URL(terminalSessionContract.terminal_ws_url ?? '').pathname).toBe(
+      '/terminal/attachments/attach-1/ws'
+    );
     expect(terminalSessionContract.status).toBe('running');
     expect(codeServerStatuses).toEqual(['starting', 'ready', 'unavailable']);
     expect(codeServerContract.managed).toBe(true);

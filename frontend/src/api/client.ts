@@ -4,7 +4,10 @@ const API_KEY = import.meta.env.VITE_AINRF_API_KEY?.trim() ?? '';
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
+  headers?: HeadersInit;
 }
+
+type RequestOverrides = Omit<RequestOptions, 'method' | 'body'>;
 
 class ApiError extends Error {
   status: number;
@@ -72,11 +75,13 @@ function createErrorMessage(path: string, response: Response, data: unknown): st
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const url = `${API_BASE}${path}`;
-  const headers = new Headers({
-    'Content-Type': 'application/json',
-  });
+  const headers = new Headers(options.headers);
 
-  if (API_KEY) {
+  if (!headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  if (API_KEY && !headers.has('X-API-Key')) {
     headers.set('X-API-Key', API_KEY);
   }
 
@@ -101,11 +106,15 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>(path),
-  post: <T>(path: string, body: unknown) => request<T>(path, { method: 'POST', body }),
-  put: <T>(path: string, body: unknown) => request<T>(path, { method: 'PUT', body }),
-  patch: <T>(path: string, body: unknown) => request<T>(path, { method: 'PATCH', body }),
-  delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
+  get: <T>(path: string, options?: RequestOverrides) => request<T>(path, options),
+  post: <T>(path: string, body: unknown, options?: RequestOverrides) =>
+    request<T>(path, { ...options, method: 'POST', body }),
+  put: <T>(path: string, body: unknown, options?: RequestOverrides) =>
+    request<T>(path, { ...options, method: 'PUT', body }),
+  patch: <T>(path: string, body: unknown, options?: RequestOverrides) =>
+    request<T>(path, { ...options, method: 'PATCH', body }),
+  delete: <T>(path: string, options?: RequestOverrides) =>
+    request<T>(path, { ...options, method: 'DELETE' }),
 };
 
 export { ApiError };

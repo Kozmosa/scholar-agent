@@ -28,6 +28,27 @@ describe('api client', () => {
     expect(new Headers(init?.headers).get('X-API-Key')).toBe('secret-key');
   });
 
+  it('preserves manually provided API key headers', async () => {
+    vi.stubEnv('VITE_AINRF_API_KEY', 'env-secret');
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: 'ok' }), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { api } = await import('./client');
+    await expect(
+      api.post<{ status: string }>('/health', { ok: true }, { headers: { 'X-API-Key': 'manual-secret' } })
+    ).resolves.toEqual({ status: 'ok' });
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    expect(new Headers(init?.headers).get('X-API-Key')).toBe('manual-secret');
+  });
+
   it('surfaces server error details in ApiError', async () => {
     const response = {
       ok: false,
