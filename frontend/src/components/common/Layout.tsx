@@ -9,7 +9,10 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { NavLink } from 'react-router-dom';
+import { getTasks } from '../../api';
+import type { TaskSummary } from '../../types';
 import LocaleSwitcher from './LocaleSwitcher';
 import { useT } from '../../i18n';
 
@@ -25,9 +28,37 @@ interface NavigationItem {
   icon: typeof SquareTerminal;
 }
 
+function buildTaskStatusSummary(tasks: TaskSummary[] | null, isError: boolean, isLoading: boolean): string {
+  if (isError) {
+    return 'Task | Status unavailable';
+  }
+  if (isLoading && tasks === null) {
+    return 'Task | Loading…';
+  }
+
+  const items = tasks ?? [];
+  const running = items.filter((task) => task.status === 'running' || task.status === 'starting').length;
+  const pending = items.filter((task) => task.status === 'queued').length;
+  const finished = items.filter(
+    (task) => task.status === 'succeeded' || task.status === 'failed'
+  ).length;
+
+  return `Task | Total: ${items.length}, Running: ${running}, Pending: ${pending}, Finished: ${finished}`;
+}
+
 function Layout({ children, edgeToEdge = false }: Props) {
   const t = useT();
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
+  const tasksQuery = useQuery({
+    queryKey: ['tasks'],
+    queryFn: getTasks,
+    refetchInterval: 5000,
+  });
+  const taskStatusSummary = buildTaskStatusSummary(
+    tasksQuery.data?.items ?? null,
+    tasksQuery.isError,
+    tasksQuery.isLoading
+  );
   const asideWidth = useMemo(() => (isCollapsed ? 'w-[56px]' : 'w-[248px]'), [isCollapsed]);
   const navigationItems: NavigationItem[] = [
     {
@@ -128,15 +159,9 @@ function Layout({ children, edgeToEdge = false }: Props) {
 
         <div className="flex min-h-screen min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-40 flex h-12 items-center justify-between border-b border-[var(--border)] bg-[var(--background)]/85 px-4 backdrop-blur-xl">
-            <div className="flex min-w-0 items-center gap-3">
-              <p className="truncate text-xs font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
-                {t('layout.headerEyebrow')}
-              </p>
-              <span className="h-3 w-px bg-[var(--border)]" />
-              <p className="truncate text-xs text-[var(--muted-foreground)]">
-                {t('layout.headerDescription')}
-              </p>
-            </div>
+            <p className="truncate text-xs font-medium text-[var(--muted-foreground)]">
+              {taskStatusSummary}
+            </p>
             <LocaleSwitcher />
           </header>
 
