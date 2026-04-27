@@ -15,6 +15,7 @@ import { useT } from '../../i18n';
 
 interface Props {
   children: ReactNode;
+  edgeToEdge?: boolean;
 }
 
 interface NavigationItem {
@@ -24,7 +25,7 @@ interface NavigationItem {
   icon: typeof SquareTerminal;
 }
 
-function Layout({ children }: Props) {
+function Layout({ children, edgeToEdge = false }: Props) {
   const t = useT();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const asideWidth = useMemo(() => (isCollapsed ? 'w-[56px]' : 'w-[248px]'), [isCollapsed]);
@@ -139,7 +140,14 @@ function Layout({ children }: Props) {
             <LocaleSwitcher />
           </header>
 
-          <main className="flex w-full flex-1 flex-col overflow-hidden">{children}</main>
+          <main
+            className={[
+              'flex w-full flex-1 flex-col overflow-hidden',
+              edgeToEdge ? '' : 'mx-auto max-w-[1100px] px-6 py-8',
+            ].join(' ')}
+          >
+            {children}
+          </main>
         </div>
       </div>
     </div>

@@ -55,4 +55,17 @@ describe('App routes', () => {
 
     expect(await screen.findByTestId('workspaces-page')).toBeInTheDocument();
   });
+
+  it('renders non-task routes inside the standard page gutter', async () => {
+    window.history.pushState({}, '', '/terminal');
+
+    render(
+      <LocaleProvider initialLocale="en">
+        <App />
+      </LocaleProvider>
+    );
+
+    expect(await screen.findByTestId('terminal-page')).toBeInTheDocument();
+    expect(screen.getByRole('main')).toHaveClass('px-6', 'py-8');
+  });
 });
