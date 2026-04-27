@@ -1,5 +1,6 @@
 import { X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { useT } from '../../i18n';
 import type { EnvironmentRecord, TaskCreateRequest, WorkspaceRecord } from '../../types';
 
 interface TaskCreateFormProps {
@@ -36,6 +37,7 @@ export default function TaskCreateForm({
   onSubmit,
   onClose,
 }: TaskCreateFormProps) {
+  const t = useT();
   const [draft, setDraft] = useState({
     title: draftDefaults.title,
     task_input: draftDefaults.task_input,
@@ -73,9 +75,11 @@ export default function TaskCreateForm({
     >
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-base font-semibold tracking-tight text-[var(--foreground)]">Create task</h2>
+          <h2 className="text-base font-semibold tracking-tight text-[var(--foreground)]">
+            {t('pages.tasks.createTitle')}
+          </h2>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-            Launch a Claude Code task against a workspace and environment binding.
+            {t('pages.tasks.createDescription')}
           </p>
         </div>
         {onClose ? (
@@ -83,7 +87,7 @@ export default function TaskCreateForm({
             type="button"
             onClick={onClose}
             className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-            aria-label="Close create task"
+            aria-label={t('pages.tasks.closeCreate')}
           >
             <X size={16} />
           </button>
@@ -92,9 +96,11 @@ export default function TaskCreateForm({
 
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block space-y-2">
-          <span className="text-xs font-medium text-[var(--muted-foreground)]">Workspace</span>
+          <span className="text-xs font-medium text-[var(--muted-foreground)]">
+            {t('pages.tasks.workspaceLabel')}
+          </span>
           <select
-            aria-label="Workspace"
+            aria-label={t('pages.tasks.workspaceLabel')}
             value={selectedWorkspaceId}
             onChange={(event) => onSelectWorkspace(event.target.value)}
             className="h-10 w-full rounded-lg border border-[var(--input)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--ring)]"
@@ -108,9 +114,11 @@ export default function TaskCreateForm({
         </label>
 
         <label className="block space-y-2">
-          <span className="text-xs font-medium text-[var(--muted-foreground)]">Environment</span>
+          <span className="text-xs font-medium text-[var(--muted-foreground)]">
+            {t('pages.tasks.environmentLabel')}
+          </span>
           <select
-            aria-label="Environment"
+            aria-label={t('pages.tasks.environmentLabel')}
             value={selectedEnvironmentId}
             onChange={(event) => onSelectEnvironment(event.target.value)}
             className="h-10 w-full rounded-lg border border-[var(--input)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--ring)]"
@@ -125,9 +133,11 @@ export default function TaskCreateForm({
       </div>
 
       <label className="block space-y-2">
-        <span className="text-xs font-medium text-[var(--muted-foreground)]">Task profile</span>
+        <span className="text-xs font-medium text-[var(--muted-foreground)]">
+          {t('pages.tasks.profileLabel')}
+        </span>
         <select
-          aria-label="Task profile"
+          aria-label={t('pages.tasks.profileLabel')}
           value={draft.task_profile}
           onChange={(event) =>
             setDraft((current) => ({ ...current, task_profile: event.target.value }))
@@ -139,35 +149,39 @@ export default function TaskCreateForm({
       </label>
 
       <label className="block space-y-2">
-        <span className="text-xs font-medium text-[var(--muted-foreground)]">Title</span>
+        <span className="text-xs font-medium text-[var(--muted-foreground)]">
+          {t('pages.tasks.titleLabel')}
+        </span>
         <input
-          aria-label="Title"
+          aria-label={t('pages.tasks.titleLabel')}
           value={draft.title}
           onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))}
           className="h-10 w-full rounded-lg border border-[var(--input)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none transition placeholder:text-[var(--muted-foreground)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--ring)]"
-          placeholder="Optional"
+          placeholder={t('pages.tasks.optionalPlaceholder')}
         />
       </label>
 
       <label className="block space-y-2">
-        <span className="text-xs font-medium text-[var(--muted-foreground)]">Task input</span>
+        <span className="text-xs font-medium text-[var(--muted-foreground)]">
+          {t('pages.tasks.taskInputLabel')}
+        </span>
         <textarea
           ref={taskInputRef}
-          aria-label="Task input"
+          aria-label={t('pages.tasks.taskInputLabel')}
           value={draft.task_input}
           onChange={(event) =>
             setDraft((current) => ({ ...current, task_input: event.target.value }))
           }
           className="min-h-44 w-full rounded-lg border border-[var(--input)] bg-[var(--background)] px-3 py-3 text-sm text-[var(--foreground)] outline-none transition placeholder:text-[var(--muted-foreground)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--ring)]"
-          placeholder="Describe the task for the agent."
+          placeholder={t('pages.tasks.taskInputPlaceholder')}
         />
       </label>
 
       {selectedWorkspace ? (
         <p className="rounded-lg bg-[var(--muted)] px-3 py-2 text-xs text-[var(--muted-foreground)]">
-          Default workdir:{' '}
+          {t('pages.tasks.defaultWorkdir')}{' '}
           <code className="rounded bg-[var(--code-background)] px-1.5 py-0.5 text-[var(--code-foreground)]">
-            {selectedWorkspace.default_workdir ?? 'n/a'}
+            {selectedWorkspace.default_workdir ?? t('pages.tasks.unavailable')}
           </code>
         </p>
       ) : null}
@@ -185,7 +199,7 @@ export default function TaskCreateForm({
             })
           }
         >
-          Reset draft
+          {t('pages.tasks.resetDraft')}
         </button>
 
         <button
@@ -193,7 +207,7 @@ export default function TaskCreateForm({
           disabled={!canCreate}
           className="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {isSubmitting ? 'Creating…' : 'Create task'}
+          {isSubmitting ? t('pages.tasks.creatingAction') : t('pages.tasks.createAction')}
         </button>
       </div>
     </form>

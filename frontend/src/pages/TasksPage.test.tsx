@@ -405,6 +405,33 @@ describe('TasksPage', () => {
     expect(screen.getByRole('heading', { name: 'Train model' })).toBeInTheDocument();
   });
 
+  it('resizes the task sidebar by dragging the splitter', async () => {
+    renderWithProviders(<TasksPage />);
+
+    await screen.findByRole('heading', { name: 'Train model' });
+    const splitter = screen.getByRole('separator', { name: 'Resize task list' });
+    const sidebar = screen.getByTestId('task-sidebar');
+
+    expect(sidebar).toHaveStyle({ width: '320px' });
+
+    fireEvent.pointerDown(splitter, { pointerId: 1, clientX: 320 });
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 420 });
+    fireEvent.pointerUp(window, { pointerId: 1 });
+
+    expect(sidebar).toHaveStyle({ width: '420px' });
+    expect(splitter).toHaveAttribute('aria-valuenow', '420');
+  });
+
+  it('renders task page copy from Chinese i18n messages', async () => {
+    renderWithProviders(<TasksPage />, { locale: 'zh' });
+
+    expect(await screen.findByRole('heading', { name: 'Agent 任务' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '新建任务' })).toBeInTheDocument();
+    expect(screen.getByLabelText('搜索任务')).toBeInTheDocument();
+    expect(await screen.findByText('任务工作区')).toBeInTheDocument();
+    expect(screen.getByText('输出时间线')).toBeInTheDocument();
+  });
+
   it('creates a task from a dialog and selects it through the URL', async () => {
     const createdSummary: TaskSummary = {
       ...taskSummary,

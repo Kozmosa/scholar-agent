@@ -1,13 +1,6 @@
 import { Search } from 'lucide-react';
+import { useT } from '../../i18n';
 import type { TaskStatus, TaskSummary } from '../../types';
-
-const statusLabel: Record<TaskStatus, string> = {
-  queued: 'Queued',
-  starting: 'Starting',
-  running: 'Running',
-  succeeded: 'Succeeded',
-  failed: 'Failed',
-};
 
 const statusClassName: Record<TaskStatus, string> = {
   queued: 'border-[var(--border)] bg-[var(--muted)] text-[var(--muted-foreground)]',
@@ -50,22 +43,23 @@ export default function TaskList({
   onSearchQueryChange,
   onSelectTask,
 }: TaskListProps) {
+  const t = useT();
   const filteredTasks = tasks.filter((task) => matchesTask(task, searchQuery));
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
       <label className="relative mb-3 block">
-        <span className="sr-only">Search tasks</span>
+        <span className="sr-only">{t('pages.tasks.searchLabel')}</span>
         <Search
           size={15}
           className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]"
         />
         <input
-          aria-label="Search tasks"
+          aria-label={t('pages.tasks.searchLabel')}
           value={searchQuery}
           onChange={(event) => onSearchQueryChange(event.target.value)}
           className="h-9 w-full rounded-lg border border-[var(--input)] bg-[var(--background)] pl-9 pr-3 text-sm text-[var(--foreground)] shadow-[var(--shadow-input)] outline-none transition placeholder:text-[var(--muted-foreground)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--ring)]"
-          placeholder="Search tasks"
+          placeholder={t('pages.tasks.searchPlaceholder')}
         />
       </label>
 
@@ -74,11 +68,11 @@ export default function TaskList({
       <div className="min-h-0 flex-1 space-y-1 overflow-auto pr-1">
         {tasks.length === 0 ? (
           <div className="rounded-lg border border-dashed border-[var(--border)] bg-[var(--muted)] p-4 text-sm text-[var(--muted-foreground)]">
-            No tasks yet. Create one to start a run.
+            {t('pages.tasks.empty')}
           </div>
         ) : filteredTasks.length === 0 ? (
           <div className="rounded-lg border border-dashed border-[var(--border)] bg-[var(--muted)] p-4 text-sm text-[var(--muted-foreground)]">
-            No tasks match “{searchQuery}”.
+            {t('pages.tasks.noSearchResults', { query: searchQuery })}
           </div>
         ) : (
           filteredTasks.map((task) => {
@@ -102,14 +96,14 @@ export default function TaskList({
                   <span
                     className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusClassName[task.status]}`}
                   >
-                    {statusLabel[task.status]}
+                    {t(`pages.tasks.status.${task.status}`)}
                   </span>
                 </span>
                 <span className="truncate text-xs text-[var(--muted-foreground)]">
                   {task.workspace_summary.label} · {task.environment_summary.alias}
                 </span>
                 <span className="truncate text-[11px] text-[var(--text-tertiary)]">
-                  Updated {task.updated_at}
+                  {t('pages.tasks.updatedAt', { time: task.updated_at })}
                 </span>
               </button>
             );

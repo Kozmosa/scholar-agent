@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { createTask, getTask, getTasks, getWorkspaces } from '../api';
 import { useEnvironmentSelection } from '../components';
+import { useT } from '../i18n';
 import { createEmptyEnvironmentTaskDefaults, useSettings } from '../settings';
 import type { TaskCreateRequest, TaskSummary } from '../types';
 import TaskCreateForm from './tasks/TaskCreateForm';
@@ -11,7 +12,16 @@ import TaskDetail from './tasks/TaskDetail';
 import TaskList from './tasks/TaskList';
 import { useTaskOutputStream } from './tasks/useTaskOutputStream';
 
+const taskSidebarMinWidth = 260;
+const taskSidebarMaxWidth = 520;
+const taskSidebarDefaultWidth = 320;
+
+function clampTaskSidebarWidth(width: number): number {
+  return Math.min(taskSidebarMaxWidth, Math.max(taskSidebarMinWidth, width));
+}
+
 function TasksPage() {
+  const t = useT();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const environmentSelection = useEnvironmentSelection();
@@ -31,6 +41,7 @@ function TasksPage() {
   const [draftResetVersion, setDraftResetVersion] = useState(0);
   const [isCreateDialogOpen, setCreateDialogOpen] = useState(false);
   const [taskSearchQuery, setTaskSearchQuery] = useState('');
+  const [taskSidebarWidth, setTaskSidebarWidth] = useState(taskSidebarDefaultWidth);
   const createButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const requestedTaskId = searchParams.get('task');
@@ -140,20 +151,53 @@ function TasksPage() {
     }
   }, []);
 
+  const handleSplitterPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const startX = event.clientX;
+      const startWidth = taskSidebarWidth;
+
+      const handlePointerMove = (moveEvent: PointerEvent) => {
+        setTaskSidebarWidth(clampTaskSidebarWidth(startWidth + moveEvent.clientX - startX));
+      };
+      const handlePointerUp = () => {
+        window.removeEventListener('pointermove', handlePointerMove);
+        window.removeEventListener('pointerup', handlePointerUp);
+      };
+
+      window.addEventListener('pointermove', handlePointerMove);
+      window.addEventListener('pointerup', handlePointerUp);
+    },
+    [taskSidebarWidth]
+  );
+
+  const handleSplitterKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+      return;
+    }
+    event.preventDefault();
+    const delta = event.key === 'ArrowLeft' ? -16 : 16;
+    setTaskSidebarWidth((width) => clampTaskSidebarWidth(width + delta));
+  }, []);
+
   return (
     <div className="flex min-h-0 flex-1 bg-[var(--background)] p-4">
       <div className="flex min-h-0 w-full overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-[var(--shadow-pane)]">
-        <aside className="flex w-[320px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar)] p-3">
+        <aside
+          data-testid="task-sidebar"
+          className="flex shrink-0 flex-col bg-[var(--sidebar)] p-3"
+          style={{ width: taskSidebarWidth }}
+        >
           <div className="mb-3 flex items-start justify-between gap-3 border-b border-[var(--sidebar-border)] pb-3">
             <div className="min-w-0">
               <p className="text-xs font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
-                Task runs
+                {t('pages.tasks.sidebarEyebrow')}
               </p>
               <h1 className="mt-1 truncate text-lg font-semibold tracking-tight text-[var(--sidebar-foreground)]">
-                Agent tasks
+                {t('pages.tasks.sidebarTitle')}
               </h1>
               <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-                {tasks.length} total · live output replay
+                {t('pages.tasks.sidebarCount', { count: tasks.length })}
               </p>
             </div>
             <button
@@ -163,7 +207,7 @@ function TasksPage() {
               className="inline-flex h-9 items-center gap-2 rounded-lg bg-[var(--primary)] px-3 text-sm font-medium text-[var(--primary-foreground)] shadow-[var(--shadow-toolbar)] transition hover:opacity-90"
             >
               <Plus size={15} />
-              New task
+              {t('pages.tasks.newTask')}
             </button>
           </div>
 
@@ -176,6 +220,21 @@ function TasksPage() {
             onSelectTask={selectTask}
           />
         </aside>
+
+        <div
+          role="separator"
+          aria-label={t('pages.tasks.resizeTaskList')}
+          aria-orientation="vertical"
+          aria-valuemin={taskSidebarMinWidth}
+          aria-valuemax={taskSidebarMaxWidth}
+          aria-valuenow={taskSidebarWidth}
+          tabIndex={0}
+          onPointerDown={handleSplitterPointerDown}
+          onKeyDown={handleSplitterKeyDown}
+          className="group flex w-2 shrink-0 cursor-col-resize items-stretch justify-center bg-[var(--card)] outline-none transition hover:bg-[var(--muted)] focus:bg-[var(--muted)]"
+        >
+          <span className="my-3 w-px rounded-full bg-[var(--border)] transition group-hover:bg-[var(--accent)] group-focus:bg-[var(--accent)]" />
+        </div>
 
         <main className="flex min-w-0 flex-1 flex-col bg-[var(--background)] p-4">
           <TaskDetail
@@ -192,7 +251,7 @@ function TasksPage() {
           <div
             role="dialog"
             aria-modal="true"
-            aria-label="Create task"
+            aria-label={t('pages.tasks.createTitle')}
             tabIndex={-1}
             onKeyDown={(event) => {
               trapDialogFocus(event);
