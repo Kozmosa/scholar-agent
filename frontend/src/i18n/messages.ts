@@ -108,8 +108,8 @@ export const messages = {
         detailLabel: 'Detail:',
       },
       terminal: {
-        eyebrow: 'Terminal',
-        title: 'Personal terminal bench',
+        eyebrow: '终端',
+        title: 'Terminal',
         description:
           'Attach to a persistent tmux session on your selected environment. Local environments connect directly; remote environments tunnel through interactive SSH.',
         backToTasks: 'Back to tasks',
@@ -194,14 +194,14 @@ export const messages = {
         },
       },
       workspaces: {
-        eyebrow: 'Workspaces',
-        title: 'Workspace orchestration shell',
+        eyebrow: '工作区',
+        title: 'Workspaces',
         description:
           'This surface mirrors the shared environment selector from Terminal so future workspace bindings can use the same upstream runtime choice. The browser panel below stays read only for now and reflects the current environment selection.',
       },
       settings: {
-        eyebrow: 'Settings',
-        title: 'WebUI settings baseline',
+        eyebrow: '设置',
+        title: 'Settings',
         description:
           'Customize your Scholar Agent experience: default landing page, terminal font size, project environment, and task draft templates.',
         recoveryNotice:
@@ -248,8 +248,8 @@ export const messages = {
         badge: 'Placeholder section',
       },
       containers: {
-        eyebrow: 'Containers',
-        title: 'Environment control plane',
+        eyebrow: '容器',
+        title: 'Containers',
         description:
           'Add and manage SSH-backed compute environments. Run detection to verify connectivity, then mark one as active for terminals and tasks.',
         currentSelection: 'Current selection',
@@ -619,14 +619,14 @@ export const messages = {
         },
       },
       workspaces: {
-        eyebrow: '工作区',
-        title: '工作区编排外壳',
+        eyebrow: 'WORKSPACES',
+        title: '工作区',
         description:
           '该页面复用了终端页的共享环境选择器，方便后续工作区绑定沿用同一上游运行时选择。下方浏览器面板当前保持只读，只反映当前环境选择。',
       },
       settings: {
-        eyebrow: '设置',
-        title: 'WebUI 设置基线',
+        eyebrow: 'SETTINGS',
+        title: '设置',
         description:
           '自定义 Scholar Agent 的使用体验：默认首页、终端字号、项目默认环境以及任务草稿模板。',
         recoveryNotice:
@@ -668,8 +668,8 @@ export const messages = {
         badge: '占位区块',
       },
       containers: {
-        eyebrow: '容器',
-        title: '环境控制平面',
+        eyebrow: 'CONTAINERS',
+        title: '容器',
         description:
           '添加并管理基于 SSH 的计算环境。运行连通性探测，然后将其中一个标记为活动环境，供终端和任务使用。',
         currentSelection: '当前选择',
