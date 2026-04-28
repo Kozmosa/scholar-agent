@@ -1,7 +1,12 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getEnvironments } from '../api';
-import { createDefaultWebUiSettings, settingsStorageKey } from '../settings';
+import {
+  createDefaultWebUiSettings,
+  defaultResearchAgentProfileId,
+  rawPromptTaskConfigurationId,
+  settingsStorageKey,
+} from '../settings';
 import { renderWithProviders } from '../test/render';
 import type { EnvironmentRecord } from '../types';
 import SettingsPage from './SettingsPage';
@@ -165,6 +170,8 @@ describe('SettingsPage', () => {
       expect(storedSettings.projectDefaults.default.environmentDefaults['env-1']).toEqual({
         titleTemplate: 'GPU daily check',
         taskInputTemplate: 'Check CUDA, torch, and disk status.',
+        researchAgentProfileId: defaultResearchAgentProfileId,
+        taskConfigurationId: rawPromptTaskConfigurationId,
       });
     });
   });

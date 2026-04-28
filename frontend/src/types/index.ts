@@ -119,6 +119,23 @@ export interface TaskSummary {
   latest_output_seq: number;
 }
 
+export interface ResearchAgentProfileSnapshot {
+  profile_id: string;
+  label: string;
+  system_prompt: string | null;
+  skills_prompt: string | null;
+  settings_json: Record<string, unknown> | null;
+  settings_artifact_path: string | null;
+}
+
+export interface TaskConfigurationSnapshot {
+  mode: 'raw_prompt' | 'structured_research';
+  template_id: string | null;
+  template_vars: Record<string, unknown>;
+  raw_prompt: string | null;
+  rendered_task_input: string;
+}
+
 export interface TaskBindingSummary {
   workspace: WorkspaceSummary;
   environment: TaskEnvironmentSummary;
@@ -127,6 +144,9 @@ export interface TaskBindingSummary {
   task_input: string;
   resolved_workdir: string;
   snapshot_path: string;
+  execution_engine?: string;
+  research_agent_profile?: ResearchAgentProfileSnapshot | null;
+  task_configuration?: TaskConfigurationSnapshot | null;
 }
 
 export interface TaskPromptLayer {
@@ -165,6 +185,9 @@ export interface TaskRecord extends TaskSummary {
   prompt: TaskPromptSummary | null;
   runtime: TaskRuntimeSummary | null;
   result: TaskResultSummary;
+  execution_engine?: string;
+  research_agent_profile?: ResearchAgentProfileSnapshot | null;
+  task_configuration?: TaskConfigurationSnapshot | null;
 }
 
 export interface TaskListResponse {
@@ -177,6 +200,20 @@ export interface TaskCreateRequest {
   task_profile: string;
   task_input: string;
   title?: string | null;
+  execution_engine?: string | null;
+  research_agent_profile?: {
+    profile_id: string;
+    label: string;
+    system_prompt?: string | null;
+    skills_prompt?: string | null;
+    settings_json?: Record<string, unknown> | null;
+  } | null;
+  task_configuration?: {
+    mode: 'raw_prompt' | 'structured_research';
+    template_id?: string | null;
+    template_vars?: Record<string, unknown>;
+    raw_prompt?: string | null;
+  } | null;
 }
 
 export interface TaskOutputEvent {
