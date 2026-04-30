@@ -232,9 +232,17 @@ export default function TaskCreateForm({
           <Select
             aria-label={t('pages.tasks.researchAgentLabel')}
             value={draft.researchAgentProfileId}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, researchAgentProfileId: event.target.value }))
-            }
+            onChange={(event) => {
+              const nextId = event.target.value;
+              const nextProfile = researchAgentProfiles.find(
+                (profile) => profile.profileId === nextId
+              );
+              setDraft((current) => ({
+                ...current,
+                researchAgentProfileId: nextId,
+                selectedSkills: nextProfile?.skills ?? [],
+              }));
+            }}
           >
             {researchAgentProfiles.map((profile) => (
               <option key={profile.profileId} value={profile.profileId}>
