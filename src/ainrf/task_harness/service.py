@@ -333,11 +333,11 @@ class TaskHarnessService:
 
         now = utc_now()
         with self._connect() as connection:
-            connection.execute(
+            cursor = connection.execute(
                 """
                 UPDATE task_harness_tasks
                 SET status = ?, updated_at = ?, completed_at = ?, exit_code = ?, failure_category = ?, error_summary = ?
-                WHERE task_id = ?
+                WHERE task_id = ? AND status NOT IN (?, ?, ?)
                 """,
                 (
                     TaskHarnessStatus.CANCELLED.value,
@@ -347,9 +347,16 @@ class TaskHarnessService:
                     "cancelled",
                     "Task cancelled by user",
                     task_id,
+                    TaskHarnessStatus.SUCCEEDED.value,
+                    TaskHarnessStatus.FAILED.value,
+                    TaskHarnessStatus.CANCELLED.value,
                 ),
             )
             connection.commit()
+            if cursor.rowcount == 0:
+                raise TaskHarnessError(
+                    f"Cannot cancel task that already reached a terminal state"
+                )
         self._append_output_event(task_id, TaskOutputKind.LIFECYCLE, "Task cancelled by user")
         return self._load_list_item(task_id)
 

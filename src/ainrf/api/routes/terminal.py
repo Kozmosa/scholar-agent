@@ -375,7 +375,10 @@ async def terminal_session_exec(
     if payload.workspace_id is not None:
         workspace_service = getattr(request.app.state, "workspace_service", None)
         if workspace_service is not None:
-            workspace = workspace_service.get_workspace(payload.workspace_id)
+            try:
+                workspace = workspace_service.get_workspace(payload.workspace_id)
+            except Exception as exc:
+                raise _translate_environment_error(exc) from exc
             working_directory = workspace.default_workdir or working_directory or "/"
 
     try:
