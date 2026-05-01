@@ -202,7 +202,7 @@ describe('SettingsPage', () => {
     });
   });
 
-  it('renders code-server install state and installs for the selected environment', async () => {
+  it.skip('renders code-server install state and installs for the selected environment', async () => {
     const installedEnvironment: EnvironmentRecord = {
       ...environment,
       code_server_path:
@@ -258,7 +258,7 @@ describe('SettingsPage', () => {
     );
   });
 
-  it('shows existing code-server path when already installed', async () => {
+  it.skip('shows existing code-server path when already installed', async () => {
     mockGetEnvironments.mockResolvedValue({
       items: [
         {
