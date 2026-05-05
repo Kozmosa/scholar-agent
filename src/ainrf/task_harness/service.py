@@ -61,7 +61,11 @@ from ainrf.task_harness.prompting import (
 from ainrf.workspaces import WorkspaceNotFoundError, WorkspaceRegistryService
 from ainrf.workspaces.models import WorkspaceRecord
 
-_FINAL_STATUSES = {TaskHarnessStatus.SUCCEEDED, TaskHarnessStatus.FAILED, TaskHarnessStatus.CANCELLED}
+_FINAL_STATUSES = {
+    TaskHarnessStatus.SUCCEEDED,
+    TaskHarnessStatus.FAILED,
+    TaskHarnessStatus.CANCELLED,
+}
 _TASK_PROFILE = "claude-code"
 _EXECUTION_ENGINE = "claude-code"
 _HARNESS_RESTART_REASON = (
@@ -88,6 +92,7 @@ class TaskHarnessService:
         state_root: Path,
         environment_service: InMemoryEnvironmentService,
         workspace_service: WorkspaceRegistryService,
+        skill_root: Path | str | None = None,
     ) -> None:
         self._state_root = state_root
         self._runtime_root = state_root / "runtime"
@@ -95,6 +100,7 @@ class TaskHarnessService:
         self._db_path = self._runtime_root / "task_harness.sqlite3"
         self._environment_service = environment_service
         self._workspace_service = workspace_service
+        self._skill_root = skill_root or (state_root / "skills")
         self._initialized = False
         self._running_tasks: dict[str, asyncio.Task[None]] = {}
         self._running_processes: dict[str, Any] = {}
@@ -354,9 +360,7 @@ class TaskHarnessService:
             )
             connection.commit()
             if cursor.rowcount == 0:
-                raise TaskHarnessError(
-                    f"Cannot cancel task that already reached a terminal state"
-                )
+                raise TaskHarnessError("Cannot cancel task that already reached a terminal state")
         self._append_output_event(task_id, TaskOutputKind.LIFECYCLE, "Task cancelled by user")
         return self._load_list_item(task_id)
 
@@ -503,6 +507,20 @@ class TaskHarnessService:
                 if profile_snapshot.settings_artifact_path is not None
                 else None
             )
+
+            # Skill injection: generate .ainrf/ and sync to .claude/
+            if profile_snapshot.skills:
+                from ainrf.skills.injection import SkillInjectionService
+
+                skill_root = self._skill_root
+                if skill_root.is_dir():
+                    injector = SkillInjectionService(skill_root)
+                    injector.generate_ainrf(
+                        workdir=resolved_workdir,
+                        selected_skills=profile_snapshot.skills,
+                        task_settings_override=profile_snapshot.settings_json,
+                    )
+                    injector.sync_to_claude(workdir=resolved_workdir)
 
             if is_local_environment(environment):
                 launch_payload, launch = build_local_launcher(

@@ -74,9 +74,12 @@ def build_local_launcher(
     rendered_prompt: str,
     settings_path: str | None = None,
 ) -> tuple[LaunchPayload, Any]:
+    ainrf_settings = Path(working_directory) / ".ainrf" / "settings.json"
+    resolved_settings = str(ainrf_settings) if ainrf_settings.exists() else settings_path
+
     command = [*_CLAUDE_COMMAND]
-    if settings_path is not None:
-        command.extend(["--settings", settings_path])
+    if resolved_settings is not None:
+        command.extend(["--settings", resolved_settings])
     command.append(rendered_prompt)
     payload = LaunchPayload(
         runner_kind="local-process",
