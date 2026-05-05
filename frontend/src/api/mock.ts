@@ -16,8 +16,12 @@ import type {
   ProjectListResponse,
   ProjectRecord,
   ProjectUpdateRequest,
+  SkillDetail,
+  SkillImportRequest,
+  SkillImportResponse,
   SkillItem,
   SkillListResponse,
+  SkillPreview,
   SystemHealth,
   TaskCreateRequest,
   TaskListResponse,
@@ -1155,6 +1159,45 @@ const mockSkills: SkillItem[] = [
 
 export function mockGetSkills(): SkillListResponse {
   return { items: mockSkills.map((skill) => ({ ...skill })) };
+}
+
+export function mockGetSkillDetail(skillId: string): SkillDetail {
+  const skill = mockSkills.find((s) => s.skill_id === skillId);
+  return {
+    skill_id: skillId,
+    label: skill?.label ?? skillId,
+    description: skill?.description ?? null,
+    version: '1.0.0',
+    author: 'ainrf',
+    dependencies: [],
+    inject_mode: 'auto',
+    settings_fragment: {},
+    mcp_servers: [],
+    hooks: [],
+    allowed_agents: ['claude-code'],
+    skill_md: skill ? `# ${skill.label}\n\n${skill.description ?? ''}` : null,
+  };
+}
+
+export function mockPreviewSkillSettings(skillId: string): SkillPreview {
+  const skill = mockSkills.find((s) => s.skill_id === skillId);
+  return {
+    skill_id: skillId,
+    label: skill?.label ?? skillId,
+    settings_fragment: { env: { EXAMPLE_KEY: 'value' } },
+    merged_preview: {
+      permissionMode: 'bypassPermissions',
+      env: { EXAMPLE_KEY: 'value' },
+    },
+  };
+}
+
+export function mockImportSkill(_payload: SkillImportRequest): SkillImportResponse {
+  return {
+    skill_id: 'imported-skill',
+    label: 'Imported Skill',
+    path: '/workspace/skills/imported-skill',
+  };
 }
 
 export function mockListFiles(_environmentId: string, path: string = ''): FileListResponse {
