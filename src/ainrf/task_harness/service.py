@@ -520,7 +520,9 @@ class TaskHarnessService:
                         selected_skills=profile_snapshot.skills,
                         task_settings_override=profile_snapshot.settings_json,
                     )
-                    injector.sync_to_claude(workdir=resolved_workdir)
+                    # Only sync locally; remote sync is handled by build_remote_launcher
+                    if is_local_environment(environment):
+                        injector.sync_to_claude(workdir=resolved_workdir)
 
             if is_local_environment(environment):
                 launch_payload, launch = build_local_launcher(
@@ -532,6 +534,7 @@ class TaskHarnessService:
             else:
                 executor = build_ssh_executor(environment, project_dir=resolved_workdir)
                 try:
+                    ainrf_dir = Path(resolved_workdir) / ".ainrf"
                     launch_payload, launch = await build_remote_launcher(
                         executor=executor,
                         task_id=task_id,
@@ -539,6 +542,7 @@ class TaskHarnessService:
                         working_directory=resolved_workdir,
                         prompt_file=prompt_file,
                         settings_path=settings_path,
+                        ainrf_dir=ainrf_dir if ainrf_dir.exists() else None,
                     )
                 except Exception:
                     await executor.close()
