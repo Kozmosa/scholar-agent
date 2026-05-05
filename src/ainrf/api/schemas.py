@@ -471,6 +471,23 @@ class SkillPreviewResponse(BaseModel):
     merged_preview: dict[str, Any] = Field(default_factory=dict)
 
 
+class SkillImportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source: str = Field(..., pattern="^(git|local)$")
+    url: str | None = None
+    local_path: str | None = None
+    skill_id: str | None = None
+
+
+class SkillImportResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    skill_id: str
+    label: str
+    path: str
+
+
 class WorkspaceSummaryResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
