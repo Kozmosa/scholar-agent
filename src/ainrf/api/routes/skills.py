@@ -32,13 +32,15 @@ def _get_skills_discovery_service(request: Request) -> SkillsDiscoveryService:
 @router.get("", response_model=SkillListResponse)
 async def list_skills(request: Request) -> SkillListResponse:
     service = _get_skills_discovery_service(request)
-    skills = service.discover()
+    skills = service.discover_full()
     return SkillListResponse(
         items=[
             SkillItemResponse(
                 skill_id=s.skill_id,
                 label=s.label,
                 description=s.description,
+                inject_mode=s.inject_mode.value,
+                dependencies=list(s.dependencies),
             )
             for s in skills
         ]

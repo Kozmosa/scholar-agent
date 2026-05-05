@@ -473,6 +473,8 @@ export interface SkillItem {
   skill_id: string;
   label: string;
   description: string | null;
+  inject_mode: 'auto' | 'prompt_only' | 'disabled';
+  dependencies: string[];
 }
 
 export interface SkillListResponse {

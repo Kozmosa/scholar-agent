@@ -437,6 +437,8 @@ class SkillItemResponse(BaseModel):
     skill_id: str
     label: str
     description: str | None = None
+    inject_mode: str = "auto"
+    dependencies: list[str] = Field(default_factory=list)
 
 
 class SkillListResponse(BaseModel):
