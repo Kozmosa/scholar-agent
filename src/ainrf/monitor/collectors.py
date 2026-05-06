@@ -42,6 +42,10 @@ def parse_nvidia_smi_csv(stdout: str) -> list[GpuInfo]:
 
 
 def parse_ps_output(stdout: str) -> list[RawProcess]:
+    """Parse ``ps -eo pid,ppid,comm,pcpu,rss,etime`` output.
+
+    The ``rss`` column is resident set size in **KB**; it is converted to MB here.
+    """
     lines = [line.strip() for line in stdout.strip().split("\n") if line.strip()]
     if not lines:
         return []
@@ -61,7 +65,7 @@ def parse_ps_output(stdout: str) -> list[RawProcess]:
                     ppid=int(parts[1]),
                     name=parts[2],
                     cpu_percent=float(parts[3]),
-                    memory_mb=int(float(parts[4])),
+                    memory_mb=int(parts[4]) // 1024,  # rss is in KB → convert to MB
                     runtime_seconds=_parse_elapsed(parts[5]),
                 )
             )
@@ -129,7 +133,7 @@ class LocalCollector:
 
     async def _collect_processes(self) -> list[RawProcess]:
         proc = await asyncio.create_subprocess_exec(
-            "ps", "-eo", "pid,ppid,comm,pcpu,pmem,etime",
+            "ps", "-eo", "pid,ppid,comm,pcpu,rss,etime",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -137,9 +141,12 @@ class LocalCollector:
         return parse_ps_output(stdout.decode())
 
     def _extract_system_stats(self, processes: list[RawProcess]) -> tuple[CpuInfo, MemoryInfo]:
+        core_count = os.cpu_count() or 1
         total_cpu = sum(p.cpu_percent for p in processes)
+        # pcpu is percent of one CPU; dividing by core_count normalises to 0–100 % system load.
+        system_percent = round(total_cpu / core_count, 1)
         memory = self._read_meminfo()
-        return CpuInfo(percent=round(total_cpu, 1), core_count=os.cpu_count() or 1), memory
+        return CpuInfo(percent=system_percent, core_count=core_count), memory
 
     def _read_meminfo(self) -> MemoryInfo:
         try:
@@ -184,7 +191,7 @@ class RemoteCollector:
 
         try:
             ps_result = await self._executor.run_command(
-                "ps -eo pid,ppid,comm,pcpu,pmem,etime",
+                "ps -eo pid,ppid,comm,pcpu,rss,etime",
                 timeout=3,
             )
             if ps_result.exit_code == 0:
@@ -195,7 +202,9 @@ class RemoteCollector:
         ainrf_processes = [p for p in processes if p.name in ProcessTreeFilter.WHITELIST]
         ainrf_processes.sort(key=lambda p: p.cpu_percent, reverse=True)
 
+        core_count = await self._collect_core_count()
         total_cpu = sum(p.cpu_percent for p in processes)
+        system_percent = round(total_cpu / core_count, 1)
         memory = await self._collect_memory()
 
         return ResourceSnapshot(
@@ -204,10 +213,22 @@ class RemoteCollector:
             timestamp=datetime.now(tz=timezone.utc),
             status=status,
             gpus=gpus,
-            cpu=CpuInfo(percent=round(total_cpu, 1), core_count=1),
+            cpu=CpuInfo(percent=system_percent, core_count=core_count),
             memory=memory,
             ainrf_processes=ainrf_processes,
         )
+
+    async def _collect_core_count(self) -> int:
+        try:
+            result = await self._executor.run_command(
+                "nproc",
+                timeout=3,
+            )
+            if result.exit_code == 0:
+                return int(result.stdout.strip())
+        except Exception:
+            pass
+        return 1
 
     async def _collect_memory(self) -> MemoryInfo:
         try:

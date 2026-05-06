@@ -22,7 +22,7 @@ export default function SystemResourceCard({ snapshot }: SystemResourceCardProps
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <StatusDot status={snapshot.status} />
-          <h3 className="text-sm font-semibold">{snapshot.environmentName}</h3>
+          <h3 className="text-sm font-semibold">{snapshot.environment_name}</h3>
         </div>
         <span className="text-xs text-[var(--text-tertiary)]">
           {new Date(snapshot.timestamp).toLocaleTimeString()}
@@ -41,14 +41,14 @@ export default function SystemResourceCard({ snapshot }: SystemResourceCardProps
           <p className="mb-2 text-xs font-medium text-[var(--text-secondary)]">
             {t('pages.resources.systemCard.cpuTitle')}
           </p>
-          <CpuRing percent={snapshot.cpu.percent} coreCount={snapshot.cpu.coreCount} />
+          <CpuRing percent={snapshot.cpu.percent} coreCount={snapshot.cpu.core_count} />
         </div>
 
         <div>
           <p className="mb-2 text-xs font-medium text-[var(--text-secondary)]">
             {t('pages.resources.systemCard.memoryTitle')}
           </p>
-          <MemoryBar usedMB={snapshot.memory.usedMB} totalMB={snapshot.memory.totalMB} />
+          <MemoryBar usedMB={snapshot.memory.used_mb} totalMB={snapshot.memory.total_mb} />
         </div>
       </div>
     </div>

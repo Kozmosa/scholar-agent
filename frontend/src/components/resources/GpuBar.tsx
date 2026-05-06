@@ -31,13 +31,13 @@ export default function GpuBar({ gpus }: GpuBarProps) {
               GPU {gpu.index}: {gpu.name}
             </span>
             <span className="text-[var(--text-tertiary)]">
-              {gpu.utilizationPercent}% | {formatMB(gpu.memoryUsedMB)} / {formatMB(gpu.memoryTotalMB)}
+              {gpu.utilization_percent}% | {formatMB(gpu.memory_used_mb)} / {formatMB(gpu.memory_total_mb)}
             </span>
           </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--bg-tertiary)]">
             <div
-              className={`h-full rounded-full transition-all duration-500 ${getBarColor(gpu.utilizationPercent)}`}
-              style={{ width: `${Math.min(gpu.utilizationPercent, 100)}%` }}
+              className={`h-full rounded-full transition-all duration-500 ${getBarColor(gpu.utilization_percent)}`}
+              style={{ width: `${Math.min(gpu.utilization_percent, 100)}%` }}
             />
           </div>
         </div>

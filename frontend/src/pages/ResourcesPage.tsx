@@ -36,11 +36,11 @@ export default function ResourcesPage() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {snapshots.map((snapshot) => (
-          <div key={snapshot.environmentId} className="space-y-4">
+          <div key={snapshot.environment_id} className="space-y-4">
             <SystemResourceCard snapshot={snapshot} />
             <AinrfProcessCard
-              processes={snapshot.ainrfProcesses}
-              environmentName={snapshot.environmentName}
+              processes={snapshot.ainrf_processes}
+              environmentName={snapshot.environment_name}
             />
           </div>
         ))}

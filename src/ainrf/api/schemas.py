@@ -693,6 +693,4 @@ class FileUploadResponse(BaseModel):
     size: int
 
 
-class ResourcesResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    items: list[dict[str, object]] = Field(default_factory=list)
+

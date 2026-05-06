@@ -1153,24 +1153,24 @@ export function mockGetResources(): ResourcesResponse {
   return {
     items: [
       {
-        environmentId: 'env-localhost',
-        environmentName: 'Localhost',
+        environment_id: 'env-localhost',
+        environment_name: 'Localhost',
         timestamp: new Date().toISOString(),
         status: 'ok',
         gpus: [
           {
             index: 0,
             name: 'NVIDIA GeForce RTX 4090',
-            utilizationPercent: 45.0,
-            memoryUsedMB: 8192,
-            memoryTotalMB: 24576,
+            utilization_percent: 45.0,
+            memory_used_mb: 8192,
+            memory_total_mb: 24576,
           },
         ],
-        cpu: { percent: 23.5, coreCount: 32 },
-        memory: { usedMB: 16384, totalMB: 65536, percent: 25.0 },
-        ainrfProcesses: [
-          { pid: 12345, name: 'ainrf', cpuPercent: 5.2, memoryMB: 512, runtimeSeconds: 3600 },
-          { pid: 12346, name: 'python', cpuPercent: 3.1, memoryMB: 256, runtimeSeconds: 1800 },
+        cpu: { percent: 23.5, core_count: 32 },
+        memory: { used_mb: 16384, total_mb: 65536, percent: 25.0 },
+        ainrf_processes: [
+          { pid: 12345, name: 'ainrf', cpu_percent: 5.2, memory_mb: 512, runtime_seconds: 3600 },
+          { pid: 12346, name: 'python', cpu_percent: 3.1, memory_mb: 256, runtime_seconds: 1800 },
         ],
       },
     ],

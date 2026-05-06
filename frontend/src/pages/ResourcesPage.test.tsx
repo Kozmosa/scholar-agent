@@ -14,35 +14,35 @@ const mockGetResources = vi.mocked(getResources);
 const mockResponse: ResourcesResponse = {
   items: [
     {
-      environmentId: 'env-localhost',
-      environmentName: 'Localhost',
+      environment_id: 'env-localhost',
+      environment_name: 'Localhost',
       timestamp: '2026-05-06T12:00:00Z',
       status: 'ok',
       gpus: [
         {
           index: 0,
           name: 'NVIDIA GeForce RTX 4090',
-          utilizationPercent: 45.0,
-          memoryUsedMB: 8192,
-          memoryTotalMB: 24576,
+          utilization_percent: 45.0,
+          memory_used_mb: 8192,
+          memory_total_mb: 24576,
         },
       ],
       cpu: {
         percent: 23.5,
-        coreCount: 32,
+        core_count: 32,
       },
       memory: {
-        usedMB: 16384,
-        totalMB: 65536,
+        used_mb: 16384,
+        total_mb: 65536,
         percent: 25.0,
       },
-      ainrfProcesses: [
+      ainrf_processes: [
         {
           pid: 12345,
           name: 'ainrf',
-          cpuPercent: 5.2,
-          memoryMB: 512,
-          runtimeSeconds: 3600,
+          cpu_percent: 5.2,
+          memory_mb: 512,
+          runtime_seconds: 3600,
         },
       ],
     },
