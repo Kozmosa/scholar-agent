@@ -54,8 +54,11 @@ class ResourceMonitorService:
                 else:
                     container = _ssh_container_for(env)
                     executor = SSHExecutor(container)
-                    collector = RemoteCollector(executor, env.id, env.display_name)
-                    snapshot = await collector.collect()
+                    try:
+                        collector = RemoteCollector(executor, env.id, env.display_name)
+                        snapshot = await collector.collect()
+                    finally:
+                        await executor.close()
 
                 self._snapshots[env.id] = snapshot
             except Exception as exc:

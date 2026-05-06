@@ -1,6 +1,6 @@
 interface CpuRingProps {
   percent: number;
-  coreCount: number;
+  core_count: number;
 }
 
 function getColor(percent: number): string {
@@ -9,7 +9,7 @@ function getColor(percent: number): string {
   return '#ef4444';
 }
 
-export default function CpuRing({ percent, coreCount }: CpuRingProps) {
+export default function CpuRing({ percent, core_count }: CpuRingProps) {
   const radius = 36;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (Math.min(percent, 100) / 100) * circumference;
@@ -46,7 +46,7 @@ export default function CpuRing({ percent, coreCount }: CpuRingProps) {
       </div>
       <div>
         <p className="text-xs text-[var(--text-tertiary)]">CPU Usage</p>
-        <p className="text-sm font-medium">{coreCount} cores</p>
+        <p className="text-sm font-medium">{core_count} cores</p>
       </div>
     </div>
   );

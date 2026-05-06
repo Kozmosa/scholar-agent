@@ -41,14 +41,14 @@ export default function SystemResourceCard({ snapshot }: SystemResourceCardProps
           <p className="mb-2 text-xs font-medium text-[var(--text-secondary)]">
             {t('pages.resources.systemCard.cpuTitle')}
           </p>
-          <CpuRing percent={snapshot.cpu.percent} coreCount={snapshot.cpu.core_count} />
+          <CpuRing percent={snapshot.cpu.percent} core_count={snapshot.cpu.core_count} />
         </div>
 
         <div>
           <p className="mb-2 text-xs font-medium text-[var(--text-secondary)]">
             {t('pages.resources.systemCard.memoryTitle')}
           </p>
-          <MemoryBar usedMB={snapshot.memory.used_mb} totalMB={snapshot.memory.total_mb} />
+          <MemoryBar used_mb={snapshot.memory.used_mb} total_mb={snapshot.memory.total_mb} />
         </div>
       </div>
     </div>

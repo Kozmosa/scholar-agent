@@ -6,19 +6,19 @@ function formatMB(mb: number): string {
 }
 
 interface MemoryBarProps {
-  usedMB: number;
-  totalMB: number;
+  used_mb: number;
+  total_mb: number;
 }
 
-export default function MemoryBar({ usedMB, totalMB }: MemoryBarProps) {
-  const percent = totalMB > 0 ? Math.round((usedMB / totalMB) * 100) : 0;
+export default function MemoryBar({ used_mb, total_mb }: MemoryBarProps) {
+  const percent = total_mb > 0 ? Math.round((used_mb / total_mb) * 100) : 0;
 
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between text-xs">
         <span className="font-medium">Memory</span>
         <span className="text-[var(--text-tertiary)]">
-          {formatMB(usedMB)} / {formatMB(totalMB)} ({percent}%)
+          {formatMB(used_mb)} / {formatMB(total_mb)} ({percent}%)
         </span>
       </div>
       <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--bg-tertiary)]">
