@@ -59,21 +59,24 @@ class SkillRegistrySyncService:
         if self.git_workspace.exists():
             shutil.rmtree(self.git_workspace)
 
-        result = subprocess.run(
-            [
-                "git",
-                "clone",
-                "--depth",
-                "1",
-                "--branch",
-                self.registry.git_ref,
-                self.registry.git_url,
-                str(self.git_workspace),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
+        try:
+            result = subprocess.run(
+                [
+                    "git",
+                    "clone",
+                    "--depth",
+                    "1",
+                    "--branch",
+                    self.registry.git_ref,
+                    self.registry.git_url,
+                    str(self.git_workspace),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"git clone timed out after {exc.timeout}s") from exc
         if result.returncode != 0:
             raise RuntimeError(f"git clone failed: {result.stderr}")
 
@@ -134,6 +137,8 @@ class SkillRegistrySyncService:
         source_root = self.git_workspace / self.registry.source_skills_path
         if not source_root.exists():
             raise RuntimeError(f"Source skills path not found: {source_root}")
+        if not source_root.is_dir():
+            raise RuntimeError(f"Source skills path is not a directory: {source_root}")
 
         self.load_dir.mkdir(parents=True, exist_ok=True)
 
@@ -217,7 +222,11 @@ class SkillRegistrySyncService:
     def _build_status(self) -> SkillRegistryStatus:
         """Build current status from filesystem."""
         manifest = self._read_manifest()
-        installed_count = len(manifest.get("skills", []))
+        # Only trust the manifest if it belongs to this registry
+        if manifest.get("registry_id") == self.registry.registry_id:
+            installed_count = len(manifest.get("skills", []))
+        else:
+            installed_count = 0
 
         last_sync_at = None
         marker = self._managed_marker()
@@ -235,35 +244,44 @@ class SkillRegistrySyncService:
             last_sync_at=last_sync_at,
         )
 
-    def _git_run(self, args: list[str]) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            ["git", "-C", str(self.git_workspace), *args],
-            capture_output=True,
-            text=True,
-        )
+    def _git_run(
+        self, args: list[str], timeout: float = 30
+    ) -> subprocess.CompletedProcess[str]:
+        try:
+            return subprocess.run(
+                ["git", "-C", str(self.git_workspace), *args],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"git command timed out after {exc.timeout}s: {' '.join(args)}") from exc
 
     def _git_ls_remote(self) -> str | None:
-        result = subprocess.run(
-            ["git", "ls-remote", self.registry.git_url, self.registry.git_ref],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
+        try:
+            result = subprocess.run(
+                ["git", "ls-remote", self.registry.git_url, self.registry.git_ref],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            return None
         if result.returncode != 0 or not result.stdout:
             return None
         # Output format: "<commit>\t<ref>\n"
         return result.stdout.split()[0] if result.stdout.split() else None
 
     def _git_rev_parse(self) -> str | None:
-        result = self._git_run(["rev-parse", "HEAD"])
+        result = self._git_run(["rev-parse", "HEAD"], timeout=10)
         return result.stdout.strip() if result.returncode == 0 else None
 
     def _git_is_dirty(self) -> bool:
-        result = self._git_run(["status", "--porcelain"])
+        result = self._git_run(["status", "--porcelain"], timeout=10)
         return result.returncode == 0 and bool(result.stdout.strip())
 
     def _git_dirty_files(self) -> list[str]:
-        result = self._git_run(["status", "--porcelain"])
+        result = self._git_run(["status", "--porcelain"], timeout=10)
         if result.returncode != 0:
             return []
         return [line.strip() for line in result.stdout.strip().split("\n") if line.strip()]

@@ -22,7 +22,10 @@ router = APIRouter(prefix="/skill-registries", tags=["skill-registries"])
 
 def _get_default_workspace_dir(request: Request) -> Path:
     """Get the default workspace directory from the app state."""
-    scan_roots = getattr(request.app.state.skills_discovery_service, "_scan_roots", [])
+    skills_discovery = getattr(request.app.state, "skills_discovery_service", None)
+    if skills_discovery is None:
+        raise HTTPException(status_code=500, detail="Skills discovery service not initialized")
+    scan_roots = getattr(skills_discovery, "_scan_roots", [])
     if scan_roots:
         return scan_roots[0]
     raise HTTPException(status_code=500, detail="No workspace directory configured")

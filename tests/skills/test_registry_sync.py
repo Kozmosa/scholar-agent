@@ -283,3 +283,31 @@ class TestSkillRegistrySyncService:
         status = service._build_status()
         assert status.last_sync_at is not None
         assert status.installed is True
+
+    def test_build_status_ignores_manifest_for_other_registry(self, service: SkillRegistrySyncService, tmp_path: Path):
+        load_dir = tmp_path / "skills"
+        load_dir.mkdir(parents=True)
+        (load_dir / ".ainrf-registry").write_text("test-registry", encoding="utf-8")
+
+        # Write manifest for a DIFFERENT registry
+        other_manifest = {
+            "registry_id": "other-registry",
+            "skills": ["a", "b", "c"],
+            "synced_at": "2024-01-01T00:00:00",
+        }
+        (load_dir / ".ainrf-registry-manifest.json").write_text(
+            json.dumps(other_manifest), encoding="utf-8"
+        )
+
+        status = service._build_status()
+        # Count should be 0 because manifest belongs to other registry
+        assert status.installed_count == 0
+        assert status.installed is True  # marker still matches
+
+    def test_sync_all_rejects_file_as_source_path(self, service: SkillRegistrySyncService, tmp_path: Path):
+        service.git_workspace.mkdir(parents=True)
+        # Create a file instead of directory at source_skills_path
+        (service.git_workspace / "skills").write_text("not a directory")
+
+        with pytest.raises(RuntimeError, match="is not a directory"):
+            service._sync_all()
