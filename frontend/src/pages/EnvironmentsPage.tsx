@@ -554,6 +554,13 @@ function EnvironmentsPage() {
     () => environments.find((environment) => environment.id === editorEnvironmentId) ?? null,
     [environments, editorEnvironmentId]
   );
+  const detectionEnv = useMemo(
+    () =>
+      selectedDetectionEnvironmentId !== null
+        ? (environments.find((e) => e.id === selectedDetectionEnvironmentId) ?? null)
+        : null,
+    [environments, selectedDetectionEnvironmentId]
+  );
   const projectReferenceByEnvironmentId = useMemo(
     () =>
       Object.fromEntries(
@@ -979,21 +986,13 @@ function EnvironmentsPage() {
         </div>
       </div>
 
-      {selectedDetectionEnvironmentId !== null ? (
-        (() => {
-          const env = environments.find(
-            (e) => e.id === selectedDetectionEnvironmentId
-          );
-          if (!env?.latest_detection) return null;
-          return (
-            <EnvironmentDetectionModal
-              detection={env.latest_detection}
-              environmentName={env.display_name}
-              isOpen={true}
-              onClose={() => setSelectedDetectionEnvironmentId(null)}
-            />
-          );
-        })()
+      {detectionEnv?.latest_detection ? (
+        <EnvironmentDetectionModal
+          detection={detectionEnv.latest_detection}
+          environmentName={detectionEnv.display_name}
+          isOpen={true}
+          onClose={() => setSelectedDetectionEnvironmentId(null)}
+        />
       ) : null}
     </div>
   );

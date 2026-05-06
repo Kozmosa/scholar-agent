@@ -7,7 +7,7 @@ import pytest
 from ainrf.runtime.paths import build_runtime_path_config
 
 
-def test_runtime_path_config_uses_startup_cwd_for_default_workspace() -> None:
+def test_runtime_path_config_workspace_root_uses_startup_cwd() -> None:
     startup_cwd = Path("/tmp/ainrf-project")
 
     paths = build_runtime_path_config(startup_cwd)

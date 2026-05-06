@@ -7,9 +7,13 @@ export default function useFocusTrap<T extends HTMLElement>(
   isActive: boolean
 ): RefObject<T | null> {
   const containerRef = useRef<T | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!isActive) {
+      // Restore focus to the element that was focused before the trap activated
+      previousFocusRef.current?.focus();
+      previousFocusRef.current = null;
       return;
     }
 
@@ -17,6 +21,9 @@ export default function useFocusTrap<T extends HTMLElement>(
     if (!container) {
       return;
     }
+
+    // Capture the currently focused element so we can restore it on deactivation
+    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
     // Auto-focus the first focusable element after a tick so the DOM is stable
     const focusTimeout = setTimeout(() => {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import useFocusTrap from '../../hooks/useFocusTrap';
+import { useT } from '../../i18n';
 
 interface Props {
   isOpen: boolean;
@@ -28,6 +29,7 @@ export default function Modal({
   showCloseButton = true,
   closeOnBackdropClick = true,
 }: Props) {
+  const t = useT();
   const [isClosing, setIsClosing] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const dialogRef = useFocusTrap<HTMLDivElement>(isOpen && isVisible);
@@ -48,12 +50,16 @@ export default function Modal({
     setIsVisible(false);
   }, []);
 
-  const handleTransitionEnd = useCallback(() => {
-    if (isClosing) {
-      onClose();
-      setIsClosing(false);
-    }
-  }, [isClosing, onClose]);
+  const handleTransitionEnd = useCallback(
+    (event: React.TransitionEvent<HTMLDivElement>) => {
+      // Guard to a single property so transition-all doesn't fire onClose multiple times
+      if (isClosing && event.propertyName === 'opacity') {
+        onClose();
+        setIsClosing(false);
+      }
+    },
+    [isClosing, onClose]
+  );
 
   const handleBackdropClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
@@ -102,7 +108,7 @@ export default function Modal({
                 type="button"
                 onClick={handleClose}
                 className="rounded-lg p-1 text-[var(--muted-foreground)] transition hover:bg-[var(--bg-secondary)] hover:text-[var(--text)]"
-                aria-label="Close"
+                aria-label={t('components.modal.close')}
               >
                 <X size={20} />
               </button>
@@ -115,7 +121,7 @@ export default function Modal({
               type="button"
               onClick={handleClose}
               className="rounded-lg p-1 text-[var(--muted-foreground)] transition hover:bg-[var(--bg-secondary)] hover:text-[var(--text)]"
-              aria-label="Close"
+              aria-label={t('components.modal.close')}
             >
               <X size={20} />
             </button>
