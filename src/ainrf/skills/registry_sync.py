@@ -33,13 +33,15 @@ class SkillRegistrySyncService:
         self.load_dir = load_dir
         self.git_workspace = workspace_dir / f"{registry.registry_id}-git-sync"
 
+    def _managed_marker(self) -> Path:
+        """Path to the registry-managed marker file in the load directory."""
+        return self.load_dir / ".ainrf-registry"
+
     def is_installed(self) -> bool:
-        """Check if any skills from this registry are present in the load directory."""
-        if not self.load_dir.exists():
-            return False
-        for subdir in self.load_dir.iterdir():
-            if subdir.is_dir() and (subdir / "SKILL.md").exists():
-                return True
+        """Check if this registry has been installed in the load directory."""
+        marker = self._managed_marker()
+        if marker.exists():
+            return marker.read_text(encoding="utf-8").strip() == self.registry.registry_id
         return False
 
     def install(self) -> SkillRegistryStatus:
@@ -116,6 +118,9 @@ class SkillRegistrySyncService:
             source = source_root / skill_name
             is_core = skill_name in core_set
             self._sync_skill_dir(source, self.load_dir, is_core)
+
+        # Write marker file to identify this load_dir as managed by this registry
+        self._managed_marker().write_text(self.registry.registry_id, encoding="utf-8")
 
     def _find_skill_dirs(self, root: Path) -> list[str]:
         """Find all subdirectories under root that contain SKILL.md."""

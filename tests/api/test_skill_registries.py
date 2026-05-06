@@ -67,15 +67,14 @@ async def test_get_nonexistent_registry_returns_404(tmp_path: Path) -> None:
 
 @pytest.mark.anyio
 async def test_install_already_installed_returns_400(tmp_path: Path) -> None:
-    # Create a skill in the load dir to simulate installed state
+    # Create the registry marker file to simulate installed state
     skills_dir = tmp_path / "skills"
-    (skills_dir / "some-skill").mkdir(parents=True)
-    (skills_dir / "some-skill" / "SKILL.md").write_text("# Skill")
+    skills_dir.mkdir(parents=True)
+    (skills_dir / ".ainrf-registry").write_text("aris", encoding="utf-8")
 
     async with make_client(tmp_path, scan_roots=[tmp_path]) as client:
         response = await client.post("/skill-registries/aris/install")
 
-    # Since is_installed checks if ANY skill exists, this returns 400
     assert response.status_code == 400
     assert "already installed" in response.json()["detail"]
 

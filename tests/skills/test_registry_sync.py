@@ -98,13 +98,22 @@ class TestSkillRegistrySyncService:
         assert md_path.exists()
         assert md_path.read_text() == "# Content"
 
-    def test_is_installed_checks_load_dir(self, service: SkillRegistrySyncService, tmp_path: Path):
+    def test_is_installed_checks_marker_file(self, service: SkillRegistrySyncService, tmp_path: Path):
         assert not service.is_installed()
 
-        (tmp_path / "skills" / "some-skill").mkdir(parents=True)
-        (tmp_path / "skills" / "some-skill" / "SKILL.md").write_text("# X")
+        # Marker file with matching registry_id
+        marker = tmp_path / "skills" / ".ainrf-registry"
+        marker.parent.mkdir(parents=True)
+        marker.write_text("test-registry", encoding="utf-8")
 
         assert service.is_installed()
+
+    def test_is_installed_false_for_other_registry(self, service: SkillRegistrySyncService, tmp_path: Path):
+        marker = tmp_path / "skills" / ".ainrf-registry"
+        marker.parent.mkdir(parents=True)
+        marker.write_text("other-registry", encoding="utf-8")
+
+        assert not service.is_installed()
 
     @patch("ainrf.skills.registry_sync.subprocess.run")
     def test_check_update_detects_available_update(
