@@ -107,14 +107,14 @@ async def install_registry(request: Request, registry_id: str) -> SkillRegistryI
         )
 
     try:
-        status = service.install()
+        status, added, _removed = service.install()
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     return SkillRegistryInstallResponse(
         registry_id=config.registry_id,
         installed_count=status.installed_count,
-        skills=[],
+        skills=added,
     )
 
 
@@ -140,7 +140,7 @@ async def update_registry(
         raise HTTPException(status_code=400, detail=f"Registry '{registry_id}' is not installed")
 
     try:
-        service.update(force=payload.force)
+        _status, added, removed = service.update(force=payload.force)
     except DirtyWorktreeError as exc:
         raise HTTPException(
             status_code=409,
@@ -151,5 +151,7 @@ async def update_registry(
 
     return SkillRegistryUpdateResponse(
         registry_id=config.registry_id,
-        updated_count=0,
+        updated_count=len(added) + len(removed),
+        added=added,
+        removed=removed,
     )

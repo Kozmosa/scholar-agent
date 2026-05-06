@@ -179,7 +179,10 @@ class TestSkillRegistrySyncService:
         import shutil
         shutil.copytree(source_root, service.git_workspace / "skills")
 
-        service._sync_all()
+        added, removed = service._sync_all()
+
+        assert added == ["skill-a", "skill-b"]
+        assert removed == []
 
         manifest_path = tmp_path / "skills" / ".ainrf-registry-manifest.json"
         assert manifest_path.exists()
@@ -218,10 +221,36 @@ class TestSkillRegistrySyncService:
         import shutil
         shutil.copytree(source_root, service.git_workspace / "skills")
 
-        service._sync_all()
+        added, removed = service._sync_all()
 
         assert not (load_dir / "old-skill").exists()
         assert (load_dir / "keep-skill").exists()
+        assert added == []  # keep-skill was already in manifest
+        assert removed == ["old-skill"]
+
+    @patch("ainrf.skills.registry_sync.subprocess.run")
+    def test_update_falls_back_to_install_when_git_workspace_missing(
+        self, mock_run, service: SkillRegistrySyncService, tmp_path: Path
+    ):
+        """If git workspace is deleted but marker exists, update() re-clones."""
+        load_dir = tmp_path / "skills"
+        load_dir.mkdir(parents=True)
+        (load_dir / ".ainrf-registry").write_text("test-registry", encoding="utf-8")
+
+        def mock_clone(*args, **kwargs):
+            cmd = args[0]
+            if cmd[0] == "git" and "clone" in cmd:
+                dest = Path(cmd[-1])
+                (dest / "skills" / "test-skill").mkdir(parents=True)
+                (dest / "skills" / "test-skill" / "SKILL.md").write_text("# Test")
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        mock_run.side_effect = mock_clone
+
+        status, added, removed = service.update(force=False)
+
+        assert status.installed is True
+        assert "test-skill" in added
 
     def test_build_status_uses_manifest_for_count(self, service: SkillRegistrySyncService, tmp_path: Path):
         load_dir = tmp_path / "skills"

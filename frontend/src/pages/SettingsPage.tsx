@@ -709,7 +709,7 @@ function SkillRepositorySection({ availableSkills }: SkillRepositorySectionProps
         <Button onClick={() => setShowImport((current) => !current)}>
           {t('pages.settings.skillRepository.importSkill')}
         </Button>
-        {registriesQuery.data?.items.map((registry: SkillRegistryItem) => (
+        {(registriesQuery.data?.items ?? []).map((registry: SkillRegistryItem) => (
           <div key={registry.registry_id} className="flex items-center gap-2">
             {!registry.installed ? (
               <Button

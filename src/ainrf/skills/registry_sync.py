@@ -50,8 +50,12 @@ class SkillRegistrySyncService:
             return marker.read_text(encoding="utf-8").strip() == self.registry.registry_id
         return False
 
-    def install(self) -> SkillRegistryStatus:
-        """First-time install: clone repo and sync all skills."""
+    def install(self) -> tuple[SkillRegistryStatus, list[str], list[str]]:
+        """First-time install: clone repo and sync all skills.
+
+        Returns:
+            Tuple of (status, added_skill_names, removed_skill_names).
+        """
         if self.git_workspace.exists():
             shutil.rmtree(self.git_workspace)
 
@@ -68,12 +72,13 @@ class SkillRegistrySyncService:
             ],
             capture_output=True,
             text=True,
+            timeout=120,
         )
         if result.returncode != 0:
             raise RuntimeError(f"git clone failed: {result.stderr}")
 
-        self._sync_all()
-        return self._build_status()
+        added, removed = self._sync_all()
+        return self._build_status(), added, removed
 
     def check_update(self) -> SkillRegistryStatus:
         """Check if remote has newer commits. Does not modify anything."""
@@ -91,10 +96,19 @@ class SkillRegistrySyncService:
         status.is_dirty = is_dirty
         return status
 
-    def update(self, force: bool = False) -> SkillRegistryStatus:
-        """Pull latest and sync. Raises DirtyWorktreeError if dirty and not forced."""
+    def update(self, force: bool = False) -> tuple[SkillRegistryStatus, list[str], list[str]]:
+        """Pull latest and sync. Raises DirtyWorktreeError if dirty and not forced.
+
+        If the git workspace is missing (e.g. was manually deleted), re-clones
+        the repository before syncing.
+
+        Returns:
+            Tuple of (status, added_skill_names, removed_skill_names).
+        """
         if not self.git_workspace.exists():
-            raise RuntimeError("Registry not installed. Call install() first.")
+            # Git workspace missing but registry may still be "installed" in load_dir.
+            # Re-clone and re-sync to restore consistency.
+            return self.install()
 
         status = self.check_update()
         if status.is_dirty and not force:
@@ -108,11 +122,15 @@ class SkillRegistrySyncService:
         if pull_result.returncode != 0:
             raise RuntimeError(f"git pull failed: {pull_result.stderr}")
 
-        self._sync_all()
-        return self._build_status()
+        added, removed = self._sync_all()
+        return self._build_status(), added, removed
 
-    def _sync_all(self) -> None:
-        """Sync all skills from git workspace to load directory."""
+    def _sync_all(self) -> tuple[list[str], list[str]]:
+        """Sync all skills from git workspace to load directory.
+
+        Returns:
+            Tuple of (added_skill_names, removed_skill_names).
+        """
         source_root = self.git_workspace / self.registry.source_skills_path
         if not source_root.exists():
             raise RuntimeError(f"Source skills path not found: {source_root}")
@@ -135,7 +153,8 @@ class SkillRegistrySyncService:
         current_set = set(current_skills)
 
         # Remove skills that were previously synced but no longer exist in source
-        for orphaned in old_skills - current_set:
+        removed = old_skills - current_set
+        for orphaned in removed:
             orphaned_dir = self.load_dir / orphaned
             if orphaned_dir.exists():
                 shutil.rmtree(orphaned_dir)
@@ -151,6 +170,9 @@ class SkillRegistrySyncService:
             encoding="utf-8",
         )
         self._managed_marker().write_text(self.registry.registry_id, encoding="utf-8")
+
+        added = current_set - old_skills
+        return (sorted(added), sorted(removed))
 
     def _find_skill_dirs(self, root: Path) -> list[str]:
         """Find all subdirectories under root that contain SKILL.md."""
@@ -225,6 +247,7 @@ class SkillRegistrySyncService:
             ["git", "ls-remote", self.registry.git_url, self.registry.git_ref],
             capture_output=True,
             text=True,
+            timeout=30,
         )
         if result.returncode != 0 or not result.stdout:
             return None
