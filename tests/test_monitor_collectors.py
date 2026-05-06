@@ -24,8 +24,12 @@ class TestParseNvidiaSmi:
 
 class TestParsePsOutput:
     def test_parse_valid_output(self):
-        # 5th column is rss in KB (e.g. 10240 KB = 10 MB, 524288 KB = 512 MB)
-        stdout = "PID PPID COMM %CPU RSS ELAPSED\n1 0 systemd 0.1 10240 01:23:45\n100 1 ainrf 5.0 524288 00:10:30\n"
+        # Format: pid,ppid,pcpu,rss,etime,comm  (comm last, may contain spaces)
+        stdout = (
+            "PID PPID %CPU RSS ELAPSED COMM\n"
+            "1 0 0.1 10240 01:23:45 systemd\n"
+            "100 1 5.0 524288 00:10:30 ainrf\n"
+        )
         result = parse_ps_output(stdout)
         assert len(result) == 2
         assert result[0].pid == 1
@@ -34,6 +38,20 @@ class TestParsePsOutput:
         assert result[1].pid == 100
         assert result[1].cpu_percent == 5.0
         assert result[1].memory_mb == 512
+
+    def test_parse_comm_with_spaces(self):
+        # comm is the last column and may contain spaces
+        stdout = (
+            "PID PPID %CPU RSS ELAPSED COMM\n"
+            "1 0 0.1 10240 01:23:45 systemd\n"
+            "200 1 2.5 20480 00:05:00 code server\n"
+        )
+        result = parse_ps_output(stdout)
+        assert len(result) == 2
+        assert result[1].pid == 200
+        assert result[1].name == "code server"
+        assert result[1].cpu_percent == 2.5
+        assert result[1].memory_mb == 20
 
     def test_parse_empty_output(self):
         result = parse_ps_output("")

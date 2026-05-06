@@ -40,7 +40,7 @@ export default function ResourcesPage() {
             <SystemResourceCard snapshot={snapshot} />
             <AinrfProcessCard
               processes={snapshot.ainrf_processes}
-              environmentName={snapshot.environment_name}
+              environment_name={snapshot.environment_name}
             />
           </div>
         ))}

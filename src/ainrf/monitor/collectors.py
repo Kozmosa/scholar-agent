@@ -42,9 +42,11 @@ def parse_nvidia_smi_csv(stdout: str) -> list[GpuInfo]:
 
 
 def parse_ps_output(stdout: str) -> list[RawProcess]:
-    """Parse ``ps -eo pid,ppid,comm,pcpu,rss,etime`` output.
+    """Parse ``ps -eo pid,ppid,pcpu,rss,etime,comm`` output.
 
-    The ``rss`` column is resident set size in **KB**; it is converted to MB here.
+    ``comm`` is placed last because it may contain spaces. We parse the first
+    five fixed columns and join the remainder as the command name. The ``rss``
+    column is resident set size in **KB**; it is converted to MB here.
     """
     lines = [line.strip() for line in stdout.strip().split("\n") if line.strip()]
     if not lines:
@@ -63,10 +65,10 @@ def parse_ps_output(stdout: str) -> list[RawProcess]:
                 RawProcess(
                     pid=int(parts[0]),
                     ppid=int(parts[1]),
-                    name=parts[2],
-                    cpu_percent=float(parts[3]),
-                    memory_mb=int(parts[4]) // 1024,  # rss is in KB → convert to MB
-                    runtime_seconds=_parse_elapsed(parts[5]),
+                    cpu_percent=float(parts[2]),
+                    memory_mb=int(parts[3]) // 1024,  # rss is in KB → convert to MB
+                    runtime_seconds=_parse_elapsed(parts[4]),
+                    name=" ".join(parts[5:]),
                 )
             )
         except (ValueError, IndexError):
@@ -133,7 +135,7 @@ class LocalCollector:
 
     async def _collect_processes(self) -> list[RawProcess]:
         proc = await asyncio.create_subprocess_exec(
-            "ps", "-eo", "pid,ppid,comm,pcpu,rss,etime",
+            "ps", "-eo", "pid,ppid,pcpu,rss,etime,comm",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -191,7 +193,7 @@ class RemoteCollector:
 
         try:
             ps_result = await self._executor.run_command(
-                "ps -eo pid,ppid,comm,pcpu,rss,etime",
+                "ps -eo pid,ppid,pcpu,rss,etime,comm",
                 timeout=3,
             )
             if ps_result.exit_code == 0:

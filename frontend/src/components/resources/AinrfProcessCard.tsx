@@ -3,7 +3,7 @@ import { useT } from '../../i18n';
 
 interface AinrfProcessCardProps {
   processes: ProcessInfo[];
-  environmentName: string;
+  environment_name: string;
 }
 
 function formatRuntime(seconds: number): string {
@@ -19,13 +19,13 @@ function formatRuntime(seconds: number): string {
   return `${secs}s`;
 }
 
-export default function AinrfProcessCard({ processes, environmentName }: AinrfProcessCardProps) {
+export default function AinrfProcessCard({ processes, environment_name }: AinrfProcessCardProps) {
   const t = useT();
 
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
       <h3 className="mb-4 text-sm font-semibold">
-        {t('pages.resources.processCard.title')} — {environmentName}
+        {t('pages.resources.processCard.title')} — {environment_name}
       </h3>
 
       {processes.length === 0 ? (
