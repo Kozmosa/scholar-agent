@@ -391,7 +391,7 @@ export const getSkillRegistryStatus = (registryId: string): Promise<SkillRegistr
 export const installSkillRegistry = (registryId: string): Promise<SkillRegistryInstallResponse> =>
   USE_MOCK
     ? Promise.resolve({ registry_id: registryId, installed_count: 0, skills: [] })
-    : api.post<SkillRegistryInstallResponse>(`/skill-registries/${registryId}/install`);
+    : api.post<SkillRegistryInstallResponse>(`/skill-registries/${registryId}/install`, {});
 
 export const updateSkillRegistry = (
   registryId: string,
