@@ -515,3 +515,45 @@ export interface SkillImportResponse {
   label: string;
   path: string;
 }
+
+export interface GpuInfo {
+  index: number;
+  name: string;
+  utilizationPercent: number;
+  memoryUsedMB: number;
+  memoryTotalMB: number;
+}
+
+export interface CpuInfo {
+  percent: number;
+  coreCount: number;
+}
+
+export interface MemoryInfo {
+  usedMB: number;
+  totalMB: number;
+  percent: number;
+}
+
+export interface ProcessInfo {
+  pid: number;
+  name: string;
+  cpuPercent: number;
+  memoryMB: number;
+  runtimeSeconds: number;
+}
+
+export interface ResourceSnapshot {
+  environmentId: string;
+  environmentName: string;
+  timestamp: string;
+  status: "ok" | "degraded" | "unavailable";
+  gpus: GpuInfo[];
+  cpu: CpuInfo;
+  memory: MemoryInfo;
+  ainrfProcesses: ProcessInfo[];
+}
+
+export interface ResourcesResponse {
+  items: ResourceSnapshot[];
+}
