@@ -43,7 +43,7 @@ export default function AinrfProcessCard({ processes, environmentName }: AinrfPr
               </tr>
             </thead>
             <tbody>
-              {processes.map((proc) => (
+              {[...processes].sort((a, b) => b.cpuPercent - a.cpuPercent).map((proc) => (
                 <tr key={proc.pid} className="border-b border-[var(--border)]/50 last:border-0">
                   <td className="py-2 pr-4 font-mono">{proc.pid}</td>
                   <td className="py-2 pr-4">{proc.name}</td>
