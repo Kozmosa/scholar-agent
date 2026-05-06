@@ -32,6 +32,7 @@ import type {
 import { useLocale, useT } from '../i18n';
 import { useEnvironmentSelection } from '../components';
 import { useToast } from '../components/common';
+import { EnvironmentDetectionModal } from '../components/environment';
 import {
   buildEnvironmentRequest,
   buildProjectReferenceCreateRequest,
@@ -544,6 +545,7 @@ function EnvironmentsPage() {
   const [editorMode, setEditorMode] = useState<EnvironmentEditorMode>('create');
   const [editorEnvironmentId, setEditorEnvironmentId] = useState<string | null>(null);
   const [editorFormKey, setEditorFormKey] = useState(0);
+  const [selectedDetectionEnvironmentId, setSelectedDetectionEnvironmentId] = useState<string | null>(null);
 
   const environments = environmentSelection.environments ?? EMPTY_ENVIRONMENTS;
   const projectReferences = environmentSelection.projectReferences ?? EMPTY_PROJECT_REFS;
@@ -850,10 +852,13 @@ function EnvironmentsPage() {
                         <td className="px-4 py-4">
                           {detection ? (
                             <div className="space-y-1">
-                              <div className="text-sm font-medium text-[var(--text)]">
-                                {detectionStatusLabels[detection.status] ?? detection.status} ·{' '}
-                                {detection.summary}
-                              </div>
+                              <button
+                                type="button"
+                                className="text-sm font-medium text-[var(--apple-blue)] hover:underline"
+                                onClick={() => setSelectedDetectionEnvironmentId(environment.id)}
+                              >
+                                {detectionStatusLabels[detection.status] ?? detection.status}
+                              </button>
                               <div className="text-xs tracking-[-0.12px] text-[var(--text-tertiary)]">
                                 {t('pages.environments.detectedAt')}{' '}
                                 {formatTimestamp(detection.detected_at, locale, t('common.never'))}
@@ -973,6 +978,23 @@ function EnvironmentsPage() {
           />
         </div>
       </div>
+
+      {selectedDetectionEnvironmentId !== null ? (
+        (() => {
+          const env = environments.find(
+            (e) => e.id === selectedDetectionEnvironmentId
+          );
+          if (!env?.latest_detection) return null;
+          return (
+            <EnvironmentDetectionModal
+              detection={env.latest_detection}
+              environmentName={env.display_name}
+              isOpen={true}
+              onClose={() => setSelectedDetectionEnvironmentId(null)}
+            />
+          );
+        })()
+      ) : null}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { Globe, Package, Terminal, Cpu, HardDrive, Variable, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react';
 import { Modal, StatusDot, Alert } from '../ui';
+import { useT } from '../../i18n';
 import type { EnvironmentDetection } from '../../types';
 
 interface EnvironmentDetectionModalProps {
@@ -27,19 +28,14 @@ const statusBarBgColors: Record<EnvironmentDetection['status'], string> = {
   failed: 'bg-red-50',
 };
 
-const statusBarLabels: Record<EnvironmentDetection['status'], string> = {
-  success: '探测成功',
-  partial: '部分成功',
-  failed: '探测失败',
-};
-
 function ToolStatusRow({ label, tool }: { label: string; tool: EnvironmentDetection['python'] }) {
+  const t = useT();
   return (
     <div className="flex items-center justify-between py-1">
       <span className="text-sm text-[var(--text-secondary)]">{label}</span>
       <span className="inline-flex items-center gap-1.5 text-sm text-[var(--text)]">
         <StatusDot status={tool.available ? 'success' : 'error'} />
-        <span>{tool.available ? '可用' : '不可用'}</span>
+        <span>{tool.available ? t('components.environmentDetectionModal.status.available') : t('components.environmentDetectionModal.status.unavailable')}</span>
         {tool.version ? (
           <code className="rounded bg-[var(--bg-tertiary)] px-1.5 py-0.5 text-xs">{tool.version}</code>
         ) : null}
@@ -85,10 +81,17 @@ export default function EnvironmentDetectionModal({
   isOpen,
   onClose,
 }: EnvironmentDetectionModalProps) {
+  const t = useT();
   const statusColor = statusBarColors[detection.status];
   const statusTextColor = statusBarTextColors[detection.status];
   const statusBgColor = statusBarBgColors[detection.status];
-  const statusLabel = statusBarLabels[detection.status];
+
+  const statusLabelMap: Record<EnvironmentDetection['status'], string> = {
+    success: t('pages.environments.detectionStatus.success'),
+    partial: t('pages.environments.detectionStatus.partial'),
+    failed: t('pages.environments.detectionStatus.failed'),
+  };
+  const statusLabel = statusLabelMap[detection.status];
 
   const StatusIcon = detection.status === 'success' ? CheckCircle2 : detection.status === 'partial' ? AlertTriangle : XCircle;
 
@@ -96,7 +99,7 @@ export default function EnvironmentDetectionModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={`${environmentName} · 环境探测结果`}
+      title={`${environmentName} · ${t('pages.environments.detection')}`}
       size="xl"
     >
       <div className="space-y-4">
@@ -112,51 +115,51 @@ export default function EnvironmentDetectionModal({
 
         {/* Group cards */}
         <div className="grid gap-4 sm:grid-cols-2">
-          {/* 基本信息 */}
-          <GroupCard icon={<Globe size={16} />} title="基本信息">
-            <InfoRow label="SSH 状态" value={detection.ssh_ok ? '正常' : '失败'} />
-            <InfoRow label="主机名" value={detection.hostname} />
-            <InfoRow label="操作系统" value={detection.os_info} />
-            <InfoRow label="架构" value={detection.arch} />
+          {/* Basic Info */}
+          <GroupCard icon={<Globe size={16} />} title={t('components.environmentDetectionModal.groups.basicInfo')}>
+            <InfoRow label={t('components.environmentDetectionModal.labels.ssh')} value={detection.ssh_ok ? t('common.ok') : t('common.failed')} />
+            <InfoRow label={t('components.environmentDetectionModal.labels.hostname')} value={detection.hostname} />
+            <InfoRow label={t('components.environmentDetectionModal.labels.os')} value={detection.os_info} />
+            <InfoRow label={t('components.environmentDetectionModal.labels.arch')} value={detection.arch} />
             <InfoRow
-              label="工作目录"
-              value={detection.workdir_exists === null ? null : detection.workdir_exists ? '存在' : '不存在'}
+              label={t('components.environmentDetectionModal.labels.workdir')}
+              value={detection.workdir_exists === null ? null : detection.workdir_exists ? t('common.yes') : t('common.no')}
             />
           </GroupCard>
 
-          {/* Python 工具链 */}
-          <GroupCard icon={<Package size={16} />} title="Python 工具链">
-            <ToolStatusRow label="Python" tool={detection.python} />
-            <ToolStatusRow label="Conda" tool={detection.conda} />
-            <ToolStatusRow label="uv" tool={detection.uv} />
-            <ToolStatusRow label="pixi" tool={detection.pixi} />
+          {/* Python Toolchain */}
+          <GroupCard icon={<Package size={16} />} title={t('components.environmentDetectionModal.groups.pythonToolchain')}>
+            <ToolStatusRow label={t('components.environmentDetectionModal.labels.python')} tool={detection.python} />
+            <ToolStatusRow label={t('components.environmentDetectionModal.labels.conda')} tool={detection.conda} />
+            <ToolStatusRow label={t('components.environmentDetectionModal.labels.uv')} tool={detection.uv} />
+            <ToolStatusRow label={t('components.environmentDetectionModal.labels.pixi')} tool={detection.pixi} />
           </GroupCard>
 
-          {/* 开发工具 */}
-          <GroupCard icon={<Terminal size={16} />} title="开发工具">
-            <ToolStatusRow label="Code Server" tool={detection.code_server} />
-            <ToolStatusRow label="Claude CLI" tool={detection.claude_cli} />
+          {/* Dev Tools */}
+          <GroupCard icon={<Terminal size={16} />} title={t('components.environmentDetectionModal.groups.devTools')}>
+            <ToolStatusRow label={t('components.environmentDetectionModal.labels.codeServer')} tool={detection.code_server} />
+            <ToolStatusRow label={t('components.environmentDetectionModal.labels.claudeCli')} tool={detection.claude_cli} />
           </GroupCard>
 
-          {/* AI/ML 环境 */}
-          <GroupCard icon={<Cpu size={16} />} title="AI/ML 环境">
-            <ToolStatusRow label="PyTorch" tool={detection.torch} />
-            <ToolStatusRow label="CUDA" tool={detection.cuda} />
+          {/* AI / ML */}
+          <GroupCard icon={<Cpu size={16} />} title={t('components.environmentDetectionModal.groups.aiMl')}>
+            <ToolStatusRow label={t('components.environmentDetectionModal.labels.torch')} tool={detection.torch} />
+            <ToolStatusRow label={t('components.environmentDetectionModal.labels.cuda')} tool={detection.cuda} />
           </GroupCard>
 
-          {/* GPU 信息 */}
-          <GroupCard icon={<HardDrive size={16} />} title="GPU 信息">
-            <InfoRow label="GPU 数量" value={detection.gpu_count} />
+          {/* GPU Info */}
+          <GroupCard icon={<HardDrive size={16} />} title={t('components.environmentDetectionModal.groups.gpu')}>
+            <InfoRow label={t('components.environmentDetectionModal.labels.gpuCount')} value={detection.gpu_count} />
             <InfoRow
-              label="GPU 型号"
-              value={detection.gpu_models.length > 0 ? detection.gpu_models.join(', ') : '无'}
+              label={t('components.environmentDetectionModal.labels.gpuModels')}
+              value={detection.gpu_models.length > 0 ? detection.gpu_models.join(', ') : t('common.no')}
             />
           </GroupCard>
 
-          {/* 环境变量 */}
-          <GroupCard icon={<Variable size={16} />} title="环境变量">
+          {/* Environment Variables */}
+          <GroupCard icon={<Variable size={16} />} title={t('components.environmentDetectionModal.groups.envVars')}>
             <div className="flex items-center justify-between py-1">
-              <span className="text-sm text-[var(--text-secondary)]">Anthropic 环境</span>
+              <span className="text-sm text-[var(--text-secondary)]">{t('components.environmentDetectionModal.labels.anthropic')}</span>
               <span className="inline-flex items-center gap-1.5 text-sm text-[var(--text)]">
                 <StatusDot
                   status={
@@ -169,10 +172,10 @@ export default function EnvironmentDetectionModal({
                 />
                 <span>
                   {detection.anthropic_env === 'present'
-                    ? '已配置'
+                    ? t('components.environmentDetectionModal.status.present')
                     : detection.anthropic_env === 'missing'
-                      ? '未配置'
-                      : '未知'}
+                      ? t('components.environmentDetectionModal.status.missing')
+                      : t('components.environmentDetectionModal.status.unknown')}
                 </span>
               </span>
             </div>
