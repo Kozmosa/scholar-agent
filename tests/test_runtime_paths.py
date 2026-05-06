@@ -14,7 +14,7 @@ def test_runtime_path_config_uses_startup_cwd_for_default_workspace() -> None:
 
     assert paths.startup_cwd == startup_cwd
     assert paths.workspace_root == startup_cwd / "workspace"
-    assert paths.default_workspace_dir == startup_cwd / "workspace" / "default"
+    assert paths.default_workspace_dir == Path.home() / ".ainrf_workspaces" / "default"
 
 
 def test_runtime_path_config_defaults_to_current_working_directory(
@@ -25,4 +25,4 @@ def test_runtime_path_config_defaults_to_current_working_directory(
     paths = build_runtime_path_config()
 
     assert paths.startup_cwd == tmp_path.resolve()
-    assert paths.default_workspace_dir == tmp_path.resolve() / "workspace" / "default"
+    assert paths.default_workspace_dir == Path.home() / ".ainrf_workspaces" / "default"
