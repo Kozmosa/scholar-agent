@@ -102,7 +102,9 @@ async def install_registry(request: Request, registry_id: str) -> SkillRegistryI
     )
 
     if service.is_installed():
-        raise HTTPException(status_code=400, detail=f"Registry '{registry_id}' is already installed")
+        raise HTTPException(
+            status_code=400, detail=f"Registry '{registry_id}' is already installed"
+        )
 
     try:
         status = service.install()

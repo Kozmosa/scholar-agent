@@ -36,7 +36,9 @@ class TestSkillRegistrySyncService:
     def test_git_workspace_path(self, service: SkillRegistrySyncService, tmp_path: Path):
         assert service.git_workspace == tmp_path / "test-registry-git-sync"
 
-    def test_find_skill_dirs_finds_direct_children(self, service: SkillRegistrySyncService, tmp_path: Path):
+    def test_find_skill_dirs_finds_direct_children(
+        self, service: SkillRegistrySyncService, tmp_path: Path
+    ):
         skills_root = tmp_path / "skills"
         (skills_root / "skill-a").mkdir(parents=True)
         (skills_root / "skill-a" / "SKILL.md").write_text("# Skill A")
@@ -47,7 +49,9 @@ class TestSkillRegistrySyncService:
         dirs = list(service._find_skill_dirs(skills_root))
         assert sorted(dirs) == ["skill-a", "skill-b"]
 
-    def test_find_skill_dirs_skips_dirs_without_skill_md(self, service: SkillRegistrySyncService, tmp_path: Path):
+    def test_find_skill_dirs_skips_dirs_without_skill_md(
+        self, service: SkillRegistrySyncService, tmp_path: Path
+    ):
         skills_root = tmp_path / "skills"
         (skills_root / "empty-dir").mkdir(parents=True)
         (skills_root / "valid").mkdir(parents=True)
@@ -56,7 +60,9 @@ class TestSkillRegistrySyncService:
         dirs = list(service._find_skill_dirs(skills_root))
         assert dirs == ["valid"]
 
-    def test_sync_skill_generates_skill_json(self, service: SkillRegistrySyncService, tmp_path: Path):
+    def test_sync_skill_generates_skill_json(
+        self, service: SkillRegistrySyncService, tmp_path: Path
+    ):
         source = tmp_path / "source" / "my-skill"
         source.mkdir(parents=True)
         source.joinpath("SKILL.md").write_text(
@@ -74,9 +80,7 @@ class TestSkillRegistrySyncService:
     def test_sync_skill_core_uses_auto(self, service: SkillRegistrySyncService, tmp_path: Path):
         source = tmp_path / "source" / "core-skill"
         source.mkdir(parents=True)
-        source.joinpath("SKILL.md").write_text(
-            "---\nname: core-skill\n---\n\n# Core"
-        )
+        source.joinpath("SKILL.md").write_text("---\nname: core-skill\n---\n\n# Core")
 
         service._sync_skill_dir(source, tmp_path / "skills", is_core=True)
 
@@ -103,7 +107,9 @@ class TestSkillRegistrySyncService:
         assert service.is_installed()
 
     @patch("ainrf.skills.registry_sync.subprocess.run")
-    def test_check_update_detects_available_update(self, mock_run, service: SkillRegistrySyncService, tmp_path: Path):
+    def test_check_update_detects_available_update(
+        self, mock_run, service: SkillRegistrySyncService, tmp_path: Path
+    ):
         service.git_workspace.mkdir(parents=True)
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout="abc123\trefs/heads/main\n"),
@@ -119,7 +125,9 @@ class TestSkillRegistrySyncService:
         assert status.is_dirty is False
 
     @patch("ainrf.skills.registry_sync.subprocess.run")
-    def test_check_update_detects_dirty(self, mock_run, service: SkillRegistrySyncService, tmp_path: Path):
+    def test_check_update_detects_dirty(
+        self, mock_run, service: SkillRegistrySyncService, tmp_path: Path
+    ):
         service.git_workspace.mkdir(parents=True)
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout="abc123\trefs/heads/main\n"),
@@ -133,7 +141,9 @@ class TestSkillRegistrySyncService:
         assert status.is_dirty is True
 
     @patch("ainrf.skills.registry_sync.subprocess.run")
-    def test_update_raises_when_dirty_and_not_forced(self, mock_run, service: SkillRegistrySyncService, tmp_path: Path):
+    def test_update_raises_when_dirty_and_not_forced(
+        self, mock_run, service: SkillRegistrySyncService, tmp_path: Path
+    ):
         service.git_workspace.mkdir(parents=True)
         (tmp_path / "skills" / "x").mkdir(parents=True)
         (tmp_path / "skills" / "x" / "SKILL.md").write_text("# X")

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import pytest
 
 from ainrf.skills.json_generator import generate_skill_json, parse_skill_md_frontmatter
 

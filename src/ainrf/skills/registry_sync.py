@@ -6,7 +6,6 @@ import json
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Any
 
 from ainrf.skills.json_generator import generate_skill_json, parse_skill_md_frontmatter
 from ainrf.skills.registry_models import SkillRegistryConfig, SkillRegistryStatus
@@ -49,8 +48,16 @@ class SkillRegistrySyncService:
             shutil.rmtree(self.git_workspace)
 
         result = subprocess.run(
-            ["git", "clone", "--depth", "1", "--branch", self.registry.git_ref,
-             self.registry.git_url, str(self.git_workspace)],
+            [
+                "git",
+                "clone",
+                "--depth",
+                "1",
+                "--branch",
+                self.registry.git_ref,
+                self.registry.git_url,
+                str(self.git_workspace),
+            ],
             capture_output=True,
             text=True,
         )
@@ -142,8 +149,7 @@ class SkillRegistrySyncService:
         installed_count = 0
         if self.load_dir.exists():
             installed_count = sum(
-                1 for d in self.load_dir.iterdir()
-                if d.is_dir() and (d / "SKILL.md").exists()
+                1 for d in self.load_dir.iterdir() if d.is_dir() and (d / "SKILL.md").exists()
             )
 
         return SkillRegistryStatus(

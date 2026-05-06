@@ -27,7 +27,7 @@ def parse_skill_md_frontmatter(content: str) -> dict[str, Any]:
     if not end_match:
         return {}
 
-    yaml_block = content[start:end_match.start()]
+    yaml_block = content[start : end_match.start()]
     if not yaml_block.strip():
         return {}
 
