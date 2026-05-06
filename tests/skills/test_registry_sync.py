@@ -166,3 +166,91 @@ class TestSkillRegistrySyncService:
 
         with pytest.raises(DirtyWorktreeError):
             service.update(force=False)
+
+    def test_sync_all_writes_manifest(self, service: SkillRegistrySyncService, tmp_path: Path):
+        source_root = tmp_path / "source" / "skills"
+        (source_root / "skill-a").mkdir(parents=True)
+        (source_root / "skill-a" / "SKILL.md").write_text("# A")
+        (source_root / "skill-b").mkdir(parents=True)
+        (source_root / "skill-b" / "SKILL.md").write_text("# B")
+
+        # Fake a git workspace
+        service.git_workspace.mkdir(parents=True)
+        import shutil
+        shutil.copytree(source_root, service.git_workspace / "skills")
+
+        service._sync_all()
+
+        manifest_path = tmp_path / "skills" / ".ainrf-registry-manifest.json"
+        assert manifest_path.exists()
+        manifest = json.loads(manifest_path.read_text())
+        assert manifest["registry_id"] == "test-registry"
+        assert sorted(manifest["skills"]) == ["skill-a", "skill-b"]
+        assert "synced_at" in manifest
+
+    def test_sync_all_removes_orphaned_skills(self, service: SkillRegistrySyncService, tmp_path: Path):
+        load_dir = tmp_path / "skills"
+        load_dir.mkdir(parents=True)
+
+        # Write old manifest with skill that no longer exists in source
+        old_manifest = {
+            "registry_id": "test-registry",
+            "skills": ["old-skill", "keep-skill"],
+            "synced_at": "2024-01-01T00:00:00",
+        }
+        (load_dir / ".ainrf-registry-manifest.json").write_text(
+            json.dumps(old_manifest), encoding="utf-8"
+        )
+        (load_dir / ".ainrf-registry").write_text("test-registry", encoding="utf-8")
+
+        # Create both skills in load dir
+        (load_dir / "old-skill").mkdir()
+        (load_dir / "old-skill" / "SKILL.md").write_text("# Old")
+        (load_dir / "keep-skill").mkdir()
+        (load_dir / "keep-skill" / "SKILL.md").write_text("# Keep")
+
+        # Source only has keep-skill
+        source_root = tmp_path / "source" / "skills"
+        (source_root / "keep-skill").mkdir(parents=True)
+        (source_root / "keep-skill" / "SKILL.md").write_text("# Keep")
+
+        service.git_workspace.mkdir(parents=True)
+        import shutil
+        shutil.copytree(source_root, service.git_workspace / "skills")
+
+        service._sync_all()
+
+        assert not (load_dir / "old-skill").exists()
+        assert (load_dir / "keep-skill").exists()
+
+    def test_build_status_uses_manifest_for_count(self, service: SkillRegistrySyncService, tmp_path: Path):
+        load_dir = tmp_path / "skills"
+        load_dir.mkdir(parents=True)
+
+        # Write manifest with 2 skills
+        manifest = {
+            "registry_id": "test-registry",
+            "skills": ["a", "b"],
+            "synced_at": "2024-01-01T00:00:00",
+        }
+        (load_dir / ".ainrf-registry-manifest.json").write_text(
+            json.dumps(manifest), encoding="utf-8"
+        )
+        (load_dir / ".ainrf-registry").write_text("test-registry", encoding="utf-8")
+
+        # Add a manually imported skill (not in manifest)
+        (load_dir / "manual").mkdir()
+        (load_dir / "manual" / "SKILL.md").write_text("# Manual")
+
+        status = service._build_status()
+        assert status.installed_count == 2
+        assert status.installed is True
+
+    def test_build_status_sets_last_sync_at_from_marker(self, service: SkillRegistrySyncService, tmp_path: Path):
+        load_dir = tmp_path / "skills"
+        load_dir.mkdir(parents=True)
+        (load_dir / ".ainrf-registry").write_text("test-registry", encoding="utf-8")
+
+        status = service._build_status()
+        assert status.last_sync_at is not None
+        assert status.installed is True

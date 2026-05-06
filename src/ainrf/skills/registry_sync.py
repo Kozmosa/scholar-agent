@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from ainrf.skills.json_generator import generate_skill_json, parse_skill_md_frontmatter
 from ainrf.skills.registry_models import SkillRegistryConfig, SkillRegistryStatus
@@ -36,6 +38,10 @@ class SkillRegistrySyncService:
     def _managed_marker(self) -> Path:
         """Path to the registry-managed marker file in the load directory."""
         return self.load_dir / ".ainrf-registry"
+
+    def _manifest_path(self) -> Path:
+        """Path to the sync manifest file tracking skills installed by this registry."""
+        return self.load_dir / ".ainrf-registry-manifest.json"
 
     def is_installed(self) -> bool:
         """Check if this registry has been installed in the load directory."""
@@ -112,14 +118,38 @@ class SkillRegistrySyncService:
             raise RuntimeError(f"Source skills path not found: {source_root}")
 
         self.load_dir.mkdir(parents=True, exist_ok=True)
+
+        # Read previous manifest to detect removed skills
+        old_manifest = self._read_manifest()
+        old_skills = set(old_manifest.get("skills", []))
+
+        current_skills: list[str] = []
         core_set = set(self.registry.core_skill_ids)
 
         for skill_name in self._find_skill_dirs(source_root):
             source = source_root / skill_name
             is_core = skill_name in core_set
             self._sync_skill_dir(source, self.load_dir, is_core)
+            current_skills.append(skill_name)
 
-        # Write marker file to identify this load_dir as managed by this registry
+        current_set = set(current_skills)
+
+        # Remove skills that were previously synced but no longer exist in source
+        for orphaned in old_skills - current_set:
+            orphaned_dir = self.load_dir / orphaned
+            if orphaned_dir.exists():
+                shutil.rmtree(orphaned_dir)
+
+        # Write manifest and marker
+        manifest = {
+            "registry_id": self.registry.registry_id,
+            "skills": current_skills,
+            "synced_at": datetime.now().isoformat(),
+        }
+        self._manifest_path().write_text(
+            json.dumps(manifest, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
         self._managed_marker().write_text(self.registry.registry_id, encoding="utf-8")
 
     def _find_skill_dirs(self, root: Path) -> list[str]:
@@ -149,18 +179,38 @@ class SkillRegistrySyncService:
         )
         shutil.copy2(skill_md_path, dest / "SKILL.md")
 
+    def _read_manifest(self) -> dict[str, Any]:
+        """Read the sync manifest if it exists."""
+        path = self._manifest_path()
+        if not path.exists():
+            return {}
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return data
+        except (json.JSONDecodeError, OSError):
+            pass
+        return {}
+
     def _build_status(self) -> SkillRegistryStatus:
         """Build current status from filesystem."""
-        installed_count = 0
-        if self.load_dir.exists():
-            installed_count = sum(
-                1 for d in self.load_dir.iterdir() if d.is_dir() and (d / "SKILL.md").exists()
-            )
+        manifest = self._read_manifest()
+        installed_count = len(manifest.get("skills", []))
+
+        last_sync_at = None
+        marker = self._managed_marker()
+        if marker.exists():
+            try:
+                mtime = marker.stat().st_mtime
+                last_sync_at = datetime.fromtimestamp(mtime)
+            except OSError:
+                pass
 
         return SkillRegistryStatus(
             registry_id=self.registry.registry_id,
             installed=self.is_installed(),
             installed_count=installed_count,
+            last_sync_at=last_sync_at,
         )
 
     def _git_run(self, args: list[str]) -> subprocess.CompletedProcess[str]:
