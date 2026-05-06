@@ -492,7 +492,8 @@ async def test_localhost_environment_detect_uses_personal_tmux_directly(
     assert detection["ssh_ok"] is False
     assert detection["warnings"] == ["ssh_unavailable", "used_personal_tmux_fallback"]
     assert "localhost_seed_unreachable" not in detection["errors"]
-    assert ensured == [("browser-user", "env-localhost", str(Path.home() / ".ainrf_workspaces" / "default"))]
+    expected_workdir = str(Path.home() / ".ainrf_workspaces" / "default")
+    assert ensured == [("browser-user", "env-localhost", expected_workdir)]
     assert tmux_commands
 
 
