@@ -42,21 +42,6 @@ export default function Modal({
     }
   }, [isOpen]);
 
-  // Handle escape key
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        handleClose();
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen]);
 
   const handleClose = useCallback(() => {
     setIsClosing(true);
@@ -90,7 +75,6 @@ export default function Modal({
     <div
       className={`fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45 transition-opacity duration-150 ${backdropOpacity}`}
       onClick={handleBackdropClick}
-      onTransitionEnd={handleTransitionEnd}
       role="presentation"
     >
       <div
@@ -100,6 +84,13 @@ export default function Modal({
         aria-modal="true"
         aria-labelledby={title ? 'modal-title' : undefined}
         onClick={(e) => e.stopPropagation()}
+        onTransitionEnd={handleTransitionEnd}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            handleClose();
+          }
+        }}
+        tabIndex={-1}
       >
         {title !== null && (
           <div className="flex items-center justify-between border-b border-[var(--border)] px-6 py-4">
