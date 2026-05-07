@@ -392,18 +392,22 @@ export default function TaskCreateForm({
       ) : selectedTaskConfiguration?.mode === 'reproduce_baseline' ? (
         <div className="space-y-3 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)]/40 p-3">
           <label className="block space-y-2">
-            <span className="text-xs font-medium text-[var(--text-secondary)]">Paper path</span>
+            <span className="text-xs font-medium text-[var(--text-secondary)]">
+              {t('pages.tasks.paperPathLabel')}
+            </span>
             <Input
-              aria-label="Paper path"
+              aria-label={t('pages.tasks.paperPathLabel')}
               value={draft.paperPath}
               onChange={(e) => setDraft((c) => ({ ...c, paperPath: e.target.value }))}
-              placeholder="papers/target.pdf"
+              placeholder={t('pages.tasks.paperPathPlaceholder')}
             />
           </label>
           <label className="block space-y-2">
-            <span className="text-xs font-medium text-[var(--text-secondary)]">Scope</span>
+            <span className="text-xs font-medium text-[var(--text-secondary)]">
+              {t('pages.tasks.scopeLabel')}
+            </span>
             <Select
-              aria-label="Scope"
+              aria-label={t('pages.tasks.scopeLabel')}
               value={draft.scope}
               onChange={(e) => setDraft((c) => ({ ...c, scope: e.target.value }))}
             >
@@ -412,20 +416,25 @@ export default function TaskCreateForm({
             </Select>
           </label>
           <label className="block space-y-2">
-            <span className="text-xs font-medium text-[var(--text-secondary)]">Target table (optional)</span>
+            <span className="text-xs font-medium text-[var(--text-secondary)]">
+              {t('pages.tasks.targetTableLabel')}
+            </span>
             <Input
-              aria-label="Target table"
+              aria-label={t('pages.tasks.targetTableLabel')}
               value={draft.targetTable}
               onChange={(e) => setDraft((c) => ({ ...c, targetTable: e.target.value }))}
-              placeholder="Table3"
+              placeholder={t('pages.tasks.targetTablePlaceholder')}
             />
           </label>
           <label className="block space-y-2">
-            <span className="text-xs font-medium text-[var(--text-secondary)]">Budget (hours)</span>
+            <span className="text-xs font-medium text-[var(--text-secondary)]">
+              {t('pages.tasks.budgetHoursLabel')}
+            </span>
             <Input
-              aria-label="Budget hours"
+              aria-label={t('pages.tasks.budgetHoursLabel')}
               type="number"
               min={1}
+              step={1}
               value={String(draft.budgetHours)}
               onChange={(e) => setDraft((c) => ({ ...c, budgetHours: Number(e.target.value) || 4 }))}
             />
@@ -434,41 +443,51 @@ export default function TaskCreateForm({
       ) : selectedTaskConfiguration?.mode === 'discover_ideas' ? (
         <div className="space-y-3 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)]/40 p-3">
           <label className="block space-y-2">
-            <span className="text-xs font-medium text-[var(--text-secondary)]">Research topic</span>
+            <span className="text-xs font-medium text-[var(--text-secondary)]">
+              {t('pages.tasks.researchTopicLabel')}
+            </span>
             <Textarea
-              aria-label="Research topic"
+              aria-label={t('pages.tasks.researchTopicLabel')}
               value={draft.topic}
               onChange={(e) => setDraft((c) => ({ ...c, topic: e.target.value }))}
               className="min-h-20"
-              placeholder="Graph neural networks for drug discovery"
+              placeholder={t('pages.tasks.researchTopicPlaceholder')}
             />
           </label>
           <label className="block space-y-2">
-            <span className="text-xs font-medium text-[var(--text-secondary)]">Seed paper path (optional)</span>
+            <span className="text-xs font-medium text-[var(--text-secondary)]">
+              {t('pages.tasks.seedPaperPathLabel')}
+            </span>
             <Input
-              aria-label="Seed paper path"
+              aria-label={t('pages.tasks.seedPaperPathLabel')}
               value={draft.seedPaperPath}
               onChange={(e) => setDraft((c) => ({ ...c, seedPaperPath: e.target.value }))}
-              placeholder="papers/seed.pdf"
+              placeholder={t('pages.tasks.seedPaperPathPlaceholder')}
             />
           </label>
           <label className="block space-y-2">
-            <span className="text-xs font-medium text-[var(--text-secondary)]">Depth</span>
+            <span className="text-xs font-medium text-[var(--text-secondary)]">
+              {t('pages.tasks.depthLabel')}
+            </span>
             <Input
-              aria-label="Depth"
+              aria-label={t('pages.tasks.depthLabel')}
               type="number"
               min={1}
               max={10}
+              step={1}
               value={String(draft.depth)}
               onChange={(e) => setDraft((c) => ({ ...c, depth: Number(e.target.value) || 3 }))}
             />
           </label>
           <label className="block space-y-2">
-            <span className="text-xs font-medium text-[var(--text-secondary)]">Budget (hours)</span>
+            <span className="text-xs font-medium text-[var(--text-secondary)]">
+              {t('pages.tasks.budgetHoursLabel')}
+            </span>
             <Input
-              aria-label="Budget hours"
+              aria-label={t('pages.tasks.budgetHoursLabel')}
               type="number"
               min={1}
+              step={1}
               value={String(draft.budgetHours)}
               onChange={(e) => setDraft((c) => ({ ...c, budgetHours: Number(e.target.value) || 4 }))}
             />
@@ -477,19 +496,23 @@ export default function TaskCreateForm({
       ) : selectedTaskConfiguration?.mode === 'validate_ideas' ? (
         <div className="space-y-3 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)]/40 p-3">
           <label className="block space-y-2">
-            <span className="text-xs font-medium text-[var(--text-secondary)]">Idea source</span>
+            <span className="text-xs font-medium text-[var(--text-secondary)]">
+              {t('pages.tasks.ideaSourceLabel')}
+            </span>
             <Textarea
-              aria-label="Idea source"
+              aria-label={t('pages.tasks.ideaSourceLabel')}
               value={draft.ideaSource}
               onChange={(e) => setDraft((c) => ({ ...c, ideaSource: e.target.value }))}
               className="min-h-20"
-              placeholder="Path to idea doc in workspace, or describe your idea here"
+              placeholder={t('pages.tasks.ideaSourcePlaceholder')}
             />
           </label>
           <label className="block space-y-2">
-            <span className="text-xs font-medium text-[var(--text-secondary)]">Validation scope</span>
+            <span className="text-xs font-medium text-[var(--text-secondary)]">
+              {t('pages.tasks.validationScopeLabel')}
+            </span>
             <Select
-              aria-label="Validation scope"
+              aria-label={t('pages.tasks.validationScopeLabel')}
               value={draft.validationScope}
               onChange={(e) => setDraft((c) => ({ ...c, validationScope: e.target.value }))}
             >
@@ -498,11 +521,14 @@ export default function TaskCreateForm({
             </Select>
           </label>
           <label className="block space-y-2">
-            <span className="text-xs font-medium text-[var(--text-secondary)]">Budget (hours)</span>
+            <span className="text-xs font-medium text-[var(--text-secondary)]">
+              {t('pages.tasks.budgetHoursLabel')}
+            </span>
             <Input
-              aria-label="Budget hours"
+              aria-label={t('pages.tasks.budgetHoursLabel')}
               type="number"
               min={1}
+              step={1}
               value={String(draft.budgetHours)}
               onChange={(e) => setDraft((c) => ({ ...c, budgetHours: Number(e.target.value) || 4 }))}
             />

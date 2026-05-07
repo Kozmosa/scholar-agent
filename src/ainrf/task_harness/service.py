@@ -950,7 +950,11 @@ def _normalize_task_configuration(
 ) -> TaskConfigurationSnapshot:
     if payload is None:
         return raw_prompt_configuration(legacy_task_input)
-    mode = TaskConfigurationMode(str(payload.get("mode", TaskConfigurationMode.RAW_PROMPT.value)))
+    mode_raw = str(payload.get("mode", TaskConfigurationMode.RAW_PROMPT.value))
+    try:
+        mode = TaskConfigurationMode(mode_raw)
+    except ValueError as exc:
+        raise TaskHarnessError(f"Unsupported task configuration mode: {mode_raw}") from exc
     if mode == TaskConfigurationMode.RAW_PROMPT:
         raw_prompt = str(payload.get("raw_prompt") or legacy_task_input)
         return raw_prompt_configuration(raw_prompt)
@@ -1048,8 +1052,12 @@ def _render_validate_ideas_prompt(template_vars: dict[str, object]) -> str:
 
 
 def _as_int(value: object, *, default: int) -> int:
+    if isinstance(value, bool):
+        return default
     if isinstance(value, int):
         return value
+    if isinstance(value, float):
+        return int(value)
     try:
         return int(str(value)) if value is not None else default
     except (ValueError, TypeError):

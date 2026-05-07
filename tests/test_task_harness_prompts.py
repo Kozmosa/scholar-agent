@@ -106,3 +106,27 @@ def test_check_aris_skills_fails_when_skills_missing(tmp_path: Path) -> None:
 def test_check_aris_skills_ignores_non_aris_modes(tmp_path: Path) -> None:
     _check_aris_skills(TaskConfigurationMode.RAW_PROMPT, tmp_path)
     _check_aris_skills(TaskConfigurationMode.STRUCTURED_RESEARCH, tmp_path)
+
+
+def test_as_int_handles_float() -> None:
+    from ainrf.task_harness.service import _as_int
+
+    assert _as_int(3.7, default=4) == 3
+    assert _as_int(3.0, default=4) == 3
+
+
+def test_as_int_rejects_bool() -> None:
+    from ainrf.task_harness.service import _as_int
+
+    assert _as_int(True, default=4) == 4
+    assert _as_int(False, default=4) == 4
+
+
+def test_normalize_task_configuration_rejects_invalid_mode() -> None:
+    from ainrf.task_harness.service import _normalize_task_configuration
+
+    with pytest.raises(TaskHarnessError, match="Unsupported task configuration mode"):
+        _normalize_task_configuration(
+            "legacy",
+            {"mode": "invalid_mode", "template_vars": {}},
+        )
