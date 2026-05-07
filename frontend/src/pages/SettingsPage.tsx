@@ -57,7 +57,6 @@ interface EnvironmentDefaultsCardProps {
 interface TaskConfigurationSectionProps {
   taskConfiguration: TaskConfigurationSettings;
   availableSkills: SkillItem[];
-  onSaveResearchAgentProfile: (profile: ResearchAgentProfileSettings) => void;
   onSaveTaskConfigurationSettings: (settings: TaskConfigurationSettings) => void;
   onResetTaskConfigurationSettings: () => void;
 }
@@ -232,7 +231,6 @@ function GeneralPreferencesSection({
 function TaskConfigurationSection({
   taskConfiguration,
   availableSkills,
-  onSaveResearchAgentProfile,
   onSaveTaskConfigurationSettings,
   onResetTaskConfigurationSettings,
 }: TaskConfigurationSectionProps) {
@@ -394,9 +392,16 @@ function TaskConfigurationSection({
         </Button>
         <Button
           onClick={() => {
-            onSaveResearchAgentProfile(profileDraft);
+            const nextProfiles = taskConfiguration.researchAgentProfiles.some(
+              (p) => p.profileId === profileDraft.profileId
+            )
+              ? taskConfiguration.researchAgentProfiles.map((p) =>
+                  p.profileId === profileDraft.profileId ? profileDraft : p
+                )
+              : [...taskConfiguration.researchAgentProfiles, profileDraft];
             onSaveTaskConfigurationSettings({
               ...taskConfiguration,
+              researchAgentProfiles: nextProfiles,
               defaultResearchAgentProfileId: defaultProfileId,
               defaultTaskConfigurationId: defaultConfigId,
             });
@@ -1000,7 +1005,6 @@ function SettingsPage() {
     resetGeneralPreferences,
     saveTaskConfigurationSettings,
     resetTaskConfigurationSettings,
-    saveResearchAgentProfile,
     saveProjectDefaultEnvironment,
     saveProjectDefaultWorkspace,
     saveProjectEnvironmentDefaults,
@@ -1079,7 +1083,6 @@ function SettingsPage() {
         <TaskConfigurationSection
           taskConfiguration={settings.taskConfiguration}
           availableSkills={availableSkills}
-          onSaveResearchAgentProfile={saveResearchAgentProfile}
           onSaveTaskConfigurationSettings={saveTaskConfigurationSettings}
           onResetTaskConfigurationSettings={resetTaskConfigurationSettings}
         />
