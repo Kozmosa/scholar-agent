@@ -103,20 +103,34 @@ function normalizeTaskConfigurationSettings(
             .map((s) => s.trim())
             .filter((s) => s.length > 0);
         }
+
+        // Normalize skillModes
         let skillModes: Record<string, 'disabled' | 'enabled' | 'auto'> = {};
         if (isRecord(item.skillModes)) {
-          for (const [k, v] of Object.entries(item.skillModes)) {
-            if (v === 'disabled' || v === 'enabled' || v === 'auto') {
-              skillModes[k] = v;
+          for (const [skillId, mode] of Object.entries(item.skillModes)) {
+            if (mode === 'disabled' || mode === 'enabled' || mode === 'auto') {
+              skillModes[skillId] = mode;
             }
           }
+        } else {
+          // Migrate from old skills[] array
+          hadFallback = true;
+          for (const skillId of skills) {
+            skillModes[skillId] = 'enabled';
+          }
         }
+
+        // Derive skills from skillModes for backward compatibility
+        const derivedSkills = Object.entries(skillModes)
+          .filter(([, mode]) => mode === 'enabled')
+          .map(([skillId]) => skillId);
+
         return [
           {
             profileId: item.profileId,
             label: item.label,
             systemPrompt: typeof item.systemPrompt === 'string' ? item.systemPrompt : '',
-            skills,
+            skills: derivedSkills.length > 0 ? derivedSkills : skills,
             skillModes,
             skillsPrompt,
             settingsJson: typeof item.settingsJson === 'string' ? item.settingsJson : '',
