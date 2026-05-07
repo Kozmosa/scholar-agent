@@ -2,16 +2,19 @@ import { useDraggable, useDroppable } from '@dnd-kit/core';
 import type { CardKind } from '../../hooks/useCardLayout';
 
 interface Props {
+  id: string;
   kind: CardKind;
   children: React.ReactNode;
 }
 
-export default function DraggableResourceCard({ kind, children }: Props) {
+export default function DraggableResourceCard({ id, kind, children }: Props) {
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
-    id: kind,
+    id,
+    data: { kind },
   });
   const { setNodeRef: setDropRef } = useDroppable({
-    id: kind,
+    id,
+    data: { kind },
   });
 
   const style: React.CSSProperties = {

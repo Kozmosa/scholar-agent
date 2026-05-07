@@ -56,13 +56,21 @@ export default function ResourcesPage() {
       <DndContext sensors={sensors} onDragEnd={(event) => {
         const { active, over } = event;
         if (over && active.id !== over.id) {
-          swapCards(active.id as CardKind, over.id as CardKind);
+          const activeKind = (active.data.current as { kind?: CardKind } | undefined)?.kind;
+          const overKind = (over.data.current as { kind?: CardKind } | undefined)?.kind;
+          if (activeKind && overKind) {
+            swapCards(activeKind, overKind);
+          }
         }
       }}>
         {snapshots.map((snapshot) => (
           <div key={snapshot.environment_id} className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             {layout.cardOrder.map((kind) => (
-              <DraggableResourceCard key={kind} kind={kind}>
+              <DraggableResourceCard
+                key={`${snapshot.environment_id}:${kind}`}
+                id={`${snapshot.environment_id}:${kind}`}
+                kind={kind}
+              >
                 {cardRenderers[kind](snapshot)}
               </DraggableResourceCard>
             ))}

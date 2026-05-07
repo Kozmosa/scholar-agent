@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -252,6 +252,25 @@ function TaskConfigurationSection({
     taskConfiguration.defaultResearchAgentProfileId
   );
   const [defaultConfigId, setDefaultConfigId] = useState(taskConfiguration.defaultTaskConfigurationId);
+
+  useEffect(() => {
+    const nextProfile = taskConfiguration.researchAgentProfiles.find(
+      (p) => p.profileId === taskConfiguration.defaultResearchAgentProfileId
+    );
+    setProfileDraft(
+      nextProfile ?? taskConfiguration.researchAgentProfiles[0] ?? {
+        profileId: 'claude-code-default',
+        label: 'Claude Code Default',
+        systemPrompt: '',
+        skills: [],
+        skillModes: {},
+        skillsPrompt: '',
+        settingsJson: '',
+      }
+    );
+    setDefaultProfileId(taskConfiguration.defaultResearchAgentProfileId);
+    setDefaultConfigId(taskConfiguration.defaultTaskConfigurationId);
+  }, [taskConfiguration]);
 
   return (
     <SectionCard
