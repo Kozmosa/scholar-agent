@@ -1,6 +1,6 @@
 export type DefaultRoute = 'terminal' | 'tasks' | 'workspaces' | 'environments';
 
-export type ExecutionEngineId = 'claude-code';
+export type ExecutionEngineId = 'claude-code' | 'kimi-claude-code';
 export type TaskConfigurationMode = 'raw_prompt' | 'structured_research';
 
 export interface ResearchAgentProfileSettings {

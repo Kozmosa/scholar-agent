@@ -145,7 +145,10 @@ function normalizeTaskConfigurationSettings(
 
   return {
     taskConfiguration: {
-      defaultExecutionEngineId: 'claude-code',
+      defaultExecutionEngineId:
+        value.defaultExecutionEngineId === 'kimi-claude-code'
+          ? 'kimi-claude-code'
+          : 'claude-code',
       researchAgentProfiles: researchAgentProfiles.length > 0 ? researchAgentProfiles : defaults.researchAgentProfiles,
       taskConfigurations: taskConfigurations.length > 0 ? taskConfigurations : defaults.taskConfigurations,
       defaultResearchAgentProfileId:
