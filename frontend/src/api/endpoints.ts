@@ -38,6 +38,7 @@ import type {
   WorkspaceListResponse,
   WorkspaceRecord,
   WorkspaceUpdateRequest,
+  ResourcesResponse,
 } from '../types';
 import {
   mockArchiveTask,
@@ -82,6 +83,7 @@ import {
   mockUpdateProject,
   mockUpdateProjectEnvironmentReference,
   mockUpdateWorkspace,
+  mockGetResources,
 } from './mock';
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
@@ -365,6 +367,9 @@ export const readFile = (
           workspaceId ? `&workspace_id=${encodeURIComponent(workspaceId)}` : ''
         }`
       );
+
+export const getResources = (): Promise<ResourcesResponse> =>
+  USE_MOCK ? Promise.resolve(mockGetResources()) : api.get<ResourcesResponse>('/resources');
 
 // --- Skill Registry API ---
 

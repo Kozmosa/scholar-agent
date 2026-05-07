@@ -8,26 +8,25 @@ from typing import Any
 import yaml
 
 
-_YAML_DELIM_RE = re.compile(r"^-{3,}\s*$", re.MULTILINE)
+_YAML_DELIM_RE = re.compile(r"^---\s*$", re.MULTILINE)
 
 
 def parse_skill_md_frontmatter(content: str) -> dict[str, Any]:
     """Parse YAML frontmatter from SKILL.md content.
 
+    Frontmatter must start at the very beginning of the file (no leading whitespace).
     Returns empty dict if no frontmatter found or yaml parsing fails.
     """
-    # Find the first --- delimiter
-    match = _YAML_DELIM_RE.search(content)
-    if not match:
+    # Must start with --- at the very beginning of the file
+    if not content.startswith("---"):
         return {}
 
-    start = match.end()
     # Find the closing --- after the opening one
-    end_match = _YAML_DELIM_RE.search(content, start)
+    end_match = _YAML_DELIM_RE.search(content, 3)
     if not end_match:
         return {}
 
-    yaml_block = content[start : end_match.start()]
+    yaml_block = content[3 : end_match.start()]
     if not yaml_block.strip():
         return {}
 
@@ -55,7 +54,7 @@ def generate_skill_json(
     Returns:
         A dict matching the AINRF skill.json schema.
     """
-    skill_id = frontmatter.get("name", skill_dir_name)
+    skill_id = skill_dir_name
     label = frontmatter.get("name", skill_dir_name)
     description = frontmatter.get("description", "")
     inject_mode = "auto" if is_core else "disabled"

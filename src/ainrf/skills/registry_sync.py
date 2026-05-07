@@ -120,6 +120,7 @@ class SkillRegistrySyncService:
 
         if status.is_dirty and force:
             self._git_run(["reset", "--hard", "HEAD"])
+            self._git_run(["clean", "-fd"])
 
         pull_result = self._git_run(["pull", "origin", self.registry.git_ref])
         if pull_result.returncode != 0:
@@ -148,12 +149,17 @@ class SkillRegistrySyncService:
 
         current_skills: list[str] = []
         core_set = set(self.registry.core_skill_ids)
+        seen_basenames: set[str] = set()
 
-        for skill_name in self._find_skill_dirs(source_root):
-            source = source_root / skill_name
-            is_core = skill_name in core_set
+        for rel_path in self._find_skill_dirs(source_root):
+            source = source_root / rel_path
+            basename = Path(rel_path).name
+            if basename in seen_basenames:
+                continue
+            seen_basenames.add(basename)
+            is_core = basename in core_set
             self._sync_skill_dir(source, self.load_dir, is_core)
-            current_skills.append(skill_name)
+            current_skills.append(basename)
 
         current_set = set(current_skills)
 
@@ -180,13 +186,16 @@ class SkillRegistrySyncService:
         return (sorted(added), sorted(removed))
 
     def _find_skill_dirs(self, root: Path) -> list[str]:
-        """Find all subdirectories under root that contain SKILL.md."""
+        """Recursively find all subdirectories under root that contain SKILL.md.
+
+        Returns relative paths from root (e.g. 'skill-name' or 'nested/skill-name').
+        """
         result: list[str] = []
         if not root.exists():
             return result
-        for subdir in sorted(root.iterdir()):
-            if subdir.is_dir() and (subdir / "SKILL.md").is_file():
-                result.append(subdir.name)
+        for subdir in sorted(root.rglob("SKILL.md")):
+            rel = subdir.parent.relative_to(root).as_posix()
+            result.append(rel)
         return result
 
     def _sync_skill_dir(self, source: Path, dest_root: Path, is_core: bool) -> None:
