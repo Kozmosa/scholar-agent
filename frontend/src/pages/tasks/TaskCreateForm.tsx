@@ -68,6 +68,15 @@ export default function TaskCreateForm({
     constraints: '',
     deliverables: '',
     validationPlan: '',
+    paperPath: '',
+    scope: 'core-only',
+    targetTable: '',
+    budgetHours: 4,
+    topic: '',
+    seedPaperPath: '',
+    depth: 3,
+    ideaSource: '',
+    validationScope: 'full',
   });
   const taskInputRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -95,10 +104,22 @@ export default function TaskCreateForm({
     selectedTaskConfiguration?.mode === 'structured_research'
       ? structuredPrompt || draft.task_input
       : draft.task_input;
+  const hasRequiredFields = (() => {
+    if (selectedTaskConfiguration?.mode === 'reproduce_baseline') {
+      return draft.paperPath.trim().length > 0;
+    }
+    if (selectedTaskConfiguration?.mode === 'discover_ideas') {
+      return draft.topic.trim().length > 0;
+    }
+    if (selectedTaskConfiguration?.mode === 'validate_ideas') {
+      return draft.ideaSource.trim().length > 0;
+    }
+    return effectiveTaskInput.trim().length > 0;
+  })();
   const canCreate =
     selectedWorkspace !== null &&
     selectedEnvironment !== null &&
-    effectiveTaskInput.trim().length > 0 &&
+    hasRequiredFields &&
     !isSubmitting;
 
   return (
@@ -143,11 +164,43 @@ export default function TaskCreateForm({
                     validation_plan: draft.validationPlan,
                   },
                 }
-              : {
-                  mode: 'raw_prompt',
-                  template_id: selectedTaskConfiguration?.configId ?? null,
-                  raw_prompt: draft.task_input.trim(),
-                },
+              : selectedTaskConfiguration?.mode === 'reproduce_baseline'
+                ? {
+                    mode: 'reproduce_baseline',
+                    template_id: selectedTaskConfiguration.configId,
+                    template_vars: {
+                      paper_path: draft.paperPath,
+                      scope: draft.scope,
+                      target_table: draft.targetTable,
+                      budget_hours: draft.budgetHours,
+                    },
+                  }
+                : selectedTaskConfiguration?.mode === 'discover_ideas'
+                  ? {
+                      mode: 'discover_ideas',
+                      template_id: selectedTaskConfiguration.configId,
+                      template_vars: {
+                        topic: draft.topic,
+                        seed_paper_path: draft.seedPaperPath,
+                        depth: draft.depth,
+                        budget_hours: draft.budgetHours,
+                      },
+                    }
+                  : selectedTaskConfiguration?.mode === 'validate_ideas'
+                    ? {
+                        mode: 'validate_ideas',
+                        template_id: selectedTaskConfiguration.configId,
+                        template_vars: {
+                          idea_source: draft.ideaSource,
+                          validation_scope: draft.validationScope,
+                          budget_hours: draft.budgetHours,
+                        },
+                      }
+                    : {
+                        mode: 'raw_prompt',
+                        template_id: selectedTaskConfiguration?.configId ?? null,
+                        raw_prompt: draft.task_input.trim(),
+                      },
         });
       }}
     >
@@ -332,6 +385,125 @@ export default function TaskCreateForm({
             <pre className="whitespace-pre-wrap font-mono">{structuredPrompt}</pre>
           </div>
         </div>
+      ) : selectedTaskConfiguration?.mode === 'reproduce_baseline' ? (
+        <div className="space-y-3 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)]/40 p-3">
+          <label className="block space-y-2">
+            <span className="text-xs font-medium text-[var(--text-secondary)]">Paper path</span>
+            <Input
+              aria-label="Paper path"
+              value={draft.paperPath}
+              onChange={(e) => setDraft((c) => ({ ...c, paperPath: e.target.value }))}
+              placeholder="papers/target.pdf"
+            />
+          </label>
+          <label className="block space-y-2">
+            <span className="text-xs font-medium text-[var(--text-secondary)]">Scope</span>
+            <Select
+              aria-label="Scope"
+              value={draft.scope}
+              onChange={(e) => setDraft((c) => ({ ...c, scope: e.target.value }))}
+            >
+              <option value="core-only">core-only</option>
+              <option value="full-suite">full-suite</option>
+            </Select>
+          </label>
+          <label className="block space-y-2">
+            <span className="text-xs font-medium text-[var(--text-secondary)]">Target table (optional)</span>
+            <Input
+              aria-label="Target table"
+              value={draft.targetTable}
+              onChange={(e) => setDraft((c) => ({ ...c, targetTable: e.target.value }))}
+              placeholder="Table3"
+            />
+          </label>
+          <label className="block space-y-2">
+            <span className="text-xs font-medium text-[var(--text-secondary)]">Budget (hours)</span>
+            <Input
+              aria-label="Budget hours"
+              type="number"
+              min={1}
+              value={String(draft.budgetHours)}
+              onChange={(e) => setDraft((c) => ({ ...c, budgetHours: Number(e.target.value) || 4 }))}
+            />
+          </label>
+        </div>
+      ) : selectedTaskConfiguration?.mode === 'discover_ideas' ? (
+        <div className="space-y-3 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)]/40 p-3">
+          <label className="block space-y-2">
+            <span className="text-xs font-medium text-[var(--text-secondary)]">Research topic</span>
+            <Textarea
+              aria-label="Research topic"
+              value={draft.topic}
+              onChange={(e) => setDraft((c) => ({ ...c, topic: e.target.value }))}
+              className="min-h-20"
+              placeholder="Graph neural networks for drug discovery"
+            />
+          </label>
+          <label className="block space-y-2">
+            <span className="text-xs font-medium text-[var(--text-secondary)]">Seed paper path (optional)</span>
+            <Input
+              aria-label="Seed paper path"
+              value={draft.seedPaperPath}
+              onChange={(e) => setDraft((c) => ({ ...c, seedPaperPath: e.target.value }))}
+              placeholder="papers/seed.pdf"
+            />
+          </label>
+          <label className="block space-y-2">
+            <span className="text-xs font-medium text-[var(--text-secondary)]">Depth</span>
+            <Input
+              aria-label="Depth"
+              type="number"
+              min={1}
+              max={10}
+              value={String(draft.depth)}
+              onChange={(e) => setDraft((c) => ({ ...c, depth: Number(e.target.value) || 3 }))}
+            />
+          </label>
+          <label className="block space-y-2">
+            <span className="text-xs font-medium text-[var(--text-secondary)]">Budget (hours)</span>
+            <Input
+              aria-label="Budget hours"
+              type="number"
+              min={1}
+              value={String(draft.budgetHours)}
+              onChange={(e) => setDraft((c) => ({ ...c, budgetHours: Number(e.target.value) || 4 }))}
+            />
+          </label>
+        </div>
+      ) : selectedTaskConfiguration?.mode === 'validate_ideas' ? (
+        <div className="space-y-3 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)]/40 p-3">
+          <label className="block space-y-2">
+            <span className="text-xs font-medium text-[var(--text-secondary)]">Idea source</span>
+            <Textarea
+              aria-label="Idea source"
+              value={draft.ideaSource}
+              onChange={(e) => setDraft((c) => ({ ...c, ideaSource: e.target.value }))}
+              className="min-h-20"
+              placeholder="Path to idea doc in workspace, or describe your idea here"
+            />
+          </label>
+          <label className="block space-y-2">
+            <span className="text-xs font-medium text-[var(--text-secondary)]">Validation scope</span>
+            <Select
+              aria-label="Validation scope"
+              value={draft.validationScope}
+              onChange={(e) => setDraft((c) => ({ ...c, validationScope: e.target.value }))}
+            >
+              <option value="quick">quick</option>
+              <option value="full">full</option>
+            </Select>
+          </label>
+          <label className="block space-y-2">
+            <span className="text-xs font-medium text-[var(--text-secondary)]">Budget (hours)</span>
+            <Input
+              aria-label="Budget hours"
+              type="number"
+              min={1}
+              value={String(draft.budgetHours)}
+              onChange={(e) => setDraft((c) => ({ ...c, budgetHours: Number(e.target.value) || 4 }))}
+            />
+          </label>
+        </div>
       ) : (
         <label className="block space-y-2">
           <span className="text-xs font-medium text-[var(--text-secondary)]">
@@ -377,6 +549,15 @@ export default function TaskCreateForm({
               constraints: '',
               deliverables: '',
               validationPlan: '',
+              paperPath: '',
+              scope: 'core-only',
+              targetTable: '',
+              budgetHours: 4,
+              topic: '',
+              seedPaperPath: '',
+              depth: 3,
+              ideaSource: '',
+              validationScope: 'full',
             })
           }
         >
