@@ -349,7 +349,15 @@ function TaskConfigurationSection({
             <SkillToggleGroup
               skills={availableSkills}
               skillModes={profileDraft.skillModes}
-              onChange={(skillModes) => setProfileDraft((current) => ({ ...current, skillModes }))}
+              onChange={(skillModes) =>
+                setProfileDraft((current) => ({
+                  ...current,
+                  skillModes,
+                  skills: Object.entries(skillModes)
+                    .filter(([, mode]) => mode === 'enabled')
+                    .map(([skillId]) => skillId),
+                }))
+              }
             />
             <p className="text-xs text-[var(--text-tertiary)]">
               {t('pages.settings.taskConfiguration.skillsDescription')}
