@@ -113,8 +113,7 @@ function normalizeTaskConfigurationSettings(
             }
           }
         } else {
-          // Migrate from old skills[] array
-          hadFallback = true;
+          // Migrate from old skills[] array — not a fallback, just backward compat
           for (const skillId of skills) {
             skillModes[skillId] = 'enabled';
           }
