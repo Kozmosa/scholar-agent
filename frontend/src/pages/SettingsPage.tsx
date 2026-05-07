@@ -27,6 +27,7 @@ import {
 import type {
   DefaultRoute,
   EnvironmentTaskDefaults,
+  ExecutionEngineId,
   ResearchAgentProfileSettings,
   TaskConfigurationSettings,
   WebUiSettingsDocument,
@@ -267,9 +268,15 @@ function TaskConfigurationSection({
           <Select
             aria-label={t('pages.settings.taskConfiguration.executionEngineLabel')}
             value={taskConfiguration.defaultExecutionEngineId}
-            disabled
+            onChange={(event) =>
+              onSaveTaskConfigurationSettings({
+                ...taskConfiguration,
+                defaultExecutionEngineId: event.target.value as ExecutionEngineId,
+              })
+            }
           >
             <option value="claude-code">Claude Code</option>
+            <option value="kimi-claude-code">Kimi Claude Code</option>
           </Select>
         </FormField>
 
