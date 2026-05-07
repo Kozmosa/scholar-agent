@@ -121,7 +121,7 @@ class TaskHarnessService:
         self._db_path = self._runtime_root / "task_harness.sqlite3"
         self._environment_service = environment_service
         self._workspace_service = workspace_service
-        self._skill_root = skill_root or (state_root / "skills")
+        self._skill_root = Path(skill_root) if skill_root is not None else (state_root / "skills")
         self._initialized = False
         self._running_tasks: dict[str, asyncio.Task[None]] = {}
         self._running_processes: dict[str, Any] = {}

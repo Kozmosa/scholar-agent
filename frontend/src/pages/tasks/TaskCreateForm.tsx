@@ -103,7 +103,11 @@ export default function TaskCreateForm({
   const effectiveTaskInput =
     selectedTaskConfiguration?.mode === 'structured_research'
       ? structuredPrompt || draft.task_input
-      : draft.task_input;
+      : selectedTaskConfiguration?.mode === 'reproduce_baseline' ||
+          selectedTaskConfiguration?.mode === 'discover_ideas' ||
+          selectedTaskConfiguration?.mode === 'validate_ideas'
+        ? draft.task_input.trim() || `${selectedTaskConfiguration.label} task`
+        : draft.task_input;
   const hasRequiredFields = (() => {
     if (selectedTaskConfiguration?.mode === 'reproduce_baseline') {
       return draft.paperPath.trim().length > 0;

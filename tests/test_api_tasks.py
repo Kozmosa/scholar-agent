@@ -587,3 +587,71 @@ async def test_create_task_rejects_reproduce_baseline_without_aris_skill(tmp_pat
         )
         assert response.status_code == 409
         assert "ARIS skill" in response.json()["detail"]
+
+
+@pytest.mark.anyio
+async def test_create_task_rejects_discover_ideas_without_aris_skill(tmp_path: Path) -> None:
+    app = make_app(tmp_path)
+    environment = app.state.environment_service.create_environment(
+        alias="local",
+        display_name="Local",
+        host="127.0.0.1",
+        default_workdir="/tmp",
+        task_harness_profile="test",
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post(
+            "/tasks",
+            headers=API_HEADERS,
+            json={
+                "workspace_id": "workspace-default",
+                "environment_id": environment.id,
+                "task_profile": "claude-code",
+                "task_input": "Discover ideas",
+                "task_configuration": {
+                    "mode": "discover_ideas",
+                    "template_id": "discover-ideas-default",
+                    "template_vars": {"topic": "graph neural networks"},
+                },
+            },
+        )
+        assert response.status_code == 409
+        assert "ARIS skill" in response.json()["detail"]
+
+
+@pytest.mark.anyio
+async def test_create_task_rejects_validate_ideas_without_aris_skill(tmp_path: Path) -> None:
+    app = make_app(tmp_path)
+    environment = app.state.environment_service.create_environment(
+        alias="local",
+        display_name="Local",
+        host="127.0.0.1",
+        default_workdir="/tmp",
+        task_harness_profile="test",
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post(
+            "/tasks",
+            headers=API_HEADERS,
+            json={
+                "workspace_id": "workspace-default",
+                "environment_id": environment.id,
+                "task_profile": "claude-code",
+                "task_input": "Validate ideas",
+                "task_configuration": {
+                    "mode": "validate_ideas",
+                    "template_id": "validate-ideas-default",
+                    "template_vars": {"idea_source": "A novel GNN approach"},
+                },
+            },
+        )
+        assert response.status_code == 409
+        assert "ARIS skill" in response.json()["detail"]
