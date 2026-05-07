@@ -243,6 +243,7 @@ function TaskConfigurationSection({
       label: 'Claude Code Default',
       systemPrompt: '',
       skills: [],
+      skillModes: {},
       skillsPrompt: '',
       settingsJson: '',
     }
@@ -347,8 +348,8 @@ function TaskConfigurationSection({
             </span>
             <SkillToggleGroup
               skills={availableSkills}
-              selected={profileDraft.skills}
-              onChange={(skills) => setProfileDraft((current) => ({ ...current, skills }))}
+              skillModes={profileDraft.skillModes}
+              onChange={(skillModes) => setProfileDraft((current) => ({ ...current, skillModes }))}
             />
             <p className="text-xs text-[var(--text-tertiary)]">
               {t('pages.settings.taskConfiguration.skillsDescription')}
