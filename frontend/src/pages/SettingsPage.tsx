@@ -236,7 +236,9 @@ function TaskConfigurationSection({
 }: TaskConfigurationSectionProps) {
   const t = useT();
   const [profileDraft, setProfileDraft] = useState<ResearchAgentProfileSettings>(
-    taskConfiguration.researchAgentProfiles[0] ?? {
+    taskConfiguration.researchAgentProfiles.find(
+      (p) => p.profileId === taskConfiguration.defaultResearchAgentProfileId
+    ) ?? taskConfiguration.researchAgentProfiles[0] ?? {
       profileId: 'claude-code-default',
       label: 'Claude Code Default',
       systemPrompt: '',
