@@ -50,6 +50,7 @@ export function createDefaultResearchAgentProfile(): ResearchAgentProfileSetting
     label: 'Claude Code Default',
     systemPrompt: '',
     skills: [],
+    skillModes: {},
     skillsPrompt: '',
     settingsJson: '{\n  "permissions": {\n    "allow": ["Read", "Grep"]\n  }\n}',
   };
@@ -61,6 +62,7 @@ export function createKimiResearchAgentProfile(): ResearchAgentProfileSettings {
     label: 'Kimi Claude Code Default',
     systemPrompt: '',
     skills: [],
+    skillModes: {},
     skillsPrompt: '',
     settingsJson: JSON.stringify(
       {

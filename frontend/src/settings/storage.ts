@@ -103,12 +103,21 @@ function normalizeTaskConfigurationSettings(
             .map((s) => s.trim())
             .filter((s) => s.length > 0);
         }
+        let skillModes: Record<string, 'disabled' | 'enabled' | 'auto'> = {};
+        if (isRecord(item.skillModes)) {
+          for (const [k, v] of Object.entries(item.skillModes)) {
+            if (v === 'disabled' || v === 'enabled' || v === 'auto') {
+              skillModes[k] = v;
+            }
+          }
+        }
         return [
           {
             profileId: item.profileId,
             label: item.label,
             systemPrompt: typeof item.systemPrompt === 'string' ? item.systemPrompt : '',
             skills,
+            skillModes,
             skillsPrompt,
             settingsJson: typeof item.settingsJson === 'string' ? item.settingsJson : '',
           },
