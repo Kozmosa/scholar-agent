@@ -46,13 +46,21 @@ export function useMessageGroups(messages: MessageItem[]) {
 
   useEffect(() => {
     setCollapsedState(prev => {
-      const next = new Set(prev);
+      const currentGroupIds = new Set(
+        grouped.filter((g): g is Extract<typeof g, { kind: 'group' }> => g.kind === 'group').map(g => g.id)
+      );
+      const next = new Set<string>();
       let changed = false;
-      for (const item of grouped) {
-        if (item.kind === 'group' && !next.has(item.id)) {
-          next.add(item.id);
+      for (const id of currentGroupIds) {
+        if (prev.has(id)) {
+          next.add(id);
+        } else {
+          next.add(id);
           changed = true;
         }
+      }
+      if (next.size !== prev.size) {
+        changed = true;
       }
       return changed ? next : prev;
     });

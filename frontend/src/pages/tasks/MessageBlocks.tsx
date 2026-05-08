@@ -4,7 +4,12 @@ import type { MessageItem } from '../../types';
 
 function formatTime(timestamp: string): string {
   const date = new Date(timestamp);
-  return date.toLocaleTimeString();
+  return date.toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
 }
 
 export function SystemEventBlock({ message }: { message: MessageItem }) {
@@ -44,7 +49,7 @@ export function AssistantMessage({ message }: { message: MessageItem }) {
 }
 
 export function ThinkingBlock({ message }: { message: MessageItem }) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(message.metadata.isFolded !== true);
   const t = useT();
   const content = typeof message.content === 'string' ? message.content : '';
   return (
@@ -65,7 +70,7 @@ export function ThinkingBlock({ message }: { message: MessageItem }) {
 }
 
 export function ToolCallBlock({ message }: { message: MessageItem }) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(message.metadata.isFolded !== true);
   const t = useT();
   const content = typeof message.content === 'object' ? message.content : {};
   const name = String((content as Record<string, unknown>).name || 'unknown');
@@ -87,7 +92,7 @@ export function ToolCallBlock({ message }: { message: MessageItem }) {
 }
 
 export function ToolResultBlock({ message }: { message: MessageItem }) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(message.metadata.isFolded !== true);
   const t = useT();
   const content = typeof message.content === 'object' ? message.content : {};
   return (

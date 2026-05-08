@@ -19,4 +19,9 @@ def get_engine(name: str) -> ExecutionEngine:
 
     module = importlib.import_module(module_name)
     engine_cls = getattr(module, class_name)
-    return engine_cls()
+    instance = engine_cls()
+    if not isinstance(instance, ExecutionEngine):
+        raise TypeError(
+            f"Engine {name!r} ({spec}) does not implement ExecutionEngine"
+        )
+    return instance

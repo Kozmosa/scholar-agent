@@ -199,7 +199,7 @@ def _convert_output_event_to_message(item: Any) -> dict[str, Any] | None:
         return {
             "id": msg_id,
             "type": "system_event",
-            "content": payload.get("subtype", kind),
+            "content": payload.get("subtype") or payload.get("content", kind),
             "metadata": {
                 "timestamp": item.created_at.isoformat(),
                 "sequence": item.seq,

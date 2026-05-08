@@ -49,7 +49,7 @@ function convertOutputEventToMessage(event: TaskOutputEvent): MessageItem | null
       return {
         ...base,
         type: 'system_event',
-        content: (payload.subtype as string) || event.kind,
+        content: (payload.subtype as string) || (payload.content as string) || event.kind,
       };
     case 'stdout':
       return {
@@ -68,10 +68,27 @@ function convertOutputEventToMessage(event: TaskOutputEvent): MessageItem | null
   }
 }
 
+async function fetchAllMessages(taskId: string): Promise<MessageItem[]> {
+  const allMessages: MessageItem[] = [];
+  let afterSeq = 0;
+  const limit = 200;
+
+  while (true) {
+    const page = await getTaskMessages(taskId, afterSeq, limit);
+    allMessages.push(...page.messages);
+    if (!page.has_more || page.next_sequence == null) {
+      break;
+    }
+    afterSeq = page.next_sequence;
+  }
+
+  return allMessages;
+}
+
 export function useTaskMessages(taskId: string | null, outputItems: TaskOutputEvent[]) {
   const { data: history } = useQuery({
     queryKey: ['task-messages', taskId],
-    queryFn: () => getTaskMessages(taskId!, 0, 200),
+    queryFn: () => fetchAllMessages(taskId!),
     enabled: !!taskId,
   });
 
@@ -94,7 +111,7 @@ export function useTaskMessages(taskId: string | null, outputItems: TaskOutputEv
   }, [outputItems]);
 
   const allMessages = useMemo(() => {
-    const historyMsgs = history?.messages || [];
+    const historyMsgs = history || [];
     const streamIds = new Set(streamMessages.map((m) => m.id));
     const dedupedHistory = historyMsgs.filter((m) => !streamIds.has(m.id));
     return [...dedupedHistory, ...streamMessages].sort(

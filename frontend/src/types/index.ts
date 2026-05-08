@@ -175,6 +175,18 @@ export interface ResearchAgentProfileSnapshot {
   skills_prompt: string | null;
   settings_json: Record<string, unknown> | null;
   settings_artifact_path: string | null;
+  model: string | null;
+  permission_mode: string | null;
+  max_turns: number | null;
+  max_budget_usd: number | null;
+  mcp_servers: Record<string, unknown> | null;
+  disallowed_tools: string[] | null;
+  api_base_url: string | null;
+  api_key: string | null;
+  default_opus_model: string | null;
+  default_sonnet_model: string | null;
+  default_haiku_model: string | null;
+  env_overrides: Record<string, string> | null;
 }
 
 export interface TaskConfigurationSnapshot {
@@ -277,6 +289,12 @@ export interface TaskCreateRequest {
     skills?: string[];
     skills_prompt?: string | null;
     settings_json?: Record<string, unknown> | null;
+    api_base_url?: string | null;
+    api_key?: string | null;
+    default_opus_model?: string | null;
+    default_sonnet_model?: string | null;
+    default_haiku_model?: string | null;
+    env_overrides?: Record<string, string> | null;
   } | null;
   task_configuration?: {
     mode: 'raw_prompt' | 'structured_research' | 'reproduce_baseline' | 'discover_ideas' | 'validate_ideas';

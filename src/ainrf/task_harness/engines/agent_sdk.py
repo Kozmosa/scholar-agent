@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 from collections import deque
-from dataclasses import dataclass, field
-from datetime import datetime
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Iterator
 
 from claude_agent_sdk import query, ClaudeAgentOptions, HookMatcher
 from claude_agent_sdk import (
@@ -21,7 +24,8 @@ from claude_agent_sdk import (
 )
 
 from .base import EngineContext, EngineEvent, ExecutionEngine
-from ainrf.task_harness.session_state import SessionCheckpoint, SessionStateStore
+from ainrf.environments.models import utc_now
+from ainrf.task_harness.session_state import SessionCheckpoint
 
 
 @dataclass
@@ -36,10 +40,69 @@ class AgentSession:
     had_error: bool = False
 
 
+@contextmanager
+def _env_override(overrides: dict[str, str | None]) -> Iterator[None]:
+    """Temporarily override process environment variables.
+
+    WARNING: This mutates the global os.environ dict. The AgentSdkEngine
+    uses a class-level asyncio.Lock (_run_lock) to serialize execution
+    and prevent env var cross-contamination between concurrent tasks.
+    This design limits agent-sdk tasks to one-at-a-time per process.
+    """
+    keys = [k for k, v in overrides.items() if v is not None]
+    if not keys:
+        yield
+        return
+    original: dict[str, str | None] = {}
+    for key in keys:
+        original[key] = os.environ.get(key)
+        os.environ[key] = overrides[key]  # type: ignore[index]
+    try:
+        yield
+    finally:
+        for key, value in original.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
 class AgentSdkEngine(ExecutionEngine):
     def __init__(self) -> None:
         self._sessions: dict[str, AgentSession] = {}
         self._lock = asyncio.Lock()
+        self._run_lock = asyncio.Lock()
+
+    def _provider_env(self, context: EngineContext) -> dict[str, str | None]:
+        """Build env var overrides from agent profile for provider routing."""
+        profile = context.agent_profile
+        env: dict[str, str | None] = {}
+        if profile.api_base_url is not None:
+            env["ANTHROPIC_BASE_URL"] = profile.api_base_url
+        if profile.api_key is not None:
+            # If user explicitly sets ANTHROPIC_AUTH_TOKEN via env_overrides,
+            # don't set ANTHROPIC_API_KEY — some providers (e.g. LongCat) only
+            # accept Bearer auth and will 401 on x-api-key.
+            has_auth_token_override = (
+                profile.env_overrides is not None
+                and "ANTHROPIC_AUTH_TOKEN" in profile.env_overrides
+            )
+            if has_auth_token_override:
+                env["ANTHROPIC_AUTH_TOKEN"] = profile.api_key
+            else:
+                env["ANTHROPIC_API_KEY"] = profile.api_key
+                # Also set ANTHROPIC_AUTH_TOKEN for providers that use Bearer auth
+                env["ANTHROPIC_AUTH_TOKEN"] = profile.api_key
+        if profile.default_opus_model is not None:
+            env["ANTHROPIC_DEFAULT_OPUS_MODEL"] = profile.default_opus_model
+        if profile.default_sonnet_model is not None:
+            env["ANTHROPIC_DEFAULT_SONNET_MODEL"] = profile.default_sonnet_model
+        if profile.default_haiku_model is not None:
+            env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = profile.default_haiku_model
+        if profile.env_overrides is not None:
+            for key, value in profile.env_overrides.items():
+                env[key] = value
+        return env
 
     async def start(self, context: EngineContext, emit) -> None:
         async with self._lock:
@@ -47,18 +110,20 @@ class AgentSdkEngine(ExecutionEngine):
             if session is None:
                 session = AgentSession(task_id=context.task_id)
                 self._sessions[context.task_id] = session
+            session.had_error = False
+            session.abort_event.clear()
 
         # Load checkpoint if available
         if context.session_state_path:
-            state_root = Path(context.session_state_path).parent.parent
-            store = SessionStateStore(state_root)
-            checkpoint = store.load(context.task_id)
-            if checkpoint:
+            checkpoint_path = Path(context.session_state_path)
+            if checkpoint_path.exists():
+                data = json.loads(checkpoint_path.read_text())
+                checkpoint = SessionCheckpoint(**data)
                 session.session_id = checkpoint.session_id
                 session.turn_count = checkpoint.turn_count
                 session.total_cost_usd = checkpoint.total_cost_usd
                 if checkpoint.pending_prompts:
-                    session.pending_prompts.extend(checkpoint.pending_prompts)
+                    session.pending_prompts = deque(checkpoint.pending_prompts)
 
         # Determine prompt for this turn
         if session.pending_prompts:
@@ -84,53 +149,63 @@ class AgentSdkEngine(ExecutionEngine):
             include_partial_messages=True,
         )
 
-        try:
-            async for sdk_msg in query(prompt=prompt, options=options):
-                if session.abort_event.is_set():
-                    break
+        async with self._run_lock:
+            with _env_override(self._provider_env(context)):
+                try:
+                    async for sdk_msg in query(prompt=prompt, options=options):
+                        if session.abort_event.is_set():
+                            break
 
-                events = self._convert_sdk_message(sdk_msg, session)
-                for event in events:
-                    await emit(event)
+                        events = self._convert_sdk_message(sdk_msg, session)
+                        for event in events:
+                            await emit(event)
 
-            if session.had_error:
-                raise RuntimeError("Agent SDK session completed with errors")
+                    if session.had_error:
+                        raise RuntimeError("Agent SDK session completed with errors")
 
-            if session.should_pause_after_turn:
-                await emit(
-                    EngineEvent(
-                        event_type="system",
-                        payload={"subtype": "task_paused", "task_id": context.task_id},
+                    if session.should_pause_after_turn:
+                        session.should_pause_after_turn = False
+                        await emit(
+                            EngineEvent(
+                                event_type="system",
+                                payload={"subtype": "task_paused", "task_id": context.task_id},
+                            )
+                        )
+                    elif not session.abort_event.is_set():
+                        await emit(
+                            EngineEvent(
+                                event_type="system",
+                                payload={"subtype": "task_completed", "task_id": context.task_id},
+                            )
+                        )
+                except Exception as exc:
+                    session.had_error = True
+                    await emit(
+                        EngineEvent(
+                            event_type="error",
+                            payload={"message": str(exc), "task_id": context.task_id},
+                        )
                     )
-                )
-            elif not session.abort_event.is_set():
-                await emit(
-                    EngineEvent(
-                        event_type="system",
-                        payload={"subtype": "task_completed", "task_id": context.task_id},
+                    await emit(
+                        EngineEvent(
+                            event_type="system",
+                            payload={"subtype": "task_failed", "task_id": context.task_id},
+                        )
                     )
-                )
-        except Exception as exc:
-            await emit(
-                EngineEvent(
-                    event_type="error",
-                    payload={"message": str(exc), "task_id": context.task_id},
-                )
-            )
-            await emit(
-                EngineEvent(
-                    event_type="system",
-                    payload={"subtype": "task_failed", "task_id": context.task_id},
-                )
-            )
-        finally:
-            await self._save_checkpoint(context, session)
+                    raise
+                finally:
+                    await self._save_checkpoint(context, session)
+                    if session.abort_event.is_set():
+                        async with self._lock:
+                            self._sessions.pop(context.task_id, None)
 
     async def pause(self, task_id: str) -> None:
         async with self._lock:
             session = self._sessions.get(task_id)
-            if session is not None:
-                session.should_pause_after_turn = True
+            if session is None:
+                session = AgentSession(task_id=task_id)
+                self._sessions[task_id] = session
+            session.should_pause_after_turn = True
 
     async def resume(self, context: EngineContext, emit) -> None:
         await self.start(context, emit)
@@ -138,8 +213,10 @@ class AgentSdkEngine(ExecutionEngine):
     async def send_prompt(self, task_id: str, prompt: str) -> None:
         async with self._lock:
             session = self._sessions.get(task_id)
-            if session is not None:
-                session.pending_prompts.append(prompt)
+            if session is None:
+                session = AgentSession(task_id=task_id)
+                self._sessions[task_id] = session
+            session.pending_prompts.append(prompt)
 
     async def abort(self, task_id: str) -> None:
         async with self._lock:
@@ -322,17 +399,20 @@ class AgentSdkEngine(ExecutionEngine):
         return hook
 
     async def _save_checkpoint(self, context: EngineContext, session: AgentSession) -> None:
-        if context.session_state_path:
-            store = SessionStateStore(Path(context.session_state_path).parent.parent)
-        else:
-            store = SessionStateStore(Path(context.working_directory) / ".ainrf")
+        if not context.session_state_path:
+            return
+        checkpoint_path = Path(context.session_state_path)
+        checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
         checkpoint = SessionCheckpoint(
             task_id=session.task_id,
             session_id=session.session_id,
             cwd=context.working_directory,
-            created_at=datetime.now().isoformat(),
+            created_at=utc_now().isoformat(),
             turn_count=session.turn_count,
             total_cost_usd=session.total_cost_usd,
             pending_prompts=list(session.pending_prompts),
         )
-        store.save(checkpoint)
+        try:
+            checkpoint_path.write_text(json.dumps(asdict(checkpoint), indent=2))
+        except OSError:
+            pass

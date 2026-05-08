@@ -30,7 +30,7 @@ export default function MessageStream({ messages }: Props) {
 
   useEffect(() => {
     if (shouldScrollRef.current && bottomRef.current) {
-      bottomRef.current.scrollIntoView?.({ behavior: 'smooth' });
+      bottomRef.current.scrollIntoView?.({ behavior: 'auto' });
     }
   }, [messages]);
 

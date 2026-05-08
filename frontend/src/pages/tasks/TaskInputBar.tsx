@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Send } from 'lucide-react';
 import { useT } from '../../i18n';
 
@@ -10,6 +10,14 @@ interface Props {
 export default function TaskInputBar({ onSubmit, disabled }: Props) {
   const t = useT();
   const [value, setValue] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
 
   const handleSubmit = useCallback(() => {
     const trimmed = value.trim();
@@ -31,6 +39,7 @@ export default function TaskInputBar({ onSubmit, disabled }: Props) {
   return (
     <div className="flex items-end gap-2 border-t border-[var(--border)] bg-[var(--bg)] p-3">
       <textarea
+        ref={textareaRef}
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}

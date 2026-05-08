@@ -49,6 +49,12 @@ class ResearchAgentProfileSnapshot:
     max_budget_usd: float | None = None
     mcp_servers: dict[str, object] | None = None
     disallowed_tools: list[str] | None = None
+    api_base_url: str | None = None
+    api_key: str | None = None
+    default_opus_model: str | None = None
+    default_sonnet_model: str | None = None
+    default_haiku_model: str | None = None
+    env_overrides: dict[str, str] | None = None
 
 
 @dataclass(slots=True)
