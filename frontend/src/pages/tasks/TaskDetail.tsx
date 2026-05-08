@@ -7,6 +7,7 @@ import MessageStream from './MessageStream';
 import TaskInputBar from './TaskInputBar';
 import { useTaskMessages } from './useTaskMessages';
 import { useTaskActions } from './useTaskActions';
+import PromptEditor from './PromptEditor';
 
 
 interface Props {
@@ -14,6 +15,26 @@ interface Props {
   detailError: string | null;
   outputItems: TaskOutputEvent[];
   outputError: string | null;
+}
+
+function PromptLayerItem({ layer }: { layer: { name: string; label: string; char_count: number; content: string } }) {
+  const t = useT();
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <details
+      className="rounded-lg border border-[var(--border)] bg-[var(--surface)]"
+      onToggle={(e) => setIsOpen(e.currentTarget.open)}
+    >
+      <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-[var(--text)]">
+        {layer.label}{' '}
+        <span className="text-[var(--text-secondary)]">
+          ({layer.char_count} {t('pages.tasks.chars')})
+        </span>
+      </summary>
+      {isOpen && <PromptEditor content={layer.content} />}
+    </details>
+  );
 }
 
 function MetadataRow({
@@ -308,20 +329,7 @@ export default function TaskDetail({
                 {selectedTask.prompt ? (
                   <div className="space-y-2">
                     {selectedTask.prompt.layers.map((layer) => (
-                      <details
-                        key={layer.name}
-                        className="rounded-lg border border-[var(--border)] bg-[var(--surface)]"
-                      >
-                        <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-[var(--text)]">
-                          {layer.label}{' '}
-                          <span className="text-[var(--text-secondary)]">
-                            ({layer.char_count} {t('pages.tasks.chars')})
-                          </span>
-                        </summary>
-                        <pre className="max-h-48 overflow-auto border-t border-[var(--border)] bg-[var(--bg-tertiary)] p-3 text-xs text-[var(--text)]">
-                          {layer.content}
-                        </pre>
-                      </details>
+                      <PromptLayerItem key={layer.name} layer={layer} />
                     ))}
                   </div>
                 ) : (
