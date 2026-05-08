@@ -103,6 +103,45 @@ export function ToolResultBlock({ message }: { message: MessageItem }) {
   );
 }
 
+interface CollapsedGroupItem {
+  id: string;
+  messages: MessageItem[];
+  collapsed: boolean;
+}
+
+export function CollapsedGroupBlock({ item, onToggle }: { item: CollapsedGroupItem; onToggle: () => void }) {
+  if (!item.collapsed) {
+    return (
+      <div className="space-y-1">
+        {item.messages.map(msg => (
+          <MessageBlock key={msg.id} message={msg} />
+        ))}
+      </div>
+    );
+  }
+
+  const counts = item.messages.reduce((acc, msg) => {
+    acc[msg.type] = (acc[msg.type] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const summary = Object.entries(counts)
+    .map(([type, count]) => `${count} ${type.replace('_', ' ')}`)
+    .join(', ');
+
+  return (
+    <div className="my-2 flex justify-center">
+      <button
+        onClick={onToggle}
+        className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--border)]"
+      >
+        <span>▸ {summary}</span>
+        <span className="text-[var(--text-tertiary)]">({item.messages.length})</span>
+      </button>
+    </div>
+  );
+}
+
 export function MessageBlock({ message }: { message: MessageItem }) {
   switch (message.type) {
     case 'system_event':
