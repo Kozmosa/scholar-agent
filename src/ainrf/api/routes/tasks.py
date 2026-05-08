@@ -394,7 +394,7 @@ async def get_task_messages(
 ) -> TaskMessagesResponse:
     service = _get_task_harness_service(request)
     try:
-        page = service.get_output(task_id, after_seq=after_seq)
+        page = service.get_output(task_id, after_seq=after_seq, limit=limit)
     except Exception as exc:
         raise _translate_task_error(exc) from exc
 
@@ -404,13 +404,10 @@ async def get_task_messages(
         if msg is not None:
             messages.append(msg)
 
-    has_more = len(page.items) >= limit and page.next_seq > after_seq
-    next_sequence = page.next_seq if has_more else None
-
     return TaskMessagesResponse(
         messages=messages,
-        has_more=has_more,
-        next_sequence=next_sequence,
+        has_more=page.has_more,
+        next_sequence=page.next_seq if page.has_more else None,
     )
 
 

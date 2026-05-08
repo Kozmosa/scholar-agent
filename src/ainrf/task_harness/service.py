@@ -45,7 +45,7 @@ from ainrf.task_harness.launcher import (
     is_local_environment,
 )
 from ainrf.task_harness.engines import get_engine
-from ainrf.task_harness.engines.base import EngineContext, EngineEvent
+from ainrf.task_harness.engines.base import EngineContext, EngineEvent, ExecutionEngine
 from ainrf.task_harness.models import (
     ResearchAgentProfileSnapshot,
     TaskConfigurationMode,
@@ -139,6 +139,7 @@ class TaskHarnessService:
         self._running_tasks: dict[str, asyncio.Task[None]] = {}
         self._running_processes: dict[str, Any] = {}
         self._engine_factory = get_engine
+        self._engines: dict[str, ExecutionEngine] = {}
         self._session_store = SessionStateStore(state_root)
 
     def initialize(self) -> None:
@@ -450,6 +451,13 @@ class TaskHarnessService:
         }
         return mapping.get(event_type, TaskOutputKind.STDOUT)
 
+    def _get_engine(self, name: str) -> ExecutionEngine:
+        engine = self._engines.get(name)
+        if engine is None:
+            engine = self._engine_factory(name)
+            self._engines[name] = engine
+        return engine
+
     def _next_seq(self, task_id: str) -> int:
         with self._connect() as connection:
             row = connection.execute(
@@ -541,7 +549,7 @@ class TaskHarnessService:
             raise TaskHarnessError(f"Cannot cancel task in status: {status.value}")
 
         execution_engine = row["execution_engine"] or _EXECUTION_ENGINE
-        engine = self._engine_factory(execution_engine)
+        engine = self._get_engine(execution_engine)
         await engine.abort(task_id)
 
         process = self._running_processes.pop(task_id, None)
@@ -594,7 +602,7 @@ class TaskHarnessService:
         if status not in {TaskHarnessStatus.RUNNING, TaskHarnessStatus.STARTING}:
             raise TaskHarnessError(f"Cannot pause task in status: {status.value}")
         execution_engine = row["execution_engine"] or _EXECUTION_ENGINE
-        engine = self._engine_factory(execution_engine)
+        engine = self._get_engine(execution_engine)
         await engine.pause(task_id)
         self._update_task_status(task_id, status=TaskHarnessStatus.PAUSED)
         return self._load_list_item(task_id)
@@ -624,7 +632,7 @@ class TaskHarnessService:
         self.initialize()
         row = self._load_task_row(task_id)
         execution_engine = row["execution_engine"] or _EXECUTION_ENGINE
-        engine = self._engine_factory(execution_engine)
+        engine = self._get_engine(execution_engine)
         await engine.send_prompt(task_id, prompt)
 
         # If task is SUCCEEDED or PAUSED and engine is agent-sdk, auto-resume
@@ -693,19 +701,33 @@ class TaskHarnessService:
             task_configuration=configuration_snapshot,
         )
 
-    def get_output(self, task_id: str, *, after_seq: int = 0) -> TaskOutputPage:
+    def get_output(
+        self, task_id: str, *, after_seq: int = 0, limit: int | None = None
+    ) -> TaskOutputPage:
         self.initialize()
         _ = self._load_task_row(task_id)
         with self._connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT task_id, seq, kind, content, created_at
-                FROM task_harness_output_events
-                WHERE task_id = ? AND seq > ?
-                ORDER BY seq ASC
-                """,
-                (task_id, after_seq),
-            ).fetchall()
+            if limit is not None:
+                rows = connection.execute(
+                    """
+                    SELECT task_id, seq, kind, content, created_at
+                    FROM task_harness_output_events
+                    WHERE task_id = ? AND seq > ?
+                    ORDER BY seq ASC
+                    LIMIT ?
+                    """,
+                    (task_id, after_seq, limit + 1),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    """
+                    SELECT task_id, seq, kind, content, created_at
+                    FROM task_harness_output_events
+                    WHERE task_id = ? AND seq > ?
+                    ORDER BY seq ASC
+                    """,
+                    (task_id, after_seq),
+                ).fetchall()
         items = [
             TaskOutputEvent(
                 task_id=row["task_id"],
@@ -714,9 +736,12 @@ class TaskHarnessService:
                 content=row["content"],
                 created_at=_parse_required_datetime(row["created_at"]),
             )
-            for row in rows
+            for row in rows[:limit]
         ]
         next_seq = items[-1].seq if items else after_seq
+        has_more = limit is not None and len(rows) > limit
+        if has_more:
+            next_seq = items[-1].seq
         return TaskOutputPage(items=items, next_seq=next_seq)
 
     def task_directory(self, task_id: str) -> Path:
@@ -851,9 +876,13 @@ class TaskHarnessService:
                     session_state_path=session_state_path,
                 )
 
-                engine = self._engine_factory(resolved_execution_engine)
+                engine = self._get_engine(resolved_execution_engine)
+                engine_paused = False
 
                 async def emit(event: EngineEvent) -> None:
+                    nonlocal engine_paused
+                    if event.event_type == "system" and event.payload.get("subtype") == "task_paused":
+                        engine_paused = True
                     seq = self._next_seq(task_id)
                     content = (
                         json.dumps(event.payload)
@@ -884,6 +913,9 @@ class TaskHarnessService:
                     self._fail_task(
                         task_id, error_summary=str(exc), failure_category="runtime failure"
                     )
+                    return
+                if engine_paused:
+                    self._update_task_status(task_id, status=TaskHarnessStatus.PAUSED)
                     return
                 self._complete_task(task_id, exit_code=0)
                 return

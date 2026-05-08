@@ -182,6 +182,7 @@ class TaskOutputEvent:
 class TaskOutputPage:
     items: list[TaskOutputEvent]
     next_seq: int
+    has_more: bool = False
 
 
 @dataclass(slots=True)
