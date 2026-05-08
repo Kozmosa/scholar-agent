@@ -47,8 +47,8 @@ function MetadataRow({
   fallback: string;
 }) {
   return (
-    <div className="flex items-start gap-4 border-b border-[var(--border)] py-2 last:border-0">
-      <span className="w-28 shrink-0 text-xs text-[var(--text-secondary)]">{label}</span>
+    <div className="flex items-start gap-2 border-b border-[var(--border)] py-2 last:border-0">
+      <span className="w-16 shrink-0 text-xs text-[var(--text-secondary)]">{label}</span>
       <span
         className="min-w-0 flex-1 truncate text-right text-xs font-medium text-[var(--text)]"
         title={value ? String(value) : fallback}
@@ -255,7 +255,7 @@ export default function TaskDetail({
             width: asideWidth,
             transition: isDragging ? 'none' : 'width 300ms ease-in-out',
           }}
-          className="min-h-0 shrink-0 overflow-auto border-t border-[var(--border)] bg-[var(--bg)] p-5 lg:border-t-0"
+          className="min-h-0 min-w-0 shrink-0 overflow-x-hidden overflow-y-auto border-t border-[var(--border)] bg-[var(--bg)] p-5 lg:border-t-0"
         >
             <div className="mb-2">
               <h2 className="text-sm font-semibold text-[var(--text)]">
