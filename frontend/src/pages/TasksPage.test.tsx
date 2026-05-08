@@ -450,7 +450,7 @@ describe('TasksPage', () => {
     expect(screen.getByRole('button', { name: '新建任务' })).toBeInTheDocument();
     expect(screen.getByLabelText('搜索任务')).toBeInTheDocument();
     expect(await screen.findByText('任务工作区')).toBeInTheDocument();
-    expect(screen.getByText('输出时间线')).toBeInTheDocument();
+    expect(screen.getByText('摘要')).toBeInTheDocument();
   });
 
   it('creates a task from a dialog and selects it through the URL', async () => {

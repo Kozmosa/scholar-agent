@@ -29,8 +29,8 @@ export default function MessageStream({ messages }: Props) {
   }, [handleScroll]);
 
   useEffect(() => {
-    if (shouldScrollRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (shouldScrollRef.current && bottomRef.current) {
+      bottomRef.current.scrollIntoView?.({ behavior: 'smooth' });
     }
   }, [messages]);
 

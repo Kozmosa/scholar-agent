@@ -224,7 +224,7 @@ function TasksPage() {
                 <span
                   className={[
                     'overflow-hidden whitespace-nowrap transition-all duration-200',
-                    taskSidebarWidth < 340 ? 'ml-0 max-w-0 opacity-0' : 'ml-2 max-w-[100px] opacity-100',
+                    taskSidebarWidth < 300 ? 'ml-0 max-w-0 opacity-0' : 'ml-2 max-w-[100px] opacity-100',
                   ].join(' ')}
                 >
                   {t('pages.tasks.newTask')}
