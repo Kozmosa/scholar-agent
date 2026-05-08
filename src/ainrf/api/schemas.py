@@ -572,6 +572,12 @@ class ResearchAgentProfileSnapshotResponse(BaseModel):
     skills_prompt: str | None = None
     settings_json: dict[str, Any] | None = None
     settings_artifact_path: str | None = None
+    model: str | None = None
+    permission_mode: str | None = None
+    max_turns: int | None = None
+    max_budget_usd: float | None = None
+    mcp_servers: dict[str, Any] | None = None
+    disallowed_tools: list[str] | None = None
 
 
 class TaskConfigurationSnapshotResponse(BaseModel):

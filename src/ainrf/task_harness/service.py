@@ -540,7 +540,7 @@ class TaskHarnessService:
         if status in _FINAL_STATUSES or status == TaskHarnessStatus.CANCELLED:
             raise TaskHarnessError(f"Cannot cancel task in status: {status.value}")
 
-        execution_engine = row.get("execution_engine") or _EXECUTION_ENGINE
+        execution_engine = row["execution_engine"] or _EXECUTION_ENGINE
         engine = self._engine_factory(execution_engine)
         await engine.abort(task_id)
 
@@ -590,7 +590,7 @@ class TaskHarnessService:
     async def pause_task(self, task_id: str) -> TaskListItem:
         self.initialize()
         row = self._load_task_row(task_id)
-        execution_engine = row.get("execution_engine") or _EXECUTION_ENGINE
+        execution_engine = row["execution_engine"] or _EXECUTION_ENGINE
         engine = self._engine_factory(execution_engine)
         await engine.pause(task_id)
         self._update_task_status(task_id, status=TaskHarnessStatus.PAUSED)
@@ -605,7 +605,7 @@ class TaskHarnessService:
     async def send_prompt(self, task_id: str, prompt: str) -> int:
         self.initialize()
         row = self._load_task_row(task_id)
-        execution_engine = row.get("execution_engine") or _EXECUTION_ENGINE
+        execution_engine = row["execution_engine"] or _EXECUTION_ENGINE
         engine = self._engine_factory(execution_engine)
         await engine.send_prompt(task_id, prompt)
 
@@ -737,7 +737,7 @@ class TaskHarnessService:
             profile_snapshot = _load_research_agent_profile(task_dir)
             configuration_snapshot = _load_task_configuration(task_dir, row["task_input"])
             resolved_workdir = _resolve_workdir(workspace, environment)
-            resolved_execution_engine = row.get("execution_engine") or _EXECUTION_ENGINE
+            resolved_execution_engine = row["execution_engine"] or _EXECUTION_ENGINE
             write_binding_snapshot(
                 Path(row["binding_snapshot_path"]),
                 workspace=workspace,
