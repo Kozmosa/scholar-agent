@@ -9,6 +9,7 @@ class TaskHarnessStatus(StrEnum):
     QUEUED = "queued"
     STARTING = "starting"
     RUNNING = "running"
+    PAUSED = "paused"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -19,6 +20,10 @@ class TaskOutputKind(StrEnum):
     STDERR = "stderr"
     SYSTEM = "system"
     LIFECYCLE = "lifecycle"
+    MESSAGE = "message"
+    THINKING = "thinking"
+    TOOL_CALL = "tool_call"
+    TOOL_RESULT = "tool_result"
 
 
 class TaskConfigurationMode(StrEnum):
@@ -38,6 +43,12 @@ class ResearchAgentProfileSnapshot:
     skills_prompt: str | None
     settings_json: dict[str, object] | None
     settings_artifact_path: str | None = None
+    model: str | None = None
+    permission_mode: str | None = None
+    max_turns: int | None = None
+    max_budget_usd: float | None = None
+    mcp_servers: dict[str, object] | None = None
+    disallowed_tools: list[str] | None = None
 
 
 @dataclass(slots=True)
