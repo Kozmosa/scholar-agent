@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Alert } from '../../components/ui';
 import { useT } from '../../i18n';
 import type { TaskOutputEvent, TaskRecord } from '../../types';
@@ -8,7 +8,6 @@ import TaskInputBar from './TaskInputBar';
 import { useTaskMessages } from './useTaskMessages';
 import { useTaskActions } from './useTaskActions';
 
-type PanelLayout = 'split' | 'main' | 'aside';
 
 interface Props {
   selectedTask: TaskRecord | null;
@@ -46,12 +45,64 @@ export default function TaskDetail({
   outputError,
 }: Props) {
   const t = useT();
-  const [layout, setLayout] = useState<PanelLayout>('split');
   const metadataFallback = t('pages.tasks.unavailable');
 
   const taskId = selectedTask?.task_id ?? null;
   const { messages } = useTaskMessages(taskId, outputItems);
+
+  const MIN_WIDTH = 48;
+  const DEFAULT_WIDTH = 320;
+
+  const [asideWidth, setAsideWidth] = useState(DEFAULT_WIDTH);
+  const [isDragging, setIsDragging] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
   const actions = useTaskActions(taskId);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+    const startX = e.clientX;
+    const startWidth = asideWidth;
+
+    const onMove = (moveEvent: MouseEvent) => {
+      const delta = startX - moveEvent.clientX;
+      const newWidth = startWidth + delta;
+      const clamped = Math.max(MIN_WIDTH, newWidth);
+      if (containerRef.current) {
+        const maxWidth = containerRef.current.getBoundingClientRect().width - MIN_WIDTH;
+        setAsideWidth(Math.min(maxWidth, clamped));
+      }
+    };
+
+    const onUp = () => {
+      setIsDragging(false);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  const toggleCollapse = (direction: 'left' | 'right') => {
+    if (direction === 'left') {
+      if (asideWidth <= MIN_WIDTH + 10) {
+        setAsideWidth(DEFAULT_WIDTH);
+      } else {
+        setAsideWidth(MIN_WIDTH);
+      }
+    } else {
+      const container = containerRef.current;
+      if (!container) return;
+      const maxWidth = container.getBoundingClientRect().width - MIN_WIDTH;
+      if (asideWidth >= maxWidth - 10) {
+        setAsideWidth(DEFAULT_WIDTH);
+      } else {
+        setAsideWidth(maxWidth);
+      }
+    }
+  };
 
   // Determine if input bar should show
   const showInput = selectedTask && (
@@ -131,17 +182,8 @@ export default function TaskDetail({
         ) : null}
       </header>
 
-      <div
-        className={[
-          'grid min-h-0 flex-1 gap-0 overflow-hidden transition-all duration-300 ease-in-out',
-          layout === 'split' && 'lg:grid-cols-[minmax(0,1fr)_320px]',
-          layout !== 'split' && 'lg:grid-cols-1',
-        ]
-          .filter(Boolean)
-          .join(' ')}
-      >
-        {layout !== 'aside' && (
-          <main className="min-h-0 flex flex-col bg-[var(--surface)]">
+      <div ref={containerRef} className="flex min-h-0 flex-1 overflow-hidden">
+        <main className="min-h-0 flex-1 flex flex-col bg-[var(--surface)]">
             {/* Message stream area */}
             <div className="flex-1 overflow-auto">
               {outputError ? <p className="text-sm text-[#ff3b30] p-4">{outputError}</p> : null}
@@ -157,26 +199,47 @@ export default function TaskDetail({
             )}
 
           </main>
-        )}
 
-        {layout !== 'main' && (
-          <aside className="min-h-0 overflow-auto border-t border-[var(--border)] bg-[var(--bg)] p-5 lg:border-l lg:border-t-0">
-            <div className="mb-2 flex items-center justify-between">
+        <div
+          className="group relative w-[6px] shrink-0 cursor-col-resize select-none"
+          onMouseDown={handleMouseDown}
+        >
+          <div className="absolute inset-y-0 left-1/2 w-[1px] -translate-x-1/2 bg-[var(--border)]" />
+
+          <div
+            className={[
+              'absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col gap-1 transition-opacity',
+              isDragging ? 'opacity-0' : 'opacity-0 group-hover:opacity-100',
+            ].join(' ')}
+          >
+            <button
+              onClick={(e) => { e.stopPropagation(); toggleCollapse('left'); }}
+              className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--bg-secondary)] text-[10px] text-[var(--text-secondary)] shadow-sm transition hover:bg-[var(--border)]"
+              title="Collapse aside"
+            >
+              ◀
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); toggleCollapse('right'); }}
+              className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--bg-secondary)] text-[10px] text-[var(--text-secondary)] shadow-sm transition hover:bg-[var(--border)]"
+              title="Expand aside"
+            >
+              ▶
+            </button>
+          </div>
+        </div>
+
+        <aside
+          style={{
+            width: asideWidth,
+            transition: isDragging ? 'none' : 'width 300ms ease-in-out',
+          }}
+          className="min-h-0 shrink-0 overflow-auto border-t border-[var(--border)] bg-[var(--bg)] p-5 lg:border-t-0"
+        >
+            <div className="mb-2">
               <h2 className="text-sm font-semibold text-[var(--text)]">
                 {t('pages.tasks.summary')}
               </h2>
-              <button
-                type="button"
-                onClick={() => setLayout(layout === 'aside' ? 'split' : 'aside')}
-                className="rounded-md bg-[var(--bg-secondary)] px-2 py-1 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--border)]"
-                aria-label={
-                  layout === 'aside'
-                    ? t('pages.tasks.collapseSummary')
-                    : t('pages.tasks.expandSummary')
-                }
-              >
-                {layout === 'aside' ? '>>' : '<<'}
-              </button>
             </div>
             <div className="space-y-5">
               <section>
@@ -269,7 +332,6 @@ export default function TaskDetail({
               </section>
             </div>
           </aside>
-        )}
       </div>
     </section>
   );
