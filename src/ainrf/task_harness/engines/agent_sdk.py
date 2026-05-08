@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 from collections import deque
 from contextlib import contextmanager
@@ -26,6 +27,8 @@ from claude_agent_sdk import (
 from .base import EngineContext, EngineEvent, ExecutionEngine
 from ainrf.environments.models import utc_now
 from ainrf.task_harness.session_state import SessionCheckpoint
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -414,5 +417,5 @@ class AgentSdkEngine(ExecutionEngine):
         )
         try:
             checkpoint_path.write_text(json.dumps(asdict(checkpoint), indent=2))
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.warning("Failed to save checkpoint for %s: %s", session.task_id, exc)

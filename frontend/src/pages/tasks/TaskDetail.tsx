@@ -132,7 +132,7 @@ export default function TaskDetail({
   // Determine if input bar should show
   const showInput = selectedTask &&
     selectedTask.execution_engine === 'agent-sdk' &&
-    (selectedTask.status === 'running' || selectedTask.status === 'succeeded');
+    (selectedTask.status === 'running' || selectedTask.status === 'succeeded' || selectedTask.status === 'paused');
 
   // Determine pause/resume buttons
   const showPause = selectedTask?.status === 'running' && selectedTask?.execution_engine === 'agent-sdk';
