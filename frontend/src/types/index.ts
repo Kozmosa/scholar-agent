@@ -634,6 +634,10 @@ export interface MessageItem {
   };
 }
 
+export type DisplayMessageItem =
+  | { kind: 'single'; message: MessageItem }
+  | { kind: 'group'; id: string; messages: MessageItem[]; collapsed: boolean };
+
 export interface TaskMessagesResponse {
   messages: MessageItem[];
   has_more: boolean;
