@@ -40,6 +40,7 @@ export function useTaskActions(taskId: string | null) {
     mutationFn: (prompt: string) => sendTaskPrompt(taskId!, prompt),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['task', taskId] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
       queryClient.invalidateQueries({ queryKey: ['task-messages', taskId] });
     },
     onError: (error) => {
@@ -50,7 +51,10 @@ export function useTaskActions(taskId: string | null) {
   return {
     pause: () => taskId && pause.mutate(),
     resume: () => taskId && resume.mutate(),
-    sendPrompt: (prompt: string) => taskId && sendPrompt.mutate(prompt),
+    sendPrompt: (prompt: string) => {
+      if (!taskId) return Promise.reject(new Error('No task selected'));
+      return sendPrompt.mutateAsync(prompt);
+    },
     isPending: pause.isPending || resume.isPending || sendPrompt.isPending,
   };
 }

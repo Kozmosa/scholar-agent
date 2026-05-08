@@ -3,7 +3,7 @@ import { Send } from 'lucide-react';
 import { useT } from '../../i18n';
 
 interface Props {
-  onSubmit: (prompt: string) => void;
+  onSubmit: (prompt: string) => Promise<unknown>;
   disabled?: boolean;
 }
 
@@ -19,11 +19,15 @@ export default function TaskInputBar({ onSubmit, disabled }: Props) {
     el.style.height = `${el.scrollHeight}px`;
   }, [value]);
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = useCallback(async () => {
     const trimmed = value.trim();
     if (!trimmed || disabled) return;
-    onSubmit(trimmed);
-    setValue('');
+    try {
+      await onSubmit(trimmed);
+      setValue('');
+    } catch {
+      // Keep input on failure so user can retry
+    }
   }, [value, disabled, onSubmit]);
 
   const handleKeyDown = useCallback(

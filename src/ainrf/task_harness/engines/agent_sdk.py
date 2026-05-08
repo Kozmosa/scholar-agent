@@ -163,6 +163,9 @@ class AgentSdkEngine(ExecutionEngine):
                         for event in events:
                             await emit(event)
 
+                    if session.abort_event.is_set():
+                        raise asyncio.CancelledError("Task aborted")
+
                     if session.had_error:
                         raise RuntimeError("Agent SDK session completed with errors")
 
@@ -174,7 +177,7 @@ class AgentSdkEngine(ExecutionEngine):
                                 payload={"subtype": "task_paused", "task_id": context.task_id},
                             )
                         )
-                    elif not session.abort_event.is_set():
+                    else:
                         await emit(
                             EngineEvent(
                                 event_type="system",

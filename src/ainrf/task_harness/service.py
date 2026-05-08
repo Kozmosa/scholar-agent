@@ -878,21 +878,22 @@ class TaskHarnessService:
                 engine_paused = False
                 engine_failed = False
 
-                async def emit(event: EngineEvent) -> None:
-                    nonlocal engine_paused, engine_failed
-                    if event.event_type == "system":
-                        subtype = event.payload.get("subtype")
-                        if subtype == "task_paused":
-                            engine_paused = True
-                        elif subtype == "task_failed":
-                            engine_failed = True
-                    content = (
-                        json.dumps(event.payload)
-                        if isinstance(event.payload, dict)
-                        else str(event.payload)
-                    )
-                    kind = self._engine_event_to_kind(event.event_type)
-                    with self._connect() as connection:
+                with self._connect() as connection:
+
+                    async def emit(event: EngineEvent) -> None:
+                        nonlocal engine_paused, engine_failed
+                        if event.event_type == "system":
+                            subtype = event.payload.get("subtype")
+                            if subtype == "task_paused":
+                                engine_paused = True
+                            elif subtype == "task_failed":
+                                engine_failed = True
+                        content = (
+                            json.dumps(event.payload)
+                            if isinstance(event.payload, dict)
+                            else str(event.payload)
+                        )
+                        kind = self._engine_event_to_kind(event.event_type)
                         current = connection.execute(
                             """
                             SELECT COALESCE(MAX(seq), 0) AS seq
@@ -915,28 +916,30 @@ class TaskHarnessService:
                         )
                         connection.commit()
 
-                self._update_task_status(task_id, status=TaskHarnessStatus.RUNNING)
-                self._append_output_event(task_id, TaskOutputKind.LIFECYCLE, "Task is running")
+                    self._update_task_status(task_id, status=TaskHarnessStatus.RUNNING)
+                    self._append_output_event(task_id, TaskOutputKind.LIFECYCLE, "Task is running")
 
-                try:
-                    await engine.start(context, emit)
-                except Exception as exc:
-                    self._fail_task(
-                        task_id, error_summary=str(exc), failure_category="runtime failure"
-                    )
+                    try:
+                        await engine.start(context, emit)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as exc:
+                        self._fail_task(
+                            task_id, error_summary=str(exc), failure_category="runtime failure"
+                        )
+                        return
+                    if engine_paused:
+                        self._update_task_status(task_id, status=TaskHarnessStatus.PAUSED)
+                        return
+                    if engine_failed:
+                        self._fail_task(
+                            task_id,
+                            error_summary="Agent SDK reported task failure",
+                            failure_category="runtime failure",
+                        )
+                        return
+                    self._complete_task(task_id, exit_code=0)
                     return
-                if engine_paused:
-                    self._update_task_status(task_id, status=TaskHarnessStatus.PAUSED)
-                    return
-                if engine_failed:
-                    self._fail_task(
-                        task_id,
-                        error_summary="Agent SDK reported task failure",
-                        failure_category="runtime failure",
-                    )
-                    return
-                self._complete_task(task_id, exit_code=0)
-                return
 
             if is_local_environment(environment):
                 launch_payload, launch = build_local_launcher(
@@ -990,6 +993,8 @@ class TaskHarnessService:
 
         try:
             exit_code = await self._stream_process_output(task_id, process)
+        except asyncio.CancelledError:
+            raise
         except TaskHarnessOutputStoreError as exc:
             await process.terminate()
             await process.wait()
