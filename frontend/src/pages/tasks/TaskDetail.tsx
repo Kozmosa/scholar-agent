@@ -141,7 +141,7 @@ export default function TaskDetail({
           .join(' ')}
       >
         {layout !== 'aside' && (
-          <main className="min-h-0 flex flex-col bg-[#0b1020]">
+          <main className="min-h-0 flex flex-col bg-[var(--surface)]">
             {/* Message stream area */}
             <div className="flex-1 overflow-auto">
               {outputError ? <p className="text-sm text-[#ff3b30] p-4">{outputError}</p> : null}
@@ -156,36 +156,6 @@ export default function TaskDetail({
               />
             )}
 
-            {/* Prompt layers */}
-            <section className="border-t border-[var(--border)] p-5">
-              <h2 className="text-sm font-semibold text-[var(--text)]">
-                {t('pages.tasks.promptLayers')}
-              </h2>
-              {selectedTask.prompt ? (
-                <div className="mt-3 space-y-3">
-                  {selectedTask.prompt.layers.map((layer) => (
-                    <details
-                      key={layer.name}
-                      className="rounded-xl border border-[var(--border)] bg-[var(--bg)] p-4"
-                    >
-                      <summary className="cursor-pointer text-sm font-medium text-[var(--text)]">
-                        {layer.label}{' '}
-                        <span className="text-xs text-[var(--text-secondary)]">
-                          ({layer.char_count} {t('pages.tasks.chars')})
-                        </span>
-                      </summary>
-                      <pre className="mt-3 overflow-x-auto rounded-lg bg-[var(--bg-tertiary)] p-3 text-xs text-[var(--text)]">
-                        {layer.content}
-                      </pre>
-                    </details>
-                  ))}
-                </div>
-              ) : (
-                <p className="mt-3 text-sm text-[var(--text-secondary)]">
-                  {t('pages.tasks.promptUnavailable')}
-                </p>
-              )}
-            </section>
           </main>
         )}
 
@@ -266,6 +236,36 @@ export default function TaskDetail({
                   <MetadataRow label={t('pages.tasks.failure')} value={selectedTask.result.failure_category} fallback={metadataFallback} />
                   <MetadataRow label={t('pages.tasks.completed')} value={selectedTask.result.completed_at} fallback={metadataFallback} />
                 </div>
+              </section>
+
+              <section>
+                <h2 className="mb-2 text-sm font-semibold text-[var(--text)]">
+                  {t('pages.tasks.prompt')}
+                </h2>
+                {selectedTask.prompt ? (
+                  <div className="space-y-2">
+                    {selectedTask.prompt.layers.map((layer) => (
+                      <details
+                        key={layer.name}
+                        className="rounded-lg border border-[var(--border)] bg-[var(--surface)]"
+                      >
+                        <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-[var(--text)]">
+                          {layer.label}{' '}
+                          <span className="text-[var(--text-secondary)]">
+                            ({layer.char_count} {t('pages.tasks.chars')})
+                          </span>
+                        </summary>
+                        <pre className="max-h-48 overflow-auto border-t border-[var(--border)] bg-[var(--bg-tertiary)] p-3 text-xs text-[var(--text)]">
+                          {layer.content}
+                        </pre>
+                      </details>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-[var(--text-secondary)]">
+                    {t('pages.tasks.promptUnavailable')}
+                  </p>
+                )}
               </section>
             </div>
           </aside>
