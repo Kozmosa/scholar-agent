@@ -76,8 +76,8 @@ export interface UserSessionPairListResponse {
   items: UserSessionPair[];
 }
 
-export type TaskStatus = 'queued' | 'starting' | 'running' | 'succeeded' | 'failed' | 'cancelled';
-export type TaskOutputKind = 'stdout' | 'stderr' | 'system' | 'lifecycle';
+export type TaskStatus = 'queued' | 'starting' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'paused';
+export type TaskOutputKind = 'stdout' | 'stderr' | 'system' | 'lifecycle' | 'message' | 'thinking' | 'tool_call' | 'tool_result';
 
 export interface ProjectRecord {
   project_id: string;
@@ -620,4 +620,22 @@ export interface SkillRegistryUpdateResponse {
   updated_count: number;
   added: string[];
   removed: string[];
+}
+
+export interface MessageItem {
+  id: string;
+  type: 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'system_event';
+  content: string | Record<string, unknown>;
+  metadata: {
+    timestamp: string;
+    sequence: number;
+    isFolded?: boolean;
+    engineType?: string;
+  };
+}
+
+export interface TaskMessagesResponse {
+  messages: MessageItem[];
+  has_more: boolean;
+  next_sequence: number | null;
 }
