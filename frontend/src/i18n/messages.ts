@@ -251,6 +251,10 @@ export const messages = {
         collapseOutputTimeline: 'Collapse output timeline',
         expandSummary: 'Expand summary',
         collapseSummary: 'Collapse summary',
+        thinking: 'Thinking...',
+        toolCall: 'Tool: {{name}}',
+        toolResult: 'Result',
+        inputPlaceholder: 'Type a message...',
         actions: {
           cancel: 'Cancel',
           archive: 'Archive',
@@ -532,6 +536,7 @@ export const messages = {
         attaching: 'Attaching…',
         detaching: 'Detaching…',
         resetting: 'Resetting…',
+        consoleTitle: 'Terminal Console',
       },
       terminalConsole: {
         startPrompt: 'Attach to a personal terminal session to open the xterm console.',
@@ -889,6 +894,10 @@ export const messages = {
         collapseOutputTimeline: '收起输出时间线',
         expandSummary: '展开摘要面板',
         collapseSummary: '收起摘要面板',
+        thinking: '思考中…',
+        toolCall: '工具：{{name}}',
+        toolResult: '结果',
+        inputPlaceholder: '输入消息…',
         actions: {
           cancel: '取消',
           archive: '归档',
@@ -1161,6 +1170,7 @@ export const messages = {
         attaching: '附着中…',
         detaching: '脱离中…',
         resetting: '重置中…',
+        consoleTitle: '终端控制台',
       },
       terminalConsole: {
         startPrompt: '附着到个人终端会话后即可打开 xterm 控制台。',

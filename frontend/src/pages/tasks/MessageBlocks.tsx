@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useT } from '../../i18n';
 import type { MessageItem } from '../../types';
 
 function formatTime(timestamp: string): string {
@@ -44,6 +45,7 @@ export function AssistantMessage({ message }: { message: MessageItem }) {
 
 export function ThinkingBlock({ message }: { message: MessageItem }) {
   const [isOpen, setIsOpen] = useState(false);
+  const t = useT();
   const content = typeof message.content === 'string' ? message.content : '';
   return (
     <div className="my-1 flex flex-col items-start">
@@ -51,7 +53,7 @@ export function ThinkingBlock({ message }: { message: MessageItem }) {
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-1 rounded-lg border-l-2 border-[var(--text-tertiary)] bg-[var(--bg-secondary)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--border)]"
       >
-        {isOpen ? '▾' : '▸'} Thinking...
+        {isOpen ? '▾' : '▸'} {t('pages.tasks.thinking')}
       </button>
       {isOpen && (
         <div className="mt-1 w-full rounded-lg border-l-2 border-[var(--text-tertiary)] bg-[var(--bg-secondary)] px-3 py-2">
@@ -64,6 +66,7 @@ export function ThinkingBlock({ message }: { message: MessageItem }) {
 
 export function ToolCallBlock({ message }: { message: MessageItem }) {
   const [isOpen, setIsOpen] = useState(false);
+  const t = useT();
   const content = typeof message.content === 'object' ? message.content : {};
   const name = String((content as Record<string, unknown>).name || 'unknown');
   return (
@@ -72,7 +75,7 @@ export function ToolCallBlock({ message }: { message: MessageItem }) {
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-1 rounded-lg border-l-2 border-[var(--apple-blue)] bg-[var(--bg-secondary)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--border)]"
       >
-        {isOpen ? '▾' : '▸'} Tool: {name}
+        {isOpen ? '▾' : '▸'} {t('pages.tasks.toolCall', { name })}
       </button>
       {isOpen && (
         <div className="mt-1 w-full rounded-lg border-l-2 border-[var(--apple-blue)] bg-[var(--bg-secondary)] px-3 py-2">
@@ -85,6 +88,7 @@ export function ToolCallBlock({ message }: { message: MessageItem }) {
 
 export function ToolResultBlock({ message }: { message: MessageItem }) {
   const [isOpen, setIsOpen] = useState(false);
+  const t = useT();
   const content = typeof message.content === 'object' ? message.content : {};
   return (
     <div className="my-1 flex flex-col items-start pl-4">
@@ -92,7 +96,7 @@ export function ToolResultBlock({ message }: { message: MessageItem }) {
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-1 rounded-lg border-l-2 border-[#22c55e] bg-[var(--bg-secondary)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--border)]"
       >
-        {isOpen ? '▾' : '▸'} Result
+        {isOpen ? '▾' : '▸'} {t('pages.tasks.toolResult')}
       </button>
       {isOpen && (
         <div className="mt-1 w-full rounded-lg border-l-2 border-[#22c55e] bg-[var(--bg-secondary)] px-3 py-2">

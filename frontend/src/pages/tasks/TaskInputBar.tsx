@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Send } from 'lucide-react';
+import { useT } from '../../i18n';
 
 interface Props {
   onSubmit: (prompt: string) => void;
@@ -7,6 +8,7 @@ interface Props {
 }
 
 export default function TaskInputBar({ onSubmit, disabled }: Props) {
+  const t = useT();
   const [value, setValue] = useState('');
 
   const handleSubmit = useCallback(() => {
@@ -32,7 +34,7 @@ export default function TaskInputBar({ onSubmit, disabled }: Props) {
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Type a message..."
+        placeholder={t('pages.tasks.inputPlaceholder')}
         rows={1}
         disabled={disabled}
         className="min-h-[40px] flex-1 resize-none rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)] outline-none transition focus:border-[var(--apple-blue)] disabled:opacity-50"

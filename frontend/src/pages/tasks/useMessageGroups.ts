@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import type { MessageItem, DisplayMessageItem } from '../../types';
 
 const NON_CHAT_TYPES = new Set(['system_event', 'thinking', 'tool_call', 'tool_result']);
@@ -43,6 +43,20 @@ export function useMessageGroups(messages: MessageItem[]) {
   const [collapsedState, setCollapsedState] = useState<Set<string>>(() => {
     return new Set(grouped.filter((g): g is Extract<typeof g, { kind: 'group' }> => g.kind === 'group').map(g => g.id));
   });
+
+  useEffect(() => {
+    setCollapsedState(prev => {
+      const next = new Set(prev);
+      let changed = false;
+      for (const item of grouped) {
+        if (item.kind === 'group' && !next.has(item.id)) {
+          next.add(item.id);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [grouped]);
 
   const toggleGroup = useCallback((groupId: string) => {
     setCollapsedState(prev => {

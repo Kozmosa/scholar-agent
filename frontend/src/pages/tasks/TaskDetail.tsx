@@ -107,6 +107,7 @@ export default function TaskDetail({
   };
 
   const toggleCollapse = (direction: 'left' | 'right') => {
+    if (isDragging) return;
     const container = containerRef.current;
     if (!container) return;
     const maxWidth = container.getBoundingClientRect().width - MIN_WIDTH;

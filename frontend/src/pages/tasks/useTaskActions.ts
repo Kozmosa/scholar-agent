@@ -17,6 +17,7 @@ export function useTaskActions(taskId: string | null) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['task', taskId] });
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['task-messages', taskId] });
     },
     onError: (error) => {
       showToast(`Pause failed: ${getErrorMessage(error)}`, 'error');
@@ -28,6 +29,7 @@ export function useTaskActions(taskId: string | null) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['task', taskId] });
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['task-messages', taskId] });
     },
     onError: (error) => {
       showToast(`Resume failed: ${getErrorMessage(error)}`, 'error');

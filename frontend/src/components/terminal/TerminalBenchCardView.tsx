@@ -167,7 +167,7 @@ function TerminalBenchCardView({
         onToggle={onToggleConsole}
         header={
           <div className="text-sm font-medium text-[var(--text)]">
-            终端控制台
+            {t('components.terminalBench.consoleTitle')}
           </div>
         }
       >
