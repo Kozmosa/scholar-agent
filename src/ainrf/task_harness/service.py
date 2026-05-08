@@ -973,6 +973,8 @@ class TaskHarnessService:
             )
             process = await launch()
             self._running_processes[task_id] = process
+        except asyncio.CancelledError:
+            raise
         except (
             EnvironmentNotFoundError,
             WorkspaceNotFoundError,

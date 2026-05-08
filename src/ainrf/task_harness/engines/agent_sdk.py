@@ -184,6 +184,8 @@ class AgentSdkEngine(ExecutionEngine):
                                 payload={"subtype": "task_completed", "task_id": context.task_id},
                             )
                         )
+                except asyncio.CancelledError:
+                    raise
                 except Exception as exc:
                     session.had_error = True
                     await emit(
