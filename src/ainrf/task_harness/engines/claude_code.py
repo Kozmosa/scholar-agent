@@ -8,8 +8,11 @@ from .base import EngineContext, EngineEvent, ExecutionEngine, NotSupportedError
 class ClaudeCodeEngine(ExecutionEngine):
     async def start(self, context: EngineContext, emit) -> None:
         command = [
-            "claude", "-p", "--no-session-persistence",
-            "--permission-mode", "bypassPermissions",
+            "claude",
+            "-p",
+            "--no-session-persistence",
+            "--permission-mode",
+            "bypassPermissions",
         ]
         process = await asyncio.create_subprocess_exec(
             *command,
@@ -33,10 +36,12 @@ class ClaudeCodeEngine(ExecutionEngine):
                 if not line:
                     break
                 role = "assistant" if kind == "stdout" else "system"
-                await emit(EngineEvent(
-                    event_type="message",
-                    payload={"role": role, "content": line.decode("utf-8", errors="replace")},
-                ))
+                await emit(
+                    EngineEvent(
+                        event_type="message",
+                        payload={"role": role, "content": line.decode("utf-8", errors="replace")},
+                    )
+                )
 
         await asyncio.gather(
             read_stream(process.stdout, "stdout"),

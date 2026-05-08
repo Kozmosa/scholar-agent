@@ -16,6 +16,7 @@ def get_engine(name: str) -> ExecutionEngine:
         raise ValueError(f"Unknown execution engine: {name}")
     module_name, class_name = spec.rsplit(":", 1)
     import importlib
+
     module = importlib.import_module(module_name)
     engine_cls = getattr(module, class_name)
     return engine_cls()

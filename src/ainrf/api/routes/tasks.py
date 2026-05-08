@@ -142,7 +142,9 @@ def _convert_output_event_to_message(item: Any) -> dict[str, Any] | None:
     import json
 
     try:
-        payload = json.loads(item.content) if item.content.startswith("{") else {"content": item.content}
+        payload = (
+            json.loads(item.content) if item.content.startswith("{") else {"content": item.content}
+        )
     except json.JSONDecodeError:
         payload = {"content": item.content}
 
@@ -162,28 +164,47 @@ def _convert_output_event_to_message(item: Any) -> dict[str, Any] | None:
             "id": msg_id,
             "type": "thinking",
             "content": payload.get("content", ""),
-            "metadata": {"timestamp": item.created_at.isoformat(), "sequence": item.seq, "isFolded": True},
+            "metadata": {
+                "timestamp": item.created_at.isoformat(),
+                "sequence": item.seq,
+                "isFolded": True,
+            },
         }
     elif kind == "tool_call":
         return {
             "id": msg_id,
             "type": "tool_call",
             "content": {"name": payload.get("name"), "arguments": payload.get("arguments")},
-            "metadata": {"timestamp": item.created_at.isoformat(), "sequence": item.seq, "isFolded": True},
+            "metadata": {
+                "timestamp": item.created_at.isoformat(),
+                "sequence": item.seq,
+                "isFolded": True,
+            },
         }
     elif kind == "tool_result":
         return {
             "id": msg_id,
             "type": "tool_result",
-            "content": {"tool_use_id": payload.get("tool_use_id"), "content": payload.get("content")},
-            "metadata": {"timestamp": item.created_at.isoformat(), "sequence": item.seq, "isFolded": True},
+            "content": {
+                "tool_use_id": payload.get("tool_use_id"),
+                "content": payload.get("content"),
+            },
+            "metadata": {
+                "timestamp": item.created_at.isoformat(),
+                "sequence": item.seq,
+                "isFolded": True,
+            },
         }
     elif kind in ("system", "lifecycle"):
         return {
             "id": msg_id,
             "type": "system_event",
             "content": payload.get("subtype", kind),
-            "metadata": {"timestamp": item.created_at.isoformat(), "sequence": item.seq, "payload": payload},
+            "metadata": {
+                "timestamp": item.created_at.isoformat(),
+                "sequence": item.seq,
+                "payload": payload,
+            },
         }
     elif kind == "stdout":
         return {

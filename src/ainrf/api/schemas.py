@@ -767,6 +767,7 @@ class TaskMessagesResponse(BaseModel):
 
 # --- Skill Registry Schemas ---
 
+
 class SkillRegistryItemResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
