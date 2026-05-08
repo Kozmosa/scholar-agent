@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useCallback } from 'react';
 import type { MessageItem } from '../../types';
 import { MessageBlock } from './MessageBlocks';
 
@@ -8,9 +8,29 @@ interface Props {
 
 export default function MessageStream({ messages }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const shouldScrollRef = useRef(true);
+
+  const handleScroll = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const threshold = 80;
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    shouldScrollRef.current = distanceFromBottom < threshold;
+  }, []);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = containerRef.current;
+    if (!container) return;
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [handleScroll]);
+
+  useEffect(() => {
+    if (shouldScrollRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages]);
 
   if (messages.length === 0) {
@@ -22,7 +42,7 @@ export default function MessageStream({ messages }: Props) {
   }
 
   return (
-    <div className="flex flex-col px-4 py-2">
+    <div ref={containerRef} className="flex flex-col overflow-auto px-4 py-2">
       {messages.map((msg) => (
         <MessageBlock key={msg.id} message={msg} />
       ))}
