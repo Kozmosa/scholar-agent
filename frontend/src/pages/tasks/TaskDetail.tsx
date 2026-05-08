@@ -80,13 +80,13 @@ export default function TaskDetail({
 
   const actions = useTaskActions(taskId);
 
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const handlePointerDown = (e: React.PointerEvent) => {
     e.preventDefault();
     setIsDragging(true);
     const startX = e.clientX;
     const startWidth = asideWidth;
 
-    const onMove = (moveEvent: MouseEvent) => {
+    const onMove = (moveEvent: PointerEvent) => {
       const delta = moveEvent.clientX - startX;
       const newWidth = startWidth + delta;
       const clamped = Math.max(MIN_WIDTH, newWidth);
@@ -98,12 +98,12 @@ export default function TaskDetail({
 
     const onUp = () => {
       setIsDragging(false);
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
     };
 
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
   };
 
   const toggleCollapse = (direction: 'left' | 'right') => {
@@ -209,7 +209,7 @@ export default function TaskDetail({
       <div ref={containerRef} className="flex min-h-0 flex-1 overflow-hidden">
         <main className="min-h-0 min-w-0 flex-1 flex flex-col bg-[var(--surface)]">
             {/* Message stream area */}
-            <div className="flex-1 overflow-auto">
+            <div className="flex-1 overflow-hidden">
               {outputError ? <p className="text-sm text-[#ff3b30] p-4">{outputError}</p> : null}
               <MessageStream messages={messages} />
             </div>
@@ -225,14 +225,14 @@ export default function TaskDetail({
           </main>
 
         <div
-          className="group relative w-[6px] shrink-0 cursor-col-resize select-none"
-          onMouseDown={handleMouseDown}
+          className="group relative w-[6px] shrink-0 cursor-col-resize select-none touch-none"
+          onPointerDown={handlePointerDown}
         >
           <div className="absolute inset-y-0 left-1/2 w-[1px] -translate-x-1/2 bg-[var(--border)]" />
 
           <div
             className={[
-              'absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col gap-1 transition-opacity',
+              'absolute top-4 left-1/2 -translate-x-1/2 flex flex-col gap-1 transition-opacity',
               isDragging ? 'opacity-0' : 'opacity-0 group-hover:opacity-100',
             ].join(' ')}
           >
