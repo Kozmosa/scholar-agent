@@ -36,6 +36,9 @@ class SessionStateStore:
         data = json.loads(path.read_text())
         return SessionCheckpoint(**data)
 
+    def checkpoint_path(self, task_id: str) -> Path:
+        return self._checkpoint_path(task_id)
+
     def delete(self, task_id: str) -> None:
         path = self._checkpoint_path(task_id)
         if path.exists():

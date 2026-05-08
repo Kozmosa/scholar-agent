@@ -590,6 +590,9 @@ class TaskHarnessService:
     async def pause_task(self, task_id: str) -> TaskListItem:
         self.initialize()
         row = self._load_task_row(task_id)
+        status = TaskHarnessStatus(row["status"])
+        if status not in {TaskHarnessStatus.RUNNING, TaskHarnessStatus.STARTING}:
+            raise TaskHarnessError(f"Cannot pause task in status: {status.value}")
         execution_engine = row["execution_engine"] or _EXECUTION_ENGINE
         engine = self._engine_factory(execution_engine)
         await engine.pause(task_id)
@@ -598,7 +601,22 @@ class TaskHarnessService:
 
     async def resume_task(self, task_id: str) -> TaskListItem:
         self.initialize()
-        _ = self._load_task_row(task_id)
+        row = self._load_task_row(task_id)
+        status = TaskHarnessStatus(row["status"])
+        execution_engine = row["execution_engine"] or _EXECUTION_ENGINE
+        if status not in {
+            TaskHarnessStatus.PAUSED,
+            TaskHarnessStatus.SUCCEEDED,
+            TaskHarnessStatus.FAILED,
+        }:
+            raise TaskHarnessError(f"Cannot resume task in status: {status.value}")
+        if execution_engine != "agent-sdk" and status in {
+            TaskHarnessStatus.SUCCEEDED,
+            TaskHarnessStatus.FAILED,
+        }:
+            raise TaskHarnessError(
+                f"Cannot resume {execution_engine} task that has already completed"
+            )
         self._schedule_task(task_id)
         return self._load_list_item(task_id)
 
@@ -785,32 +803,34 @@ class TaskHarnessService:
                 # Build EngineContext and run via AgentSdkEngine
                 binding_path = Path(row["binding_snapshot_path"])
                 binding = read_binding_summary(str(binding_path))
-                profile_dict = binding.research_agent_profile if binding else {}
-                config_dict = binding.task_configuration if binding else {}
+                profile = binding.research_agent_profile if binding else None
+                config = binding.task_configuration if binding else None
 
-                profile = ResearchAgentProfileSnapshot(
-                    profile_id=profile_dict.get("profile_id", ""),
-                    label=profile_dict.get("label", ""),
-                    system_prompt=profile_dict.get("system_prompt"),
-                    skills=profile_dict.get("skills", []),
-                    skills_prompt=profile_dict.get("skills_prompt"),
-                    settings_json=profile_dict.get("settings_json"),
-                    settings_artifact_path=profile_dict.get("settings_artifact_path"),
-                    model=profile_dict.get("model"),
-                    permission_mode=profile_dict.get("permission_mode"),
-                    max_turns=profile_dict.get("max_turns"),
-                    max_budget_usd=profile_dict.get("max_budget_usd"),
-                    mcp_servers=profile_dict.get("mcp_servers"),
-                    disallowed_tools=profile_dict.get("disallowed_tools"),
-                )
+                if profile is None:
+                    profile = ResearchAgentProfileSnapshot(
+                        profile_id="claude-code-default",
+                        label="Claude Code Default",
+                        system_prompt=None,
+                        skills=[],
+                        skills_prompt=None,
+                        settings_json=None,
+                        settings_artifact_path=None,
+                        model=None,
+                        permission_mode=None,
+                        max_turns=None,
+                        max_budget_usd=None,
+                        mcp_servers=None,
+                        disallowed_tools=None,
+                    )
 
-                config = TaskConfigurationSnapshot(
-                    mode=TaskConfigurationMode(config_dict.get("mode", "raw_prompt")),
-                    template_id=config_dict.get("template_id"),
-                    template_vars=config_dict.get("template_vars", {}),
-                    raw_prompt=config_dict.get("raw_prompt"),
-                    rendered_task_input=config_dict.get("rendered_task_input", ""),
-                )
+                if config is None:
+                    config = TaskConfigurationSnapshot(
+                        mode=TaskConfigurationMode.RAW_PROMPT,
+                        template_id=None,
+                        template_vars={},
+                        raw_prompt=None,
+                        rendered_task_input="",
+                    )
 
                 # Read rendered prompt
                 prompt_file_path = binding_path.parent / "rendered_prompt.txt"
@@ -820,7 +840,7 @@ class TaskHarnessService:
                 session_checkpoint = self._session_store.load(task_id)
                 session_state_path = None
                 if session_checkpoint:
-                    session_state_path = str(self._session_store._checkpoint_path(task_id))
+                    session_state_path = str(self._session_store.checkpoint_path(task_id))
 
                 context = EngineContext(
                     task_id=task_id,

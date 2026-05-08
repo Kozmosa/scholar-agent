@@ -33,6 +33,7 @@ class AgentSession:
     session_id: str | None = None
     turn_count: int = 0
     total_cost_usd: float = 0.0
+    had_error: bool = False
 
 
 class AgentSdkEngine(ExecutionEngine):
@@ -49,7 +50,8 @@ class AgentSdkEngine(ExecutionEngine):
 
         # Load checkpoint if available
         if context.session_state_path:
-            store = SessionStateStore(Path(context.session_state_path))
+            state_root = Path(context.session_state_path).parent.parent
+            store = SessionStateStore(state_root)
             checkpoint = store.load(context.task_id)
             if checkpoint:
                 session.session_id = checkpoint.session_id
@@ -87,9 +89,12 @@ class AgentSdkEngine(ExecutionEngine):
                 if session.abort_event.is_set():
                     break
 
-                event = self._convert_sdk_message(sdk_msg, session)
-                if event is not None:
+                events = self._convert_sdk_message(sdk_msg, session)
+                for event in events:
                     await emit(event)
+
+            if session.had_error:
+                raise RuntimeError("Agent SDK session completed with errors")
 
             if session.should_pause_after_turn:
                 await emit(
@@ -142,38 +147,48 @@ class AgentSdkEngine(ExecutionEngine):
             if session is not None:
                 session.abort_event.set()
 
-    def _convert_sdk_message(self, sdk_msg, session: AgentSession) -> EngineEvent | None:
+    def _convert_sdk_message(self, sdk_msg, session: AgentSession) -> list[EngineEvent]:
+        events: list[EngineEvent] = []
+
         if isinstance(sdk_msg, AssistantMessage):
             for block in sdk_msg.content:
                 if isinstance(block, TextBlock):
-                    return EngineEvent(
-                        event_type="message",
-                        payload={"role": "assistant", "content": block.text},
+                    events.append(
+                        EngineEvent(
+                            event_type="message",
+                            payload={"role": "assistant", "content": block.text},
+                        )
                     )
-                if isinstance(block, ThinkingBlock):
-                    return EngineEvent(
-                        event_type="thinking",
-                        payload={"content": block.thinking},
+                elif isinstance(block, ThinkingBlock):
+                    events.append(
+                        EngineEvent(
+                            event_type="thinking",
+                            payload={"content": block.thinking},
+                        )
                     )
-                if isinstance(block, ToolUseBlock):
-                    return EngineEvent(
-                        event_type="tool_call",
-                        payload={
-                            "id": block.id,
-                            "name": block.name,
-                            "arguments": block.input,
-                        },
+                elif isinstance(block, ToolUseBlock):
+                    events.append(
+                        EngineEvent(
+                            event_type="tool_call",
+                            payload={
+                                "id": block.id,
+                                "name": block.name,
+                                "arguments": block.input,
+                            },
+                        )
                     )
-                if isinstance(block, ToolResultBlock):
-                    return EngineEvent(
-                        event_type="tool_result",
-                        payload={
-                            "tool_use_id": block.tool_use_id,
-                            "content": block.content,
-                            "is_error": block.is_error,
-                        },
+                elif isinstance(block, ToolResultBlock):
+                    events.append(
+                        EngineEvent(
+                            event_type="tool_result",
+                            payload={
+                                "tool_use_id": block.tool_use_id,
+                                "content": block.content,
+                                "is_error": block.is_error,
+                            },
+                        )
                     )
-            return None
+            return events
 
         if isinstance(sdk_msg, UserMessage):
             content = sdk_msg.content
@@ -183,24 +198,33 @@ class AgentSdkEngine(ExecutionEngine):
                     item.get("text", str(item)) if isinstance(item, dict) else str(item)
                     for item in content
                 )
-            return EngineEvent(
-                event_type="message",
-                payload={"role": "user", "content": content},
+            events.append(
+                EngineEvent(
+                    event_type="message",
+                    payload={"role": "user", "content": content},
+                )
             )
+            return events
 
         if isinstance(sdk_msg, SystemMessage):
             if sdk_msg.subtype == "init":
-                return EngineEvent(
-                    event_type="system",
-                    payload={
-                        "subtype": "task_started",
-                        "session_id": sdk_msg.data.get("session_id"),
-                    },
+                events.append(
+                    EngineEvent(
+                        event_type="system",
+                        payload={
+                            "subtype": "task_started",
+                            "session_id": sdk_msg.data.get("session_id"),
+                        },
+                    )
                 )
-            return EngineEvent(
-                event_type="system",
-                payload={"subtype": sdk_msg.subtype, "data": sdk_msg.data},
-            )
+            else:
+                events.append(
+                    EngineEvent(
+                        event_type="system",
+                        payload={"subtype": sdk_msg.subtype, "data": sdk_msg.data},
+                    )
+                )
+            return events
 
         if isinstance(sdk_msg, ResultMessage):
             session.session_id = sdk_msg.session_id
@@ -208,25 +232,32 @@ class AgentSdkEngine(ExecutionEngine):
             session.total_cost_usd += sdk_msg.total_cost_usd or 0.0
 
             if sdk_msg.is_error:
-                return EngineEvent(
-                    event_type="system",
-                    payload={
-                        "subtype": "task_failed",
-                        "session_id": sdk_msg.session_id,
-                        "num_turns": sdk_msg.num_turns,
-                        "total_cost_usd": sdk_msg.total_cost_usd,
-                        "errors": sdk_msg.errors,
-                    },
+                session.had_error = True
+                events.append(
+                    EngineEvent(
+                        event_type="system",
+                        payload={
+                            "subtype": "task_failed",
+                            "session_id": sdk_msg.session_id,
+                            "num_turns": sdk_msg.num_turns,
+                            "total_cost_usd": sdk_msg.total_cost_usd,
+                            "errors": sdk_msg.errors,
+                        },
+                    )
                 )
-            return EngineEvent(
-                event_type="system",
-                payload={
-                    "subtype": "task_completed",
-                    "session_id": sdk_msg.session_id,
-                    "num_turns": sdk_msg.num_turns,
-                    "total_cost_usd": sdk_msg.total_cost_usd,
-                },
-            )
+            else:
+                events.append(
+                    EngineEvent(
+                        event_type="system",
+                        payload={
+                            "subtype": "task_completed",
+                            "session_id": sdk_msg.session_id,
+                            "num_turns": sdk_msg.num_turns,
+                            "total_cost_usd": sdk_msg.total_cost_usd,
+                        },
+                    )
+                )
+            return events
 
         if isinstance(sdk_msg, StreamEvent):
             event_type = sdk_msg.event.get("type")
@@ -234,22 +265,27 @@ class AgentSdkEngine(ExecutionEngine):
                 delta = sdk_msg.event.get("delta", {})
                 text = delta.get("text")
                 if text:
-                    return EngineEvent(
-                        event_type="message",
-                        payload={"role": "assistant", "content": text, "streaming": True},
+                    events.append(
+                        EngineEvent(
+                            event_type="message",
+                            payload={"role": "assistant", "content": text, "streaming": True},
+                        )
                     )
-            return None
+            return events
 
         if isinstance(sdk_msg, RateLimitEvent):
-            return EngineEvent(
-                event_type="system",
-                payload={
-                    "subtype": "rate_limit",
-                    "rate_limit_info": sdk_msg.rate_limit_info,
-                },
+            events.append(
+                EngineEvent(
+                    event_type="system",
+                    payload={
+                        "subtype": "rate_limit",
+                        "rate_limit_info": sdk_msg.rate_limit_info,
+                    },
+                )
             )
+            return events
 
-        return None
+        return events
 
     def _post_tool_use_hook(self, emit):
         async def hook(input_data, tool_use_id, context):
@@ -286,7 +322,10 @@ class AgentSdkEngine(ExecutionEngine):
         return hook
 
     async def _save_checkpoint(self, context: EngineContext, session: AgentSession) -> None:
-        store = SessionStateStore(Path(context.working_directory) / ".ainrf")
+        if context.session_state_path:
+            store = SessionStateStore(Path(context.session_state_path).parent.parent)
+        else:
+            store = SessionStateStore(Path(context.working_directory) / ".ainrf")
         checkpoint = SessionCheckpoint(
             task_id=session.task_id,
             session_id=session.session_id,
