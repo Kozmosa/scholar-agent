@@ -33,6 +33,7 @@ class TaskStatus(StrEnum):
     QUEUED = "queued"
     STARTING = "starting"
     RUNNING = "running"
+    PAUSED = "paused"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -718,6 +719,44 @@ class FileUploadResponse(BaseModel):
 
     path: str
     size: int
+
+
+class TaskPauseResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    task_id: str
+    status: str
+
+
+class TaskResumeResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    task_id: str
+    status: str
+
+
+class TaskPromptRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    prompt: str = Field(min_length=1)
+
+
+class TaskPromptSendResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    task_id: str
+    sequence: int
+
+
+class MessageItemResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: str
+    type: str
+    content: str | dict[str, Any]
+    metadata: dict[str, Any]
+
+
+class TaskMessagesResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    messages: list[MessageItemResponse]
+    has_more: bool
+    next_sequence: int | None = None
 
 
 # --- Skill Registry Schemas ---
