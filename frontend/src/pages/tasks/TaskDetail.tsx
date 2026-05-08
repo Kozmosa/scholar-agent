@@ -87,7 +87,7 @@ export default function TaskDetail({
     const startWidth = asideWidth;
 
     const onMove = (moveEvent: MouseEvent) => {
-      const delta = startX - moveEvent.clientX;
+      const delta = moveEvent.clientX - startX;
       const newWidth = startWidth + delta;
       const clamped = Math.max(MIN_WIDTH, newWidth);
       if (containerRef.current) {
@@ -107,20 +107,23 @@ export default function TaskDetail({
   };
 
   const toggleCollapse = (direction: 'left' | 'right') => {
+    const container = containerRef.current;
+    if (!container) return;
+    const maxWidth = container.getBoundingClientRect().width - MIN_WIDTH;
+
     if (direction === 'left') {
-      if (asideWidth <= MIN_WIDTH + 10) {
-        setAsideWidth(DEFAULT_WIDTH);
-      } else {
-        setAsideWidth(MIN_WIDTH);
-      }
-    } else {
-      const container = containerRef.current;
-      if (!container) return;
-      const maxWidth = container.getBoundingClientRect().width - MIN_WIDTH;
+      // ◀ button: collapse main panel, expand aside to max
       if (asideWidth >= maxWidth - 10) {
         setAsideWidth(DEFAULT_WIDTH);
       } else {
         setAsideWidth(maxWidth);
+      }
+    } else {
+      // ▶ button: collapse aside panel, shrink aside to min
+      if (asideWidth <= MIN_WIDTH + 10) {
+        setAsideWidth(DEFAULT_WIDTH);
+      } else {
+        setAsideWidth(MIN_WIDTH);
       }
     }
   };
@@ -204,7 +207,7 @@ export default function TaskDetail({
       </header>
 
       <div ref={containerRef} className="flex min-h-0 flex-1 overflow-hidden">
-        <main className="min-h-0 flex-1 flex flex-col bg-[var(--surface)]">
+        <main className="min-h-0 min-w-0 flex-1 flex flex-col bg-[var(--surface)]">
             {/* Message stream area */}
             <div className="flex-1 overflow-auto">
               {outputError ? <p className="text-sm text-[#ff3b30] p-4">{outputError}</p> : null}
@@ -236,14 +239,14 @@ export default function TaskDetail({
             <button
               onClick={(e) => { e.stopPropagation(); toggleCollapse('left'); }}
               className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--bg-secondary)] text-[10px] text-[var(--text-secondary)] shadow-sm transition hover:bg-[var(--border)]"
-              title="Collapse aside"
+              title="Show only details"
             >
               ◀
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); toggleCollapse('right'); }}
               className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--bg-secondary)] text-[10px] text-[var(--text-secondary)] shadow-sm transition hover:bg-[var(--border)]"
-              title="Expand aside"
+              title="Show only conversation"
             >
               ▶
             </button>
