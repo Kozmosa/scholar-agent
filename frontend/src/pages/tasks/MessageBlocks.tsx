@@ -9,10 +9,10 @@ function formatTime(timestamp: string): string {
 export function SystemEventBlock({ message }: { message: MessageItem }) {
   const content = typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
   return (
-    <div className="my-2 flex justify-center">
-      <div className="flex items-center gap-2 rounded-lg border-l-2 border-[var(--apple-blue)] bg-[var(--bg-secondary)] px-3 py-1.5">
-        <span className="text-xs text-[var(--text-secondary)]">{content}</span>
-        <span className="text-xs text-[var(--text-tertiary)]">{formatTime(message.metadata.timestamp)}</span>
+    <div className="my-2 flex justify-center px-4">
+      <div className="flex max-w-full items-center gap-2 rounded-lg border-l-2 border-[var(--apple-blue)] bg-[var(--bg-secondary)] px-3 py-1.5">
+        <span className="max-w-full break-all text-xs text-[var(--text-secondary)]">{content}</span>
+        <span className="shrink-0 text-xs text-[var(--text-tertiary)]">{formatTime(message.metadata.timestamp)}</span>
       </div>
     </div>
   );
