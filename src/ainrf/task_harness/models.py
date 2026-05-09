@@ -198,3 +198,15 @@ class TaskEdge:
     source_task_id: str
     target_task_id: str
     created_at: datetime
+
+
+class TaskHarnessError(RuntimeError):
+    """Base error for task harness operations."""
+
+
+class TaskHarnessNotFoundError(TaskHarnessError):
+    """Task or related resource not found."""
+
+
+class TaskHarnessOutputStoreError(TaskHarnessError):
+    """Error reading or writing task output events."""

@@ -41,6 +41,7 @@ class AgentSession:
     turn_count: int = 0
     total_cost_usd: float = 0.0
     had_error: bool = False
+    terminal_emitted: bool = False
 
 
 @contextmanager
@@ -110,14 +111,17 @@ class AgentSdkEngine(ExecutionEngine):
     async def start(self, context: EngineContext, emit) -> None:
         async with self._lock:
             session = self._sessions.get(context.task_id)
+            is_new_session = session is None
             if session is None:
                 session = AgentSession(task_id=context.task_id)
                 self._sessions[context.task_id] = session
             session.had_error = False
+            session.terminal_emitted = False
             session.abort_event.clear()
 
-        # Load checkpoint if available
-        if context.session_state_path:
+        # Load checkpoint if available (only for fresh sessions to avoid
+        # duplicating prompts already queued in memory).
+        if context.session_state_path and is_new_session:
             checkpoint_path = Path(context.session_state_path)
             if checkpoint_path.exists():
                 data = json.loads(checkpoint_path.read_text())
@@ -131,6 +135,11 @@ class AgentSdkEngine(ExecutionEngine):
         # Determine prompt for this turn
         if session.pending_prompts:
             prompt = session.pending_prompts.popleft()
+        elif session.session_id is not None:
+            # Resuming a paused session without queued user input;
+            # use a continuation prompt so we don't replay the original
+            # rendered_prompt and repeat tool side effects.
+            prompt = "Continue from where you left off."
         else:
             prompt = context.rendered_prompt
 
@@ -177,7 +186,7 @@ class AgentSdkEngine(ExecutionEngine):
                                 payload={"subtype": "task_paused", "task_id": context.task_id},
                             )
                         )
-                    else:
+                    elif not session.terminal_emitted:
                         await emit(
                             EngineEvent(
                                 event_type="system",
@@ -188,18 +197,19 @@ class AgentSdkEngine(ExecutionEngine):
                     raise
                 except Exception as exc:
                     session.had_error = True
-                    await emit(
-                        EngineEvent(
-                            event_type="error",
-                            payload={"message": str(exc), "task_id": context.task_id},
+                    if not session.terminal_emitted:
+                        await emit(
+                            EngineEvent(
+                                event_type="error",
+                                payload={"message": str(exc), "task_id": context.task_id},
+                            )
                         )
-                    )
-                    await emit(
-                        EngineEvent(
-                            event_type="system",
-                            payload={"subtype": "task_failed", "task_id": context.task_id},
+                        await emit(
+                            EngineEvent(
+                                event_type="system",
+                                payload={"subtype": "task_failed", "task_id": context.task_id},
+                            )
                         )
-                    )
                     raise
                 finally:
                     await self._save_checkpoint(context, session)
@@ -315,6 +325,7 @@ class AgentSdkEngine(ExecutionEngine):
             session.session_id = sdk_msg.session_id
             session.turn_count += sdk_msg.num_turns or 0
             session.total_cost_usd += sdk_msg.total_cost_usd or 0.0
+            session.terminal_emitted = True
 
             if sdk_msg.is_error:
                 session.had_error = True

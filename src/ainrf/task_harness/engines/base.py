@@ -8,10 +8,11 @@ from typing import Literal
 from ainrf.task_harness.models import (
     ResearchAgentProfileSnapshot,
     TaskConfigurationSnapshot,
+    TaskHarnessError,
 )
 
 
-class NotSupportedError(RuntimeError):
+class NotSupportedError(TaskHarnessError):
     """Engine does not support this operation."""
 
 

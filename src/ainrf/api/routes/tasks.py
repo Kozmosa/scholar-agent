@@ -325,7 +325,7 @@ async def stream_task_output(
                 next_seq = page.next_seq
                 continue
             task = service.get_task(task_id)
-            if task.status.value in {"succeeded", "failed"} and next_seq >= task.latest_output_seq:
+            if task.status.value in {"succeeded", "failed", "cancelled"} and next_seq >= task.latest_output_seq:
                 return
             yield ": keep-alive\n\n"
             await asyncio.sleep(1.0)

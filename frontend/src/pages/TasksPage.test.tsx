@@ -133,7 +133,6 @@ const reviewTaskSummary: TaskSummary = {
 const taskRecord: TaskRecord = {
   ...taskSummary,
   binding: {
-    project_id: 'default',
     workspace: taskSummary.workspace_summary,
     environment: taskSummary.environment_summary,
     task_profile: 'claude-code',

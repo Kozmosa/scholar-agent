@@ -53,6 +53,9 @@ from ainrf.task_harness.models import (
     TaskConfigurationSnapshot,
     TaskDetail,
     TaskEdge,
+    TaskHarnessError,
+    TaskHarnessNotFoundError,
+    TaskHarnessOutputStoreError,
     TaskHarnessStatus,
     TaskListItem,
     TaskOutputEvent,
@@ -107,18 +110,6 @@ def _check_aris_skills(
 _HARNESS_RESTART_REASON = (
     "startup failure: harness restart prevented Task Harness v1 from resuming this task"
 )
-
-
-class TaskHarnessError(RuntimeError):
-    pass
-
-
-class TaskHarnessNotFoundError(TaskHarnessError):
-    pass
-
-
-class TaskHarnessOutputStoreError(TaskHarnessError):
-    pass
 
 
 class TaskHarnessService:
@@ -606,7 +597,8 @@ class TaskHarnessService:
         execution_engine = row["execution_engine"] or _EXECUTION_ENGINE
         engine = self._get_engine(execution_engine)
         await engine.pause(task_id)
-        self._update_task_status(task_id, status=TaskHarnessStatus.PAUSED)
+        # Status is updated to PAUSED when the engine actually emits
+        # task_paused (via the emit callback), not immediately here.
         return self._load_list_item(task_id)
 
     async def resume_task(self, task_id: str) -> TaskListItem:
@@ -637,10 +629,9 @@ class TaskHarnessService:
         engine = self._get_engine(execution_engine)
         await engine.send_prompt(task_id, prompt)
 
-        # If task is SUCCEEDED or PAUSED and engine is agent-sdk, auto-resume
-        if row["status"] in (TaskHarnessStatus.SUCCEEDED.value, TaskHarnessStatus.PAUSED.value):
-            if execution_engine == "agent-sdk":
-                self._schedule_task(task_id)
+        # Auto-resume agent-sdk tasks so queued prompts are processed
+        if execution_engine == "agent-sdk":
+            self._schedule_task(task_id)
 
         seq = self._append_output_event(
             task_id, TaskOutputKind.SYSTEM, json.dumps({"subtype": "user_prompt", "prompt": prompt})
@@ -878,68 +869,47 @@ class TaskHarnessService:
                 engine_paused = False
                 engine_failed = False
 
-                with self._connect() as connection:
+                async def emit(event: EngineEvent) -> None:
+                    nonlocal engine_paused, engine_failed
+                    if event.event_type == "system":
+                        subtype = event.payload.get("subtype")
+                        if subtype == "task_paused":
+                            engine_paused = True
+                            self._update_task_status(task_id, status=TaskHarnessStatus.PAUSED)
+                        elif subtype == "task_failed":
+                            engine_failed = True
+                    content = (
+                        json.dumps(event.payload)
+                        if isinstance(event.payload, dict)
+                        else str(event.payload)
+                    )
+                    kind = self._engine_event_to_kind(event.event_type)
+                    self._append_output_event(task_id, kind, content)
 
-                    async def emit(event: EngineEvent) -> None:
-                        nonlocal engine_paused, engine_failed
-                        if event.event_type == "system":
-                            subtype = event.payload.get("subtype")
-                            if subtype == "task_paused":
-                                engine_paused = True
-                            elif subtype == "task_failed":
-                                engine_failed = True
-                        content = (
-                            json.dumps(event.payload)
-                            if isinstance(event.payload, dict)
-                            else str(event.payload)
-                        )
-                        kind = self._engine_event_to_kind(event.event_type)
-                        current = connection.execute(
-                            """
-                            SELECT COALESCE(MAX(seq), 0) AS seq
-                            FROM task_harness_output_events
-                            WHERE task_id = ?
-                            """,
-                            (task_id,),
-                        ).fetchone()
-                        seq = int(current["seq"]) + 1 if current is not None else 1
-                        connection.execute(
-                            """
-                            INSERT INTO task_harness_output_events (task_id, seq, kind, content, created_at)
-                            VALUES (?, ?, ?, ?, ?)
-                            """,
-                            (task_id, seq, kind.value, content, utc_now().isoformat()),
-                        )
-                        connection.execute(
-                            "UPDATE task_harness_tasks SET latest_output_seq = ?, updated_at = ? WHERE task_id = ?",
-                            (seq, utc_now().isoformat(), task_id),
-                        )
-                        connection.commit()
+                self._update_task_status(task_id, status=TaskHarnessStatus.RUNNING)
+                self._append_output_event(task_id, TaskOutputKind.LIFECYCLE, "Task is running")
 
-                    self._update_task_status(task_id, status=TaskHarnessStatus.RUNNING)
-                    self._append_output_event(task_id, TaskOutputKind.LIFECYCLE, "Task is running")
-
-                    try:
-                        await engine.start(context, emit)
-                    except asyncio.CancelledError:
-                        raise
-                    except Exception as exc:
-                        self._fail_task(
-                            task_id, error_summary=str(exc), failure_category="runtime failure"
-                        )
-                        return
-                    if engine_paused:
-                        self._update_task_status(task_id, status=TaskHarnessStatus.PAUSED)
-                        return
-                    if engine_failed:
-                        self._fail_task(
-                            task_id,
-                            error_summary="Agent SDK reported task failure",
-                            failure_category="runtime failure",
-                        )
-                        return
-                    self._complete_task(task_id, exit_code=0)
+                try:
+                    await engine.start(context, emit)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    self._fail_task(
+                        task_id, error_summary=str(exc), failure_category="runtime failure"
+                    )
                     return
+                if engine_paused:
+                    self._update_task_status(task_id, status=TaskHarnessStatus.PAUSED)
+                    return
+                if engine_failed:
+                    self._fail_task(
+                        task_id,
+                        error_summary="Agent SDK reported task failure",
+                        failure_category="runtime failure",
+                    )
+                    return
+                self._complete_task(task_id, exit_code=0)
+                return
 
             if is_local_environment(environment):
                 launch_payload, launch = build_local_launcher(

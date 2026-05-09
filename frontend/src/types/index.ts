@@ -172,6 +172,7 @@ export interface ResearchAgentProfileSnapshot {
   profile_id: string;
   label: string;
   system_prompt: string | null;
+  skills: string[];
   skills_prompt: string | null;
   settings_json: Record<string, unknown> | null;
   settings_artifact_path: string | null;
@@ -198,7 +199,6 @@ export interface TaskConfigurationSnapshot {
 }
 
 export interface TaskBindingSummary {
-  project_id: string;
   workspace: WorkspaceSummary;
   environment: TaskEnvironmentSummary;
   task_profile: string;
