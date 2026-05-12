@@ -1,6 +1,7 @@
 import { api } from './client';
 import type {
   CodeServerStatus,
+  CodexDefaults,
   EnvironmentCodeServerInstallResponse,
   EnvironmentCreateRequest,
   EnvironmentListResponse,
@@ -145,6 +146,11 @@ export const importSkill = (payload: SkillImportRequest): Promise<SkillImportRes
 
 export const getHealth = (): Promise<SystemHealth> =>
   USE_MOCK ? Promise.resolve(mockGetHealth()) : api.get<SystemHealth>('/health');
+
+export const getCodexDefaults = (): Promise<CodexDefaults> =>
+  USE_MOCK
+    ? Promise.resolve({ codex_config_toml: null, codex_auth_json: null })
+    : api.get<CodexDefaults>('/settings/codex-defaults');
 
 export const getTerminalSession = (environmentId?: string): Promise<TerminalSession> =>
   USE_MOCK

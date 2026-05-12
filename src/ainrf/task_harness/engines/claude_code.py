@@ -21,12 +21,17 @@ class ClaudeCodeEngine(ExecutionEngine):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
+        stdin = process.stdin
+        stdout = process.stdout
+        stderr = process.stderr
+        if stdin is None or stdout is None or stderr is None:
+            raise RuntimeError("Claude Code engine failed to attach stdio pipes")
 
         # Write the prompt to stdin
         if context.rendered_prompt:
-            process.stdin.write(context.rendered_prompt.encode())
-            await process.stdin.drain()
-            process.stdin.close()
+            stdin.write(context.rendered_prompt.encode())
+            await stdin.drain()
+            stdin.close()
 
         await emit(EngineEvent(event_type="system", payload={"subtype": "task_started"}))
 
@@ -44,8 +49,8 @@ class ClaudeCodeEngine(ExecutionEngine):
                 )
 
         await asyncio.gather(
-            read_stream(process.stdout, "stdout"),
-            read_stream(process.stderr, "stderr"),
+            read_stream(stdout, "stdout"),
+            read_stream(stderr, "stderr"),
         )
         await process.wait()
 

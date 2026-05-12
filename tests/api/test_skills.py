@@ -7,13 +7,14 @@ from pathlib import Path
 
 import httpx
 import pytest
+from fastapi import FastAPI
 
 from ainrf.api.app import create_app
 from ainrf.api.config import ApiConfig, hash_api_key
 from ainrf.skills import SkillsDiscoveryService
 
 
-def _make_app(tmp_path: Path, scan_roots: list[Path] | None = None) -> tuple:
+def _make_app(tmp_path: Path, scan_roots: list[Path] | None = None) -> FastAPI:
     api_config = ApiConfig(
         api_key_hashes=frozenset({hash_api_key("secret-key")}),
         state_root=tmp_path,

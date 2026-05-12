@@ -1,6 +1,7 @@
 from .base import ExecutionEngine, EngineContext, EngineEvent, NotSupportedError
 from .agent_sdk import AgentSdkEngine
 from .claude_code import ClaudeCodeEngine
+from .codex_app_server import CodexAppServerEngine
 from .factory import get_engine
 
 __all__ = [
@@ -11,4 +12,5 @@ __all__ = [
     "get_engine",
     "AgentSdkEngine",
     "ClaudeCodeEngine",
+    "CodexAppServerEngine",
 ]
