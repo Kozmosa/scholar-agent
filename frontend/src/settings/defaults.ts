@@ -62,6 +62,13 @@ export function createDefaultResearchAgentProfile(): ResearchAgentProfileSetting
     defaultSonnetModel: '',
     defaultHaikuModel: '',
     envOverrides: '',
+    codexBaseUrl: '',
+    codexApiKey: '',
+    codexModel: '',
+    codexAppServerCommand: '',
+    codexApprovalPolicy: '',
+    codexConfigToml: '',
+    codexAuthJson: '',
   };
 }
 
@@ -96,6 +103,13 @@ export function createKimiResearchAgentProfile(): ResearchAgentProfileSettings {
     defaultSonnetModel: 'kimi-for-coding',
     defaultHaikuModel: 'kimi-for-coding',
     envOverrides: '',
+    codexBaseUrl: '',
+    codexApiKey: '',
+    codexModel: '',
+    codexAppServerCommand: '',
+    codexApprovalPolicy: '',
+    codexConfigToml: '',
+    codexAuthJson: '',
   };
 }
 
@@ -114,6 +128,58 @@ export function createAgentSdkResearchAgentProfile(): ResearchAgentProfileSettin
     defaultSonnetModel: '',
     defaultHaikuModel: '',
     envOverrides: '',
+    codexBaseUrl: '',
+    codexApiKey: '',
+    codexModel: '',
+    codexAppServerCommand: '',
+    codexApprovalPolicy: '',
+    codexConfigToml: '',
+    codexAuthJson: '',
+  };
+}
+
+export function createCodexAppServerResearchAgentProfile(): ResearchAgentProfileSettings {
+  return {
+    profileId: 'codex-app-server-default',
+    label: 'Codex App Server Default',
+    systemPrompt: '',
+    skills: [],
+    skillModes: {},
+    skillsPrompt: '',
+    settingsJson: '',
+    apiBaseUrl: '',
+    apiKey: '',
+    defaultOpusModel: '',
+    defaultSonnetModel: '',
+    defaultHaikuModel: '',
+    envOverrides: '',
+    codexBaseUrl: '',
+    codexApiKey: '',
+    codexModel: 'gpt-5-codex',
+    codexAppServerCommand: 'codex app-server --listen stdio://',
+    codexApprovalPolicy: 'never',
+    codexConfigToml: '',
+    codexAuthJson: '',
+  };
+}
+
+export function applyCodexDefaultsToProfile(
+  profile: ResearchAgentProfileSettings,
+  defaults: {
+    codexConfigToml?: string | null;
+    codexAuthJson?: string | null;
+  }
+): ResearchAgentProfileSettings {
+  return {
+    ...profile,
+    codexConfigToml:
+      profile.codexConfigToml.trim().length > 0
+        ? profile.codexConfigToml
+        : (defaults.codexConfigToml ?? ''),
+    codexAuthJson:
+      profile.codexAuthJson.trim().length > 0
+        ? profile.codexAuthJson
+        : (defaults.codexAuthJson ?? ''),
   };
 }
 
@@ -154,6 +220,7 @@ export function createDefaultTaskConfigurationSettings(): TaskConfigurationSetti
       createDefaultResearchAgentProfile(),
       createKimiResearchAgentProfile(),
       createAgentSdkResearchAgentProfile(),
+      createCodexAppServerResearchAgentProfile(),
     ],
     taskConfigurations: createDefaultTaskConfigurations(),
     defaultResearchAgentProfileId,
