@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from unittest.mock import patch
 
 import pytest
 
@@ -51,3 +52,42 @@ def test_claude_code_engine_not_supported():
 def test_get_engine_codex_app_server():
     engine = get_engine("codex-app-server")
     assert isinstance(engine, CodexAppServerEngine)
+
+
+@pytest.mark.anyio
+async def test_codex_app_server_start_fails_when_process_exits_before_response():
+    engine = CodexAppServerEngine()
+
+    class FakeStreamReader:
+        async def readline(self) -> bytes:
+            return b""
+
+    class FakeStreamWriter:
+        def write(self, _data: bytes) -> None:
+            return None
+
+        async def drain(self) -> None:
+            return None
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdin = FakeStreamWriter()
+            self.stdout = FakeStreamReader()
+            self.stderr = FakeStreamReader()
+            self.returncode = None
+
+        async def wait(self) -> int:
+            return 1
+
+        def terminate(self) -> None:
+            return None
+
+    async def emit(_event) -> None:
+        return None
+
+    with patch(
+        "ainrf.task_harness.engines.codex_app_server.asyncio.create_subprocess_exec",
+        return_value=FakeProcess(),
+    ):
+        with pytest.raises(RuntimeError, match="terminated before completing the request"):
+            await engine.start(_make_context(), emit)

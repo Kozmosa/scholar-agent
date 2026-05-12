@@ -4,6 +4,8 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
+import pytest
+
 from ainrf.environments.models import EnvironmentAuthKind
 from ainrf.environments.service import InMemoryEnvironmentService
 from ainrf.task_harness.artifacts import (
@@ -19,7 +21,7 @@ from ainrf.task_harness.artifacts import (
 )
 from ainrf.task_harness.launcher import LaunchPayload
 from ainrf.task_harness.models import TaskHarnessStatus, TaskConfigurationMode
-from ainrf.task_harness.service import TaskHarnessService
+from ainrf.task_harness.service import TaskHarnessError, TaskHarnessService
 from ainrf.workspaces.service import WorkspaceRegistryService
 
 
@@ -347,3 +349,32 @@ def test_task_harness_prepares_isolated_codex_home_with_optional_overrides(tmp_p
     assert not (isolated_home / "extra.txt").exists()
     assert codex_config_path(task_dir).read_text(encoding="utf-8") == 'model = "custom-provider"\n'
     assert codex_auth_path(task_dir).read_text(encoding="utf-8") == '{"token":"override"}\n'
+
+
+def test_task_harness_rejects_codex_app_server_for_remote_environment(tmp_path: Path) -> None:
+    environment_service = InMemoryEnvironmentService()
+    environment = environment_service.create_environment(
+        alias="remote-codex",
+        display_name="Remote Codex",
+        host="gpu-server-01",
+        user="root",
+        auth_kind=EnvironmentAuthKind.SSH_KEY,
+        default_workdir="/workspace/project",
+        task_harness_profile="Use remote runtime.",
+    )
+    workspace_service = WorkspaceRegistryService(tmp_path)
+    service = TaskHarnessService(
+        state_root=tmp_path,
+        environment_service=environment_service,
+        workspace_service=workspace_service,
+    )
+    service.initialize()
+
+    with pytest.raises(TaskHarnessError, match="only supported for local environments"):
+        service.create_task(
+            workspace_id="workspace-default",
+            environment_id=environment.id,
+            task_profile="claude-code",
+            task_input="Run Codex task",
+            execution_engine="codex-app-server",
+        )

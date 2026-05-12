@@ -187,9 +187,13 @@ export default function TaskCreateForm({
                 codex_approval_policy:
                   selectedResearchAgentProfile.codexApprovalPolicy || null,
                 codex_config_toml:
-                  selectedResearchAgentProfile.codexConfigToml || null,
+                  selectedResearchAgentProfile.codexConfigTomlSource === 'custom'
+                    ? selectedResearchAgentProfile.codexConfigToml
+                    : null,
                 codex_auth_json:
-                  selectedResearchAgentProfile.codexAuthJson || null,
+                  selectedResearchAgentProfile.codexAuthJsonSource === 'custom'
+                    ? selectedResearchAgentProfile.codexAuthJson
+                    : null,
                 env_overrides: (() => {
                   if (!selectedResearchAgentProfile.envOverrides.trim()) return null;
                   try {

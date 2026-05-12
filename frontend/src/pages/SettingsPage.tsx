@@ -259,6 +259,8 @@ function TaskConfigurationSection({
       codexApprovalPolicy: '',
       codexConfigToml: '',
       codexAuthJson: '',
+      codexConfigTomlSource: 'custom',
+      codexAuthJsonSource: 'custom',
     }
   );
   const [defaultProfileId, setDefaultProfileId] = useState(
@@ -292,6 +294,8 @@ function TaskConfigurationSection({
         codexApprovalPolicy: '',
         codexConfigToml: '',
         codexAuthJson: '',
+        codexConfigTomlSource: 'custom',
+        codexAuthJsonSource: 'custom',
       }
     );
     setDefaultProfileId(taskConfiguration.defaultResearchAgentProfileId);
@@ -541,6 +545,7 @@ function TaskConfigurationSection({
                   setProfileDraft((current) => ({
                     ...current,
                     codexConfigToml: event.target.value,
+                    codexConfigTomlSource: 'custom',
                   }))
                 }
                 className="min-h-24 font-mono text-xs"
@@ -555,6 +560,7 @@ function TaskConfigurationSection({
                   setProfileDraft((current) => ({
                     ...current,
                     codexAuthJson: event.target.value,
+                    codexAuthJsonSource: 'custom',
                   }))
                 }
                 className="min-h-24 font-mono text-xs"

@@ -150,6 +150,10 @@ function normalizeTaskConfigurationSettings(
               typeof item.codexConfigToml === 'string' ? item.codexConfigToml : '',
             codexAuthJson:
               typeof item.codexAuthJson === 'string' ? item.codexAuthJson : '',
+            codexConfigTomlSource:
+              item.codexConfigTomlSource === 'host_default' ? 'host_default' : 'custom',
+            codexAuthJsonSource:
+              item.codexAuthJsonSource === 'host_default' ? 'host_default' : 'custom',
           },
         ];
       })

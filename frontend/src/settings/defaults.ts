@@ -69,6 +69,8 @@ export function createDefaultResearchAgentProfile(): ResearchAgentProfileSetting
     codexApprovalPolicy: '',
     codexConfigToml: '',
     codexAuthJson: '',
+    codexConfigTomlSource: 'custom',
+    codexAuthJsonSource: 'custom',
   };
 }
 
@@ -110,6 +112,8 @@ export function createKimiResearchAgentProfile(): ResearchAgentProfileSettings {
     codexApprovalPolicy: '',
     codexConfigToml: '',
     codexAuthJson: '',
+    codexConfigTomlSource: 'custom',
+    codexAuthJsonSource: 'custom',
   };
 }
 
@@ -135,6 +139,8 @@ export function createAgentSdkResearchAgentProfile(): ResearchAgentProfileSettin
     codexApprovalPolicy: '',
     codexConfigToml: '',
     codexAuthJson: '',
+    codexConfigTomlSource: 'custom',
+    codexAuthJsonSource: 'custom',
   };
 }
 
@@ -160,6 +166,8 @@ export function createCodexAppServerResearchAgentProfile(): ResearchAgentProfile
     codexApprovalPolicy: 'never',
     codexConfigToml: '',
     codexAuthJson: '',
+    codexConfigTomlSource: 'host_default',
+    codexAuthJsonSource: 'host_default',
   };
 }
 
@@ -173,13 +181,17 @@ export function applyCodexDefaultsToProfile(
   return {
     ...profile,
     codexConfigToml:
-      profile.codexConfigToml.trim().length > 0
+      profile.codexConfigTomlSource === 'custom'
         ? profile.codexConfigToml
         : (defaults.codexConfigToml ?? ''),
     codexAuthJson:
-      profile.codexAuthJson.trim().length > 0
+      profile.codexAuthJsonSource === 'custom'
         ? profile.codexAuthJson
         : (defaults.codexAuthJson ?? ''),
+    codexConfigTomlSource:
+      profile.codexConfigTomlSource === 'custom' ? 'custom' : 'host_default',
+    codexAuthJsonSource:
+      profile.codexAuthJsonSource === 'custom' ? 'custom' : 'host_default',
   };
 }
 

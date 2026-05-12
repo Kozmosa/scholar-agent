@@ -278,6 +278,10 @@ class TaskHarnessService:
             raise TaskHarnessError(f"Unsupported execution engine: {resolved_execution_engine}")
         workspace = self._workspace_service.get_workspace(workspace_id)
         environment = self._environment_service.get_environment(environment_id)
+        if resolved_execution_engine == "codex-app-server" and not is_local_environment(environment):
+            raise TaskHarnessError(
+                "codex-app-server is only supported for local environments in the current implementation"
+            )
         task_dir = self.task_directory(uuid4().hex)
         profile_snapshot = _normalize_research_agent_profile(research_agent_profile)
         settings_artifact_path = write_claude_settings_artifact(

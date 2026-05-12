@@ -211,6 +211,12 @@ class CodexAppServerEngine(ExecutionEngine):
             while True:
                 line = await session.process.stdout.readline()
                 if not line:
+                    self._fail_pending_requests(
+                        session,
+                        RuntimeError("Codex App Server terminated before completing the request"),
+                    )
+                    session.turn_status = "failed"
+                    session.turn_done.set()
                     break
                 payload = json.loads(line.decode("utf-8"))
                 await self._handle_message(session, payload, emit)
@@ -570,10 +576,7 @@ class CodexAppServerEngine(ExecutionEngine):
         await session.process.stdin.drain()
 
     async def _cleanup_session(self, session: CodexSession) -> None:
-        for future in session.pending_requests.values():
-            if not future.done():
-                future.cancel()
-        session.pending_requests.clear()
+        self._fail_pending_requests(session, RuntimeError("Codex App Server session closed"))
         if session.reader_task is not None:
             session.reader_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -598,3 +601,10 @@ class CodexAppServerEngine(ExecutionEngine):
                 if isinstance(text, str):
                     parts.append(text)
         return "\n".join(parts)
+
+    @staticmethod
+    def _fail_pending_requests(session: CodexSession, error: Exception) -> None:
+        for future in session.pending_requests.values():
+            if not future.done():
+                future.set_exception(error)
+        session.pending_requests.clear()

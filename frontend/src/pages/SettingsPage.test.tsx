@@ -171,6 +171,28 @@ describe('SettingsPage', () => {
     expect(screen.getByLabelText('Codex auth.json')).toHaveValue('{"token":"user-saved"}\n');
   });
 
+  it('preserves intentionally cleared codex profile values across reload', async () => {
+    const settings = createDefaultWebUiSettings();
+    settings.taskConfiguration.defaultExecutionEngineId = 'codex-app-server';
+    const codexProfile = settings.taskConfiguration.researchAgentProfiles.find(
+      (profile) => profile.profileId === 'codex-app-server-default'
+    );
+    if (!codexProfile) {
+      throw new Error('Missing codex default profile in test fixture');
+    }
+    codexProfile.codexConfigToml = '';
+    codexProfile.codexAuthJson = '';
+    codexProfile.codexConfigTomlSource = 'custom';
+    codexProfile.codexAuthJsonSource = 'custom';
+    settings.taskConfiguration.defaultResearchAgentProfileId = 'codex-app-server-default';
+    window.localStorage.setItem(settingsStorageKey, JSON.stringify(settings));
+
+    renderWithProviders(<SettingsPage />);
+
+    await waitFor(() => expect(screen.getByLabelText('Codex config.toml')).toHaveValue(''));
+    expect(screen.getByLabelText('Codex auth.json')).toHaveValue('');
+  });
+
   it('falls back from an invalid document and persists section saves', async () => {
     window.localStorage.setItem(settingsStorageKey, '{invalid');
 
