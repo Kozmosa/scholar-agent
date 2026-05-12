@@ -252,6 +252,13 @@ function TaskConfigurationSection({
       defaultSonnetModel: '',
       defaultHaikuModel: '',
       envOverrides: '',
+      codexBaseUrl: '',
+      codexApiKey: '',
+      codexModel: '',
+      codexAppServerCommand: '',
+      codexApprovalPolicy: '',
+      codexConfigToml: '',
+      codexAuthJson: '',
     }
   );
   const [defaultProfileId, setDefaultProfileId] = useState(
@@ -272,6 +279,19 @@ function TaskConfigurationSection({
         skillModes: {},
         skillsPrompt: '',
         settingsJson: '',
+        apiBaseUrl: '',
+        apiKey: '',
+        defaultOpusModel: '',
+        defaultSonnetModel: '',
+        defaultHaikuModel: '',
+        envOverrides: '',
+        codexBaseUrl: '',
+        codexApiKey: '',
+        codexModel: '',
+        codexAppServerCommand: '',
+        codexApprovalPolicy: '',
+        codexConfigToml: '',
+        codexAuthJson: '',
       }
     );
     setDefaultProfileId(taskConfiguration.defaultResearchAgentProfileId);
@@ -303,6 +323,7 @@ function TaskConfigurationSection({
           >
             <option value="claude-code">Claude Code</option>
             <option value="agent-sdk">Claude Agent</option>
+            <option value="codex-app-server">Codex App Server</option>
           </Select>
         </FormField>
 
@@ -467,6 +488,77 @@ function TaskConfigurationSection({
                 }
                 className="min-h-20 font-mono text-xs"
                 placeholder={'{\n  "CUSTOM_VAR": "value"\n}'}
+              />
+            </FormField>
+          </>
+        )}
+
+        {taskConfiguration.defaultExecutionEngineId === 'codex-app-server' && (
+          <>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <FormField label="Codex model">
+                <Input
+                  aria-label="Codex model"
+                  value={profileDraft.codexModel}
+                  onChange={(event) =>
+                    setProfileDraft((current) => ({ ...current, codexModel: event.target.value }))
+                  }
+                  placeholder="gpt-5-codex"
+                />
+              </FormField>
+              <FormField label="App Server command">
+                <Input
+                  aria-label="App Server command"
+                  value={profileDraft.codexAppServerCommand}
+                  onChange={(event) =>
+                    setProfileDraft((current) => ({
+                      ...current,
+                      codexAppServerCommand: event.target.value,
+                    }))
+                  }
+                  placeholder="codex app-server --listen stdio://"
+                />
+              </FormField>
+              <FormField label="Approval policy">
+                <Input
+                  aria-label="Approval policy"
+                  value={profileDraft.codexApprovalPolicy}
+                  onChange={(event) =>
+                    setProfileDraft((current) => ({
+                      ...current,
+                      codexApprovalPolicy: event.target.value,
+                    }))
+                  }
+                  placeholder="never"
+                />
+              </FormField>
+            </div>
+            <FormField label="Codex config.toml">
+              <Textarea
+                aria-label="Codex config.toml"
+                value={profileDraft.codexConfigToml}
+                onChange={(event) =>
+                  setProfileDraft((current) => ({
+                    ...current,
+                    codexConfigToml: event.target.value,
+                  }))
+                }
+                className="min-h-24 font-mono text-xs"
+                placeholder={'model = "gpt-5-codex"'}
+              />
+            </FormField>
+            <FormField label="Codex auth.json">
+              <Textarea
+                aria-label="Codex auth.json"
+                value={profileDraft.codexAuthJson}
+                onChange={(event) =>
+                  setProfileDraft((current) => ({
+                    ...current,
+                    codexAuthJson: event.target.value,
+                  }))
+                }
+                className="min-h-24 font-mono text-xs"
+                placeholder={'{\n  "OPENAI_API_KEY": "sk-..."\n}'}
               />
             </FormField>
           </>
